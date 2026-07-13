@@ -12,7 +12,8 @@
   },
   "dependencies": {
     "grammy": "^1.28.0",
-    "hono": "^4.6.0"
+    "hono": "^4.6.0",
+    "ytmusic-api": "^5.2.4"
   },
   "devDependencies": {
     "@types/bun": "latest",

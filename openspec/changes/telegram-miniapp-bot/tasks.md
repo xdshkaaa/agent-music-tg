@@ -1,65 +1,65 @@
 ## 1. Project scaffold
 
-- [ ] 1.1 Init Bun project structure (`server/`, `miniapp/`), `package.json`, `tsconfig.json`, `.gitignore` (env files, `node_modules`, build output)
-- [ ] 1.2 Add `.env.example` documenting all required env vars (bot token, admin chat IDs, allowlist, Spotify client ID, LLM provider keys) without real values
-- [ ] 1.3 Set up Hono app skeleton on Bun with a `/healthz` endpoint
-- [ ] 1.4 Set up `bun:sqlite` database module with schema: `allowlist` (chat_id, is_admin), `spotify_tokens` (chat_id, access_token, refresh_token, expires_at), `oauth_state` (state, chat_id, expires_at), `settings` (key, value) for active provider/backend
+- [x] 1.1 Init Bun project structure (`server/`, `miniapp/`), `package.json`, `tsconfig.json`, `.gitignore` (env files, `node_modules`, build output)
+- [x] 1.2 Add `.env.example` documenting all required env vars (bot token, admin chat IDs, allowlist, Spotify client ID, LLM provider keys) without real values
+- [x] 1.3 Set up Hono app skeleton on Bun with a `/healthz` endpoint
+- [x] 1.4 Set up `bun:sqlite` database module with schema: `allowlist` (chat_id, is_admin), `spotify_tokens` (chat_id, access_token, refresh_token, expires_at), `oauth_state` (state, chat_id, expires_at), `settings` (key, value) for active provider/backend
 
 ## 2. Access control
 
-- [ ] 2.1 Implement allowlist/admin lookup against the `allowlist` table
-- [ ] 2.2 Implement grammY middleware that drops updates from non-allowlisted chats before any handler runs
-- [ ] 2.3 Implement Telegram `initData` HMAC verification middleware for Hono API routes, deriving chat/user ID
-- [ ] 2.4 Implement Hono middleware that 403s admin-only routes for non-admin chat IDs (independent of UI)
-- [ ] 2.5 Add a bootstrap mechanism to seed the initial admin chat ID(s) from env on first run
+- [x] 2.1 Implement allowlist/admin lookup against the `allowlist` table
+- [x] 2.2 Implement grammY middleware that drops updates from non-allowlisted chats before any handler runs
+- [x] 2.3 Implement Telegram `initData` HMAC verification middleware for Hono API routes, deriving chat/user ID
+- [x] 2.4 Implement Hono middleware that 403s admin-only routes for non-admin chat IDs (independent of UI)
+- [x] 2.5 Add a bootstrap mechanism to seed the initial admin chat ID(s) from env on first run
 
 ## 3. Spotify account linking
 
-- [ ] 3.1 Implement PKCE code_verifier/code_challenge generation and per-chat `state` issuance (short TTL, single-use, stored in `oauth_state`)
-- [ ] 3.2 Implement `/spotify/callback` Hono route: validate `state`, exchange code for tokens, store in `spotify_tokens`
-- [ ] 3.3 Implement token refresh helper: check expiry before each Spotify API call, refresh via stored refresh token, clear tokens and prompt re-link on refresh failure
-- [ ] 3.4 Port Spotify Web API client from `spotify-harness-tui/src/spotify/client.ts` (search, playlist creation, Connect playback endpoints, 429 handling) into `server/spotify/client.ts`, parameterized per chat's tokens
-- [ ] 3.5 Implement bot command / Mini App action to start the link flow and report link status
+- [x] 3.1 Implement PKCE code_verifier/code_challenge generation and per-chat `state` issuance (short TTL, single-use, stored in `oauth_state`)
+- [x] 3.2 Implement `/spotify/callback` Hono route: validate `state`, exchange code for tokens, store in `spotify_tokens`
+- [x] 3.3 Implement token refresh helper: check expiry before each Spotify API call, refresh via stored refresh token, clear tokens and prompt re-link on refresh failure
+- [x] 3.4 Port Spotify Web API client from `spotify-harness-tui/src/spotify/client.ts` (search, playlist creation, Connect playback endpoints, 429 handling) into `server/spotify/client.ts`, parameterized per chat's tokens
+- [x] 3.5 Implement bot command / Mini App action to start the link flow and report link status
 
 ## 4. AI provider abstraction
 
-- [ ] 4.1 Port `AgentProvider`/`ToolSpec`/`AgentResult` contract shape from `spotify-harness-tui/src/agent/types.ts` into `server/agent/types.ts`
-- [ ] 4.2 Implement API-key-based provider clients: Anthropic, OpenAI, OpenRouter (port relevant logic from `spotify-harness-tui/src/agent/providers/`, dropping `claude-cli` and any opentui-specific bits); Ollama optional
-- [ ] 4.3 Implement active-provider setting read/write against the `settings` table, admin-only write (enforced via task 2.4 middleware)
-- [ ] 4.4 Implement missing-credential check: reject generation with a clear error if the active provider's required key is unset
+- [x] 4.1 Port `AgentProvider`/`ToolSpec`/`AgentResult` contract shape from `spotify-harness-tui/src/agent/types.ts` into `server/agent/types.ts`
+- [x] 4.2 Implement API-key-based provider clients: Anthropic, OpenAI, OpenRouter (port relevant logic from `spotify-harness-tui/src/agent/providers/`, dropping `claude-cli` and any opentui-specific bits); Ollama optional
+- [x] 4.3 Implement active-provider setting read/write against the `settings` table, admin-only write (enforced via task 2.4 middleware)
+- [x] 4.4 Implement missing-credential check: reject generation with a clear error if the active provider's required key is unset
 
 ## 5. Music backend abstraction
 
-- [ ] 5.1 Port `MusicProvider`/`Track` contract shape from `spotify-harness-tui/src/music/types.ts` into `server/music/types.ts`
-- [ ] 5.2 Implement Spotify backend (search + playlist create, using task 3 client) as the playlist-capable provider
-- [ ] 5.3 Implement resolve-only SoundCloud/YouTube Music backends (search only, deep links, no playlist creation)
-- [ ] 5.4 Implement active-backend setting read/write against `settings`, admin-only write
+- [x] 5.1 Port `MusicProvider`/`Track` contract shape from `spotify-harness-tui/src/music/types.ts` into `server/music/types.ts`
+- [x] 5.2 Implement Spotify backend (search + playlist create, using task 3 client) as the playlist-capable provider
+- [x] 5.3 Implement resolve-only SoundCloud/YouTube Music backends (search only, deep links, no playlist creation)
+- [x] 5.4 Implement active-backend setting read/write against `settings`, admin-only write
 
 ## 6. Playlist agent loop
 
-- [ ] 6.1 Port tool loop driver from `spotify-harness-tui/src/agent/loop.ts` and tool specs from `agent/tools.ts` into `server/core/generate-playlist.ts`, wired to the active provider (§4) and active backend (§5)
-- [ ] 6.2 Implement bounded iteration cap and duplicate-tool-call cache guard
-- [ ] 6.3 Implement single clarify-question flow: pause loop, surface question to bot/Mini App, resume on reply
-- [ ] 6.4 Implement backend-dependent finalize: create real playlist when backend supports it, else return track list + deep links
-- [ ] 6.5 Write unit tests covering: max-iteration cutoff, duplicate-call guard, single-clarify enforcement, both finalize paths
+- [x] 6.1 Port tool loop driver from `spotify-harness-tui/src/agent/loop.ts` and tool specs from `agent/tools.ts` into `server/core/generate-playlist.ts`, wired to the active provider (§4) and active backend (§5)
+- [x] 6.2 Implement bounded iteration cap and duplicate-tool-call cache guard
+- [x] 6.3 Implement single clarify-question flow: pause loop, surface question to bot/Mini App, resume on reply
+- [x] 6.4 Implement backend-dependent finalize: create real playlist when backend supports it, else return track list + deep links
+- [x] 6.5 Write unit tests covering: max-iteration cutoff, duplicate-call guard, single-clarify enforcement, both finalize paths
 
 ## 7. Telegram bot
 
-- [ ] 7.1 Set up grammY bot instance wired to the Hono webhook route (`/bot/webhook/<secret>`)
-- [ ] 7.2 Implement prompt-entry flow: free-text message → run generation (§6) → reply with results
-- [ ] 7.3 Implement Mini App launch button (`web_app` type) pointed at `https://miniapp.xdshka.party`
-- [ ] 7.4 Implement Spotify link command/flow (uses §3.5)
-- [ ] 7.5 Implement admin-only provider/backend change commands, rejecting non-admin callers (uses §2.4, §4.3, §5.4)
+- [x] 7.1 Set up grammY bot instance wired to the Hono webhook route (`/bot/webhook/<secret>`)
+- [x] 7.2 Implement prompt-entry flow: free-text message → run generation (§6) → reply with results
+- [x] 7.3 Implement Mini App launch button (`web_app` type) pointed at `https://miniapp.xdshka.party`
+- [x] 7.4 Implement Spotify link command/flow (uses §3.5)
+- [x] 7.5 Implement admin-only provider/backend change commands, rejecting non-admin callers (uses §2.4, §4.3, §5.4)
 
 ## 8. Mini App frontend
 
-- [ ] 8.1 Scaffold React + Vite app under `miniapp/`, integrate Telegram WebApp SDK for `initData` + theme params
-- [ ] 8.2 Build Liquid Glass visual system: base layout, blurred/translucent panel component, theming for Telegram light/dark
-- [ ] 8.3 Build prompt-entry screen (submit mood/request, show clarify question inline when raised)
-- [ ] 8.4 Build results/playlist screen: track list, per-track play control, playlist link (when created)
-- [ ] 8.5 Build playback control surface: play/pause/skip/volume against Spotify Connect (§3.4)
-- [ ] 8.6 Build admin-only settings screen (active provider, active backend); ensure it is not present in the bundle's navigation/route table for non-admin sessions and is gated by the API regardless
-- [ ] 8.7 Wire all Mini App API calls through `initData`-authenticated requests (§2.3)
+- [x] 8.1 Scaffold React + Vite app under `miniapp/`, integrate Telegram WebApp SDK for `initData` + theme params
+- [x] 8.2 Build Liquid Glass visual system: base layout, blurred/translucent panel component, theming for Telegram light/dark
+- [x] 8.3 Build prompt-entry screen (submit mood/request, show clarify question inline when raised)
+- [x] 8.4 Build results/playlist screen: track list, per-track play control, playlist link (when created)
+- [x] 8.5 Build playback control surface: play/pause/skip/volume against Spotify Connect (§3.4)
+- [x] 8.6 Build admin-only settings screen (active provider, active backend); ensure it is not present in the bundle's navigation/route table for non-admin sessions and is gated by the API regardless
+- [x] 8.7 Wire all Mini App API calls through `initData`-authenticated requests (§2.3)
 
 ## 9. VPS deployment
 

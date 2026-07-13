@@ -1,0 +1,186 @@
+:root {
+  --glass-bg-light: rgba(255, 255, 255, 0.55);
+  --glass-bg-dark: rgba(30, 32, 38, 0.55);
+  --glass-border-light: rgba(255, 255, 255, 0.6);
+  --glass-border-dark: rgba(255, 255, 255, 0.12);
+  --glass-highlight: rgba(255, 255, 255, 0.35);
+  --accent: #1ed760;
+  --text-light: #0d0d10;
+  --text-dark: #f2f3f5;
+  --text-muted-light: rgba(13, 13, 16, 0.6);
+  --text-muted-dark: rgba(242, 243, 245, 0.6);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  color: var(--text-dark);
+  overflow-x: hidden;
+}
+
+.app-shell {
+  min-height: 100vh;
+  padding: 20px 16px 32px;
+  background: radial-gradient(circle at 20% 0%, #2b3a55 0%, #14151c 55%, #0a0a0d 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+:root[data-scheme="light"] .app-shell {
+  background: radial-gradient(circle at 20% 0%, #dfe9ff 0%, #f3f5fb 55%, #ffffff 100%);
+  color: var(--text-light);
+}
+
+.glass-panel {
+  position: relative;
+  border-radius: 24px;
+  padding: 20px;
+  background: var(--glass-bg-dark);
+  border: 1px solid var(--glass-border-dark);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.glass-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, var(--glass-highlight) 0%, transparent 40%);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+:root[data-scheme="light"] .glass-panel {
+  background: var(--glass-bg-light);
+  border-color: var(--glass-border-light);
+  box-shadow:
+    0 8px 32px rgba(20, 30, 60, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.glass-button {
+  appearance: none;
+  border: 1px solid var(--glass-border-dark);
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  padding: 14px 20px;
+  border-radius: 16px;
+  font-size: 15px;
+  font-weight: 600;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  cursor: pointer;
+  transition:
+    transform 0.15s ease,
+    background 0.15s ease;
+}
+
+.glass-button:active {
+  transform: scale(0.97);
+}
+
+.glass-button.primary {
+  background: linear-gradient(135deg, var(--accent), #16a34a);
+  border-color: transparent;
+  color: #04150a;
+}
+
+:root[data-scheme="light"] .glass-button {
+  border-color: var(--glass-border-light);
+  background: rgba(20, 30, 60, 0.06);
+}
+
+.glass-input {
+  width: 100%;
+  border-radius: 16px;
+  border: 1px solid var(--glass-border-dark);
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  padding: 14px 16px;
+  font-size: 15px;
+  outline: none;
+}
+
+:root[data-scheme="light"] .glass-input {
+  border-color: var(--glass-border-light);
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.text-muted {
+  color: var(--text-muted-dark);
+}
+
+:root[data-scheme="light"] .text-muted {
+  color: var(--text-muted-light);
+}
+
+.track-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+:root[data-scheme="light"] .track-row {
+  border-bottom-color: rgba(0, 0, 0, 0.08);
+}
+
+.track-row:last-child {
+  border-bottom: none;
+}
+
+.track-artwork {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+}
+
+.nav-row {
+  display: flex;
+  gap: 10px;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+}
+
+h1 {
+  font-size: 20px;
+  margin: 0 0 4px;
+}
+
+h2 {
+  font-size: 16px;
+  margin: 0 0 12px;
+}
+
+p {
+  margin: 0;
+}
