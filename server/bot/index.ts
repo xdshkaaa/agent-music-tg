@@ -11,8 +11,6 @@ import { AVAILABLE_PROVIDERS, isProviderId } from "../agent/registry";
 import { AVAILABLE_BACKENDS, isMusicBackend } from "../music/registry";
 import { getActiveProviderId, setActiveProviderId, getActiveBackendId, setActiveBackendId } from "../lib/settings";
 
-export const webhookPath = `/bot/webhook/${env.telegramWebhookSecret}`;
-
 export function createBot(db: AppDb): Bot<BotContext> {
   const bot = new Bot<BotContext>(env.telegramBotToken);
   bot.use(allowlistGate(db));
@@ -41,7 +39,7 @@ export function createBot(db: AppDb): Bot<BotContext> {
     if (!ctx.isAdmin) return; // regular users never see this control, per access-control spec
     const arg = ctx.match?.toString().trim();
     if (!arg) {
-      const active = getActiveProviderId(db, "anthropic");
+      const active = getActiveProviderId(db, "opencode");
       await ctx.reply(`Active provider: ${active}\nAvailable: ${AVAILABLE_PROVIDERS.join(", ")}\nUsage: /provider <id>`);
       return;
     }
@@ -57,7 +55,7 @@ export function createBot(db: AppDb): Bot<BotContext> {
     if (!ctx.isAdmin) return; // regular users never see this control, per access-control spec
     const arg = ctx.match?.toString().trim();
     if (!arg) {
-      const active = getActiveBackendId(db, "spotify");
+      const active = getActiveBackendId(db, "youtube-music");
       await ctx.reply(`Active backend: ${active}\nAvailable: ${AVAILABLE_BACKENDS.join(", ")}\nUsage: /backend <id>`);
       return;
     }

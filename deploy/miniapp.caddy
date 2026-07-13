@@ -1,0 +1,32 @@
+# Site block for miniapp.xdshka.party. Appended to /etc/caddy/Caddyfile on
+# the VPS as its own :PORT block, matching the existing convention (each app
+# gets a dedicated local port; cloudflared's ingress maps the public hostname
+# to that port; Caddy itself never does TLS — auto_https is off box-wide and
+# Cloudflare's edge terminates TLS).
+:8094 {
+	root * /srv/www/miniapp.xdshka.party/current
+	encode zstd gzip
+
+	@api path /api/* /spotify/*
+	handle @api {
+		reverse_proxy 127.0.0.1:8787
+	}
+
+	handle {
+		try_files {path} /index.html
+		file_server
+	}
+
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		-Server
+	}
+
+	log {
+		output file /var/log/caddy/miniapp.xdshka.party.access.log
+		format console
+	}
+}

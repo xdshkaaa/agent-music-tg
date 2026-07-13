@@ -11,8 +11,8 @@ import { getActiveProviderId, setActiveProviderId, getActiveBackendId, setActive
 import { getPendingClarify, setPendingClarify, clearSession } from "../bot/session";
 import { startGeneration, resumeGeneration } from "../core/run-generation";
 
-const DEFAULT_PROVIDER = "anthropic";
-const DEFAULT_BACKEND = "spotify";
+const DEFAULT_PROVIDER = "opencode";
+const DEFAULT_BACKEND = "youtube-music";
 
 async function readJsonBody<T extends Record<string, unknown>>(req: Request): Promise<Partial<T>> {
   try {

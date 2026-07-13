@@ -17,14 +17,14 @@ export type GenerationOutcome =
   | { status: "clarify"; question: string; options: string[]; messages: AgentMessage[] }
   | { status: "error"; message: string };
 
-const DEFAULT_PROVIDER: ProviderId = "anthropic";
+const DEFAULT_PROVIDER: ProviderId = "opencode";
 
 async function buildRunInputs(db: AppDb, chatId: number) {
   const providerId = getActiveProviderId(db, DEFAULT_PROVIDER);
   if (!isProviderId(providerId)) throw new Error(`unknown active provider setting: ${providerId}`);
   const provider = createProvider(providerId);
 
-  const backendId = getActiveBackendId(db, "spotify");
+  const backendId = getActiveBackendId(db, "youtube-music");
   if (!isMusicBackend(backendId)) throw new Error(`unknown active backend setting: ${backendId}`);
 
   let spotifyAccessToken: string | undefined;

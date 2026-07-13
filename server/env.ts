@@ -19,7 +19,6 @@ function splitChatIds(raw: string | undefined): number[] {
 
 export const env = {
   telegramBotToken: required("TELEGRAM_BOT_TOKEN"),
-  telegramWebhookSecret: required("TELEGRAM_WEBHOOK_SECRET"),
   allowlistChatIds: splitChatIds(process.env.ALLOWLIST_CHAT_IDS),
   adminChatIds: splitChatIds(process.env.ADMIN_CHAT_IDS),
   publicOrigin: (process.env.PUBLIC_ORIGIN ?? "https://miniapp.xdshka.party").replace(/\/+$/, ""),
@@ -27,6 +26,9 @@ export const env = {
   anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
   openaiApiKey: process.env.OPENAI_API_KEY ?? "",
   openrouterApiKey: process.env.OPENROUTER_API_KEY ?? "",
+  opencodeApiKey: process.env.OPENCODE_API_KEY ?? "",
+  opencodeBaseUrl: process.env.OPENCODE_BASE_URL ?? "https://opencode.ai/zen/v1",
+  opencodeModel: process.env.OPENCODE_MODEL ?? "claude-sonnet-5",
   ollamaUrl: process.env.OLLAMA_URL ?? "http://127.0.0.1:11434",
   ollamaModel: process.env.OLLAMA_MODEL ?? "llama3",
   port: Number(process.env.PORT ?? "8787"),
