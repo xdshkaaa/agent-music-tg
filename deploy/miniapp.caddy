@@ -4,7 +4,7 @@
 # to that port; Caddy itself never does TLS — auto_https is off box-wide and
 # Cloudflare's edge terminates TLS).
 :8094 {
-	root * /srv/www/miniapp.xdshka.party/current
+	root * /srv/www/miniapp.xdshka.party/current/dist
 	encode zstd gzip
 
 	@api path /api/* /spotify/*

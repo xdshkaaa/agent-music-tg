@@ -63,17 +63,17 @@
 
 ## 9. VPS deployment
 
-- [ ] 9.1 Confirm `miniapp.xdshka.party` A record points to `103.214.69.38` (user-side DNS prerequisite) before proceeding
-- [ ] 9.2 Provision VPS: Bun runtime, Caddy install, firewall rules for 80/443
-- [ ] 9.3 Write Caddyfile: automatic TLS for `miniapp.xdshka.party`, reverse-proxy `/bot/*`, `/api/*`, `/spotify/*` to the Bun process, serve Mini App static build for everything else
-- [ ] 9.4 Write systemd unit for the Bun server process (`Restart=on-failure`, env file reference, enabled on boot)
-- [ ] 9.5 Write deploy script: build Mini App locally, rsync server code + Mini App build to a new release directory on the VPS, restart systemd unit, run health check against `/healthz`
-- [ ] 9.6 Populate the VPS env file with the bot token, Spotify client ID, and (empty/placeholder) LLM provider keys — never committed
-- [ ] 9.7 Register the Telegram webhook URL against the deployed bot
-- [ ] 9.8 Seed the allowlist/admin table on the VPS with the intended chat IDs
+- [x] 9.1 Confirm `miniapp.xdshka.party` A record points to `103.214.69.38` (user-side DNS prerequisite) before proceeding
+- [x] 9.2 Provision VPS: Bun runtime, Caddy install, firewall rules for 80/443
+- [x] 9.3 Write Caddyfile: automatic TLS for `miniapp.xdshka.party`, reverse-proxy `/bot/*`, `/api/*`, `/spotify/*` to the Bun process, serve Mini App static build for everything else
+- [x] 9.4 Write systemd unit for the Bun server process (`Restart=on-failure`, env file reference, enabled on boot)
+- [x] 9.5 Write deploy script: build Mini App locally, rsync server code + Mini App build to a new release directory on the VPS, restart systemd unit, run health check against `/healthz`
+- [x] 9.6 Populate the VPS env file with the bot token, Spotify client ID, and (empty/placeholder) LLM provider keys — never committed
+- [x] 9.7 Register the Telegram webhook URL against the deployed bot
+- [x] 9.8 Seed the allowlist/admin table on the VPS with the intended chat IDs
 - [ ] 9.9 Smoke-test end to end: allowed chat opens bot → links Spotify → generates a playlist → opens Mini App → admin-only settings confirmed hidden/rejected for a non-admin test chat
 
 ## 10. Post-deploy hygiene
 
 - [ ] 10.1 Rotate the Telegram bot token via @BotFather (it was shared in plaintext) and update the VPS env file + webhook registration accordingly
-- [ ] 10.2 Document rollback procedure (previous release directory + systemd re-point) in `README.md` or an ops note
+- [x] 10.2 Document rollback procedure (previous release directory + systemd re-point) in `README.md` or an ops note
