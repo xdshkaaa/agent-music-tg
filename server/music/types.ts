@@ -1,0 +1,40 @@
+export interface Track {
+  /** Provider-specific URI: spotify:track:x / sc:12345 / ytm:videoId */
+  uri: string;
+  title: string;
+  artist: string;
+  album?: string;
+  durationMs?: number;
+  artwork?: string;
+  /** Present on resolve-only backends (SoundCloud/YouTube Music): open-in-app link. */
+  deepLink?: string;
+}
+
+export interface RemotePlaylist {
+  id: string;
+  uri: string;
+  url?: string;
+  name: string;
+}
+
+export interface ProviderCapabilities {
+  /** Can create playlists on the service side. */
+  remotePlaylists: boolean;
+  /** Spotify Connect-style playback controlled via the service's API. */
+  remotePlayback: boolean;
+}
+
+export type MusicBackend = "spotify" | "soundcloud" | "youtube-music";
+
+export interface MusicProvider {
+  readonly name: MusicBackend;
+  readonly capabilities: ProviderCapabilities;
+
+  searchTrack(artist: string, title: string): Promise<Track | null>;
+  searchArtist(name: string): Promise<{ id: string; name: string } | null>;
+  getArtistTopTracks(artistId: string, limit?: number): Promise<Track[]>;
+
+  // Present only when capabilities.remotePlaylists:
+  createPlaylist?(name: string, description?: string): Promise<RemotePlaylist>;
+  addTracksToPlaylist?(playlistId: string, uris: string[]): Promise<void>;
+}

@@ -1,0 +1,12 @@
+node_modules/
+.env
+.env.local
+data/*.sqlite
+data/*.sqlite-*
+miniapp/dist/
+*.log
+
+# Local Claude Code tooling, not project source
+.claude/
+.agents/
+skills-lock.json
