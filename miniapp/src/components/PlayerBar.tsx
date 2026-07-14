@@ -3,7 +3,7 @@ import { usePlayer, type PlayerTrackInfo } from "../lib/player";
 import { VolumeControl } from "./VolumeControl";
 
 /** Play/pause toggle for a track row; reflects the shared player's state. */
-export function TrackPlayButton({ track, stopPropagation, onBeforePlay }: { track: PlayerTrackInfo; stopPropagation?: boolean; onBeforePlay?: () => void }) {
+export function TrackPlayButton({ track, stopPropagation, onBeforePlay }: { track: PlayerTrackInfo; stopPropagation?: boolean; onBeforePlay?: () => boolean | void }) {
   const player = usePlayer();
   const isActive = player.track?.uri === track.uri;
   const status = isActive ? player.status : "idle";
@@ -26,7 +26,7 @@ export function TrackPlayButton({ track, stopPropagation, onBeforePlay }: { trac
       aria-label={status === "playing" ? `Пауза: ${track.title}` : `Слушать: ${track.title}`}
       onClick={(e) => {
         if (stopPropagation) e.stopPropagation();
-        onBeforePlay?.();
+        if (onBeforePlay?.() === false) return;
         player.toggle(track);
       }}
     >

@@ -1,8 +1,8 @@
 ## 1. ErrorBoundary компонент
 
-- [ ] 1.1 Создать `miniapp/src/components/ErrorBoundary.tsx` — классовый компонент с `componentDidCatch` и `getDerivedStateFromError`
-- [ ] 1.2 Реализовать `DefaultErrorFallback` — иконка WarningCircle + текст «Что-то пошло не так» + кнопка «На главную»
-- [ ] 1.3 Логировать ошибку и componentStack в `console.error`
+- [x] 1.1 Создать `miniapp/src/components/ErrorBoundary.tsx` — классовый компонент с `componentDidCatch` и `getDerivedStateFromError`
+- [x] 1.2 Реализовать `DefaultErrorFallback` — иконка WarningCircle + текст «Что-то пошло не так» + кнопка «На главную»
+- [x] 1.3 Логировать ошибку и componentStack в `console.error`
 
 ## 2. Интеграция ErrorBoundary в App.tsx
 

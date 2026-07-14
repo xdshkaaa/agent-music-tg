@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CheckCircle, CircleNotch, DownloadSimple, Plus, WarningCircle } from "@phosphor-icons/react";
 import { GlassPanel } from "../components/GlassPanel";
 import { TrackPlayButton } from "../components/PlayerBar";
 import { usePlayer } from "../lib/player";
-import { api, type FinalizedPlaylist } from "../lib/api";
+import { api, type FinalizedPlaylist, type TrackVerificationStatus } from "../lib/api";
 
 type DownloadState = { kind: "idle" } | { kind: "sending" } | { kind: "sent" } | { kind: "error"; message: string };
+type ToastState = { message: string } | null;
 
 export function ResultsScreen({
   playlist,
@@ -16,6 +17,63 @@ export function ResultsScreen({
 }) {
   const player = usePlayer();
   const [download, setDownload] = useState<DownloadState>({ kind: "idle" });
+  const [verification, setVerification] = useState<Record<string, TrackVerificationStatus>>({});
+  const [toast, setToast] = useState<ToastState>(null);
+  const polling = useRef(false);
+  const done = useRef(false);
+
+  const uris = playlist.tracks.map((t) => t.uri);
+
+  useEffect(() => {
+    polling.current = true;
+    let stopped = false;
+
+    async function poll() {
+      while (polling.current && !stopped) {
+        try {
+          const result = await api.verifyTracks(uris);
+          if (stopped) return;
+          setVerification(result);
+          const allDone = uris.every((u) => {
+            const s = result[u];
+            return s === "verified" || s === "unavailable";
+          });
+          if (allDone) {
+            polling.current = false;
+            done.current = true;
+            return;
+          }
+        } catch {
+          // retry on next tick
+        }
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+    }
+
+    poll();
+    return () => { stopped = true; };
+  }, [uris.join(",")]);
+
+  function handleTrackClick(track: typeof playlist.tracks[0]) {
+    const status = verification[track.uri];
+    if (status === "unavailable") {
+      setToast("Трек недоступен");
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
+    player.setQueue(
+      playlist.tracks.map((t) => ({ uri: t.uri, title: t.title, artist: t.artist, artwork: t.artwork }))
+    );
+    player.toggle({ uri: track.uri, title: track.title, artist: track.artist, artwork: track.artwork });
+  }
+
+  function verificationIcon(uri: string) {
+    const s = verification[uri];
+    if (!s || s === "pending") return null;
+    if (s === "checking") return <CircleNotch size={14} className="spin" style={{ color: "var(--text-muted)" }} />;
+    if (s === "verified") return <CheckCircle size={14} weight="fill" style={{ color: "var(--accent)" }} />;
+    return <WarningCircle size={14} weight="fill" style={{ color: "var(--danger, #f44336)" }} />;
+  }
 
   async function handleDownload() {
     setDownload({ kind: "sending" });
@@ -36,12 +94,7 @@ export function ResultsScreen({
             className="track-row"
             key={track.uri}
             style={{ ["--i" as string]: i }}
-            onClick={() => {
-              player.setQueue(
-                playlist.tracks.map((t) => ({ uri: t.uri, title: t.title, artist: t.artist, artwork: t.artwork }))
-              );
-              player.toggle({ uri: track.uri, title: track.title, artist: track.artist, artwork: track.artwork });
-            }}
+            onClick={() => handleTrackClick(track)}
           >
             {track.artwork ? (
               <img className="track-artwork" src={track.artwork} alt="" />
@@ -56,13 +109,28 @@ export function ResultsScreen({
                 {track.artist}
               </p>
             </div>
+            {verificationIcon(track.uri)}
             <TrackPlayButton
               track={{ uri: track.uri, title: track.title, artist: track.artist, artwork: track.artwork }}
               stopPropagation
+              onBeforePlay={() => {
+                if (verification[track.uri] === "unavailable") {
+                  setToast("Трек недоступен");
+                  setTimeout(() => setToast(null), 3000);
+                  return false;
+                }
+              }}
             />
           </div>
         ))}
       </div>
+      {toast && (
+        <div className="mt-12" style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <p role="alert" style={{ flex: 1, minWidth: 0 }}>
+            <WarningCircle size={16} weight="bold" /> {toast}
+          </p>
+        </div>
+      )}
       {download.kind === "error" && (
         <div className="mt-12" style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <p role="alert" style={{ flex: 1, minWidth: 0 }}>

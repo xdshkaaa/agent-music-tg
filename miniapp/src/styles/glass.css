@@ -864,9 +864,9 @@ a.icon-btn {
   border-radius: var(--radius-btn);
   background: linear-gradient(
     100deg,
-    rgba(255, 255, 255, 0.06) 30%,
-    rgba(255, 255, 255, 0.12) 50%,
-    rgba(255, 255, 255, 0.06) 70%
+    color-mix(in srgb, var(--glass-bg-dark) 10%, transparent) 30%,
+    color-mix(in srgb, var(--glass-bg-dark) 25%, transparent) 50%,
+    color-mix(in srgb, var(--glass-bg-dark) 10%, transparent) 70%
   );
   background-size: 200% 100%;
 }
@@ -874,9 +874,9 @@ a.icon-btn {
 :root[data-scheme="light"] .skeleton-box {
   background-image: linear-gradient(
     100deg,
-    rgba(0, 0, 0, 0.06) 30%,
-    rgba(0, 0, 0, 0.10) 50%,
-    rgba(0, 0, 0, 0.06) 70%
+    color-mix(in srgb, var(--glass-bg-light) 10%, transparent) 30%,
+    color-mix(in srgb, var(--glass-bg-light) 25%, transparent) 50%,
+    color-mix(in srgb, var(--glass-bg-light) 10%, transparent) 70%
   );
 }
 
@@ -1643,6 +1643,8 @@ a.icon-btn {
 .player-screen-progress {
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(var(--glass-blur-subtle));
+  -webkit-backdrop-filter: blur(var(--glass-blur-subtle));
   cursor: pointer;
   overflow: hidden;
 }
