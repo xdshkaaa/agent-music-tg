@@ -151,9 +151,34 @@ function DownloadsSection({ refreshKey }: { refreshKey: number }) {
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
 
   useEffect(() => {
-    api.downloads()
-      .then((r) => setDownloads(r.downloads))
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+    const polling = { active: true };
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    async function fetchAndSchedule() {
+      try {
+        const r = await api.downloads();
+        if (!polling.active) return;
+        setDownloads(r.downloads);
+        setError(null);
+        const hasActive = r.downloads.some((d) => d.status === "pending" || d.status === "processing");
+        if (hasActive && polling.active) {
+          timeoutId = setTimeout(fetchAndSchedule, 5000);
+        }
+      } catch (e) {
+        if (!polling.active) return;
+        setError(e instanceof Error ? e.message : String(e));
+        if (polling.active) {
+          timeoutId = setTimeout(fetchAndSchedule, 5000);
+        }
+      }
+    }
+
+    fetchAndSchedule();
+
+    return () => {
+      polling.active = false;
+      if (timeoutId) clearTimeout(timeoutId);
+    };
   }, [refreshKey]);
 
   async function handleResend(record: DownloadRecord) {
@@ -225,6 +250,14 @@ export default function ProfileScreen({ me, shopConfig, onGoShop }: { me: MeResp
     api.purchases()
       .then((p) => setPurchases(p.purchases.filter((i) => i.status === "paid")))
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+  }, []);
+
+  useEffect(() => {
+    function onDownloadCreated() {
+      setDownloadsRefresh((n) => n + 1);
+    }
+    window.addEventListener("download-created", onDownloadCreated);
+    return () => window.removeEventListener("download-created", onDownloadCreated);
   }, []);
 
   return (

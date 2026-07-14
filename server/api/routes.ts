@@ -33,6 +33,9 @@ import { broadcast, type SendFn } from "../admin/broadcast";
 import { getGrantHistoryForUser, getAllGrantHistory, countGrantHistory } from "../admin/grant-history";
 import { getAllowlist, addToAllowlist, removeFromAllowlist, setChatAdminRole } from "../lib/access-control";
 import { createAudioRoutes, type AudioDeps } from "./audio-routes";
+import { AVATAR_DIR, isAnimatedAvatar, getCachedAvatarRelPath, downloadToTemp, convertToStaticJpeg } from "../avatar";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 
 const DEFAULT_PROVIDER = "opencode";
 const DEFAULT_BACKEND = "youtube-music";
@@ -111,9 +114,24 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
     if (user?.photoFileId) {
       try {
         const res = await fetch(`https://api.telegram.org/bot${env.telegramBotToken}/getFile?file_id=${user.photoFileId}`);
-        const data = await res.json() as { ok: boolean; result?: { file_path: string } };
+        const data = await res.json() as { ok: boolean; result?: { file_path: string; file_unique_id: string } };
         if (data.ok && data.result?.file_path) {
-          photoUrl = `https://api.telegram.org/file/bot${env.telegramBotToken}/${data.result.file_path}`;
+          const { file_path, file_unique_id } = data.result;
+          if (isAnimatedAvatar(file_path) && file_unique_id) {
+            const cached = getCachedAvatarRelPath(file_unique_id);
+            if (cached) {
+              photoUrl = `/avatar/${cached}`;
+            } else {
+              const downloadUrl = `https://api.telegram.org/file/bot${env.telegramBotToken}/${file_path}`;
+              const tmp = await downloadToTemp(downloadUrl);
+              const converted = await convertToStaticJpeg(tmp, file_unique_id);
+              if (converted) {
+                photoUrl = `/avatar/${file_unique_id}.jpg`;
+              }
+            }
+          } else {
+            photoUrl = `https://api.telegram.org/file/bot${env.telegramBotToken}/${file_path}`;
+          }
         }
       } catch { /* photoUrl stays null */ }
     }
@@ -129,6 +147,19 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
       // MeResponse shape stays backward-compatible for older clients.
       ...(user?.username ? { username: user.username } : {}),
     });
+  });
+
+  app.get("/avatar/:filename", async (c) => {
+    const filename = c.req.param("filename");
+    if (filename.includes("/") || filename.includes("\\") || filename.includes("..")) {
+      return c.json({ error: "not found" }, 404);
+    }
+    try {
+      const buf = await readFile(path.join(AVATAR_DIR, filename));
+      return c.newResponse(buf, 200, { "Content-Type": "image/jpeg" });
+    } catch {
+      return c.json({ error: "not found" }, 404);
+    }
   });
 
   app.get("/me/purchases", (c) => {

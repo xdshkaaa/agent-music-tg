@@ -20,12 +20,12 @@
 
 ## 4. Mini App — verification UI
 
-- [ ] 4.1 Add verification status polling to `ResultsScreen.tsx` (every 2s, stop when all done)
-- [ ] 4.2 Show status icon per track: spinner (checking), green check (verified), red warning (unavailable)
-- [ ] 4.3 Block playback on unavailable tracks with toast "Трек недоступен"
+- [x] 4.1 Add verification status polling to `ResultsScreen.tsx` (every 2s, stop when all done)
+- [x] 4.2 Show status icon per track: spinner (checking), green check (verified), red warning (unavailable)
+- [x] 4.3 Block playback on unavailable tracks with toast "Трек недоступен"
 
 ## 5. Telegram bot — skip unavailable tracks
 
-- [ ] 5.1 Add verification status check in `deliverAutoAudio()` — skip `unavailable` tracks
-- [ ] 5.2 Add 30s wait for `pending`/`checking` tracks before delivery decision
-- [ ] 5.3 Include skipped tracks in delivery summary message
+- [x] 5.1 Add verification status check in `deliverAutoAudio()` — skip `unavailable` tracks
+- [x] 5.2 Add 30s wait for `pending`/`checking` tracks before delivery decision
+- [x] 5.3 Include skipped tracks in delivery summary message

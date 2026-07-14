@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useState } from "react";
 import { X, WarningCircle } from "@phosphor-icons/react";
 import { GlassPanel } from "./GlassPanel";
 

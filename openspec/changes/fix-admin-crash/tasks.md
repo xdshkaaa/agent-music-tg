@@ -6,8 +6,8 @@
 
 ## 2. Интеграция ErrorBoundary в App.tsx
 
-- [ ] 2.1 Обернуть `<AppInner>` (или всё дерево после PlayerProvider) в глобальный ErrorBoundary
-- [ ] 2.2 В fallback ErrorBoundary принимать callback для сброса: через контекст или props — сброс history на `[{ kind: "prompt" }]`
+- [x] 2.1 Обернуть `<AppInner>` (или всё дерево после PlayerProvider) в глобальный ErrorBoundary
+- [x] 2.2 В fallback ErrorBoundary принимать callback для сброса: через контекст или props — сброс history на `[{ kind: "prompt" }]`
 - [ ] 2.3 `bun run typecheck` — убедиться, что тип ErrorBoundary совместим с React 18
 
 ## 3. retryableLazy — устойчивый lazy import

@@ -9,6 +9,7 @@ import { GlassPanel } from "./components/GlassPanel";
 import { ScreenTransition } from "./components/ScreenTransition";
 import { ErrorBanner } from "./components/ErrorBanner";
 import { IconOrEmoji } from "./components/IconOrEmoji";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { api, type MeResponse, type FinalizedPlaylist, type ShopConfig } from "./lib/api";
 import { getTelegramWebApp } from "./lib/telegram";
 import { PlayerProvider, usePlayer } from "./lib/player";
@@ -219,8 +220,13 @@ function AppInner() {
   const tab = activeTab(screen);
   const isAdmin = me?.isAdmin ?? false;
 
+  function handleReset() {
+    setHistory([{ kind: "prompt" }]);
+    setError(null);
+  }
+
   return (
-    <>
+    <ErrorBoundary onReset={handleReset}>
     <main className="app-shell">
       <header className="top-bar">
         <span className="logo-chip">
@@ -249,6 +255,6 @@ function AppInner() {
       <BottomNav tab={tab} isAdmin={isAdmin} onTab={(t) => { navigate({ kind: t === "shop" ? "buy" : t === "create" ? "prompt" : t === "profile" ? "profile" : "admin" }); }} />
     </main>
       {showPlayer && <PlayerScreen onClose={() => setShowPlayer(false)} />}
-    </>
+    </ErrorBoundary>
   );
 }

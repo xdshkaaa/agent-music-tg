@@ -57,7 +57,7 @@ export function ResultsScreen({
   function handleTrackClick(track: typeof playlist.tracks[0]) {
     const status = verification[track.uri];
     if (status === "unavailable") {
-      setToast("Трек недоступен");
+      setToast({ message: "Трек недоступен" });
       setTimeout(() => setToast(null), 3000);
       return;
     }
@@ -80,6 +80,7 @@ export function ResultsScreen({
     try {
       await api.download(playlist.name, playlist.tracks);
       setDownload({ kind: "sent" });
+      window.dispatchEvent(new CustomEvent("download-created"));
     } catch (e) {
       setDownload({ kind: "error", message: e instanceof Error ? e.message : String(e) });
     }
@@ -115,7 +116,7 @@ export function ResultsScreen({
               stopPropagation
               onBeforePlay={() => {
                 if (verification[track.uri] === "unavailable") {
-                  setToast("Трек недоступен");
+                  setToast({ message: "Трек недоступен" });
                   setTimeout(() => setToast(null), 3000);
                   return false;
                 }
@@ -127,7 +128,7 @@ export function ResultsScreen({
       {toast && (
         <div className="mt-12" style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <p role="alert" style={{ flex: 1, minWidth: 0 }}>
-            <WarningCircle size={16} weight="bold" /> {toast}
+            <WarningCircle size={16} weight="bold" /> {toast.message}
           </p>
         </div>
       )}

@@ -1,4 +1,4 @@
-import { Component, type ErrorInfo, type ReactNode } from "react";
+import { Component, lazy, type ErrorInfo, type ReactNode, type ComponentType } from "react";
 import { WarningCircle } from "@phosphor-icons/react";
 
 interface ErrorBoundaryProps {
@@ -10,6 +10,19 @@ interface ErrorBoundaryProps {
 interface ErrorBoundaryState {
   hasError: boolean;
   error: Error | null;
+}
+
+export function retryableLazy<T extends ComponentType<any>>(
+  importFn: () => Promise<{ default: T }>,
+): React.LazyExoticComponent<T> {
+  return lazy(async () => {
+    try {
+      return await importFn();
+    } catch (e) {
+      console.error("[retryableLazy] first attempt failed, retrying", e);
+      return await importFn();
+    }
+  });
 }
 
 export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {

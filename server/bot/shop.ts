@@ -88,7 +88,11 @@ export async function showProfile(ctx: BotContext, db: AppDb): Promise<void> {
   }
   const text = lines.join("\n");
   if (user?.photoFileId) {
-    await ctx.replyWithPhoto(user.photoFileId, { caption: text, parse_mode: "HTML" });
+    try {
+      await ctx.replyWithPhoto(user.photoFileId, { caption: text, parse_mode: "HTML" });
+    } catch {
+      await ctx.reply(text, { parse_mode: "HTML" });
+    }
   } else {
     await ctx.reply(text, { parse_mode: "HTML" });
   }

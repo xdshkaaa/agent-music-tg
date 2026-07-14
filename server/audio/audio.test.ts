@@ -42,6 +42,9 @@ function fakeExtractor(opts: { failUris?: string[]; sizeBytes?: number } = {}): 
       await writeFile(filePath, Buffer.alloc(opts.sizeBytes ?? 16, 1));
       return { filePath, sizeBytes: opts.sizeBytes ?? 16 };
     },
+    async probe() {
+      return { available: true };
+    },
   };
 }
 

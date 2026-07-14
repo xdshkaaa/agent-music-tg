@@ -56,6 +56,9 @@ function fakeExtractor(content = "mp3-bytes"): Extractor {
       await writeFile(filePath, content);
       return { filePath, sizeBytes: Buffer.byteLength(content) };
     },
+    async probe() {
+      return { available: true };
+    },
   };
 }
 

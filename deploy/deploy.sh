@@ -158,14 +158,14 @@ run_remote "systemctl restart agent-music-tg && sleep 3"
 log "Health check"
 if $DRY_RUN; then
   echo "[DRY-RUN] Skipping health check"
-elif run_ssh "curl -fsS --max-time 10 http://127.0.0.1:8787/healthz"; then
+elif run_ssh "curl -fsS --max-time 10 http://127.0.0.1:8787/healthz && test -f '$STATIC_DIR/current/dist/index.html'"; then
   echo ""
   log "Deploy OK: $RELEASE"
 
   if [ "$KEEP_RELEASES" -gt 0 ]; then
     log "Cleaning up old releases (keeping $KEEP_RELEASES)"
-    run_remote "ls -d '$API_DIR/releases/'*/ | head -n -$KEEP_RELEASES | xargs -r rm -rf"
-    run_remote "ls -d '$STATIC_DIR/releases/'*/ | head -n -$KEEP_RELEASES | xargs -r rm -rf"
+    run_remote "cd '$API_DIR/releases' && cur=\$(readlink -f '$API_DIR/current'); ls -1dt */ | sed 's:/\$::' | awk -v d=\"\$PWD\" '{print d\"/\"\$0}' | grep -vxF \"\$cur\" | tail -n +$((KEEP_RELEASES+1)) | xargs -r rm -rf"
+    run_remote "cd '$STATIC_DIR/releases' && cur=\$(readlink -f '$STATIC_DIR/current'); ls -1dt */ | sed 's:/\$::' | awk -v d=\"\$PWD\" '{print d\"/\"\$0}' | grep -vxF \"\$cur\" | tail -n +$((KEEP_RELEASES+1)) | xargs -r rm -rf"
   fi
 
   load_notify_config
@@ -176,7 +176,7 @@ else
   echo ""
   warn "Health check FAILED — rolling back..."
 
-  PREV_RELEASE=$(run_ssh "ls -d '$API_DIR/releases/'*/ | sort | tail -n 2 | head -n 1")
+  PREV_RELEASE=$(run_ssh "cd '$API_DIR/releases' && ls -1dt */ | sed 's:/\$::' | grep -vxF '$RELEASE' | head -n 1")
 
   if [ -n "$PREV_RELEASE" ]; then
     PREV_RELEASE=$(basename "$PREV_RELEASE")
@@ -184,7 +184,7 @@ else
     run_remote "ln -sfn '$API_DIR/releases/$PREV_RELEASE' '$API_DIR/current' && ln -sfn '$STATIC_DIR/releases/$PREV_RELEASE' '$STATIC_DIR/current'"
     run_remote "systemctl restart agent-music-tg && sleep 3"
 
-    if run_ssh "curl -fsS --max-time 10 http://127.0.0.1:8787/healthz"; then
+    if run_ssh "curl -fsS --max-time 10 http://127.0.0.1:8787/healthz && test -f '$STATIC_DIR/current/dist/index.html'"; then
       log "Rollback OK: $PREV_RELEASE"
     else
       warn "CRITICAL: Rollback health check also FAILED — server may be down"
