@@ -7,7 +7,7 @@
 	root * /srv/www/miniapp.xdshka.party/current/dist
 	encode zstd gzip
 
-	@api path /api/* /spotify/*
+	@api path /api/*
 	handle @api {
 		reverse_proxy 127.0.0.1:8787
 	}
