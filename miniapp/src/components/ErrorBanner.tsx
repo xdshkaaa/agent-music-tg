@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { X, WarningCircle } from "@phosphor-icons/react";
 import { GlassPanel } from "./GlassPanel";
 
@@ -25,7 +25,7 @@ export function ErrorBanner({
   if (!visible) return null;
 
   return (
-    <GlassPanel className="stack" role="alert">
+    <GlassPanel className="stack" role="alert" tone="tinted" style={{ "--glass-tint-color": "#ef4444" } as React.CSSProperties}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
         <span style={{ flex: 1 }}><WarningCircle size={16} weight="bold" /> {message}</span>
         <button
@@ -39,7 +39,7 @@ export function ErrorBanner({
         </button>
       </div>
       {onRetry && (
-        <button type="button" className="glass-button" onClick={onRetry} style={{ alignSelf: "flex-start" }}>
+        <button type="button" className="glass-button primary" onClick={onRetry} style={{ alignSelf: "flex-start" }}>
           Повторить
         </button>
       )}

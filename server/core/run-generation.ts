@@ -12,6 +12,8 @@ import {
   type GeneratePlaylistOptions,
 } from "./generate-playlist";
 import type { AgentMessage } from "../agent/types";
+import { verifyTracks, verificationStore } from "../audio/track-verification";
+import type { Extractor } from "../audio/extractor";
 
 export type GenerationOutcome =
   | { status: "ok"; playlist: FinalizedPlaylist }
@@ -53,6 +55,11 @@ async function toOutcome(run: () => ReturnType<typeof generatePlaylist>): Promis
   }
 }
 
+function fireVerification(playlist: FinalizedPlaylist): void {
+  if (!_extractor) return;
+  verifyTracks(playlist.tracks, _extractor, verificationStore).catch(() => {});
+}
+
 export async function startGeneration(db: AppDb, chatId: number, prompt: string): Promise<GenerationOutcome> {
   if (!hasAccess(db, chatId)) return { status: "needs_purchase" };
   const outcome = await toOutcome(async () => {
@@ -63,6 +70,7 @@ export async function startGeneration(db: AppDb, chatId: number, prompt: string)
   if (outcome.status === "ok") {
     consumeAccess(db, chatId);
     insertGeneration(db, chatId, prompt, outcome.playlist.name, outcome.playlist.tracks.length);
+    fireVerification(outcome.playlist);
   }
   return outcome;
 }
@@ -79,8 +87,17 @@ export async function resumeGeneration(
     const { provider, music } = await buildRunInputs(db);
     return generatePlaylist({ provider, music, prompt: originalPrompt, resumeMessages, resumeClarifyAnswer: clarifyAnswer });
   });
-  if (outcome.status === "ok") consumeAccess(db, chatId);
+  if (outcome.status === "ok") {
+    consumeAccess(db, chatId);
+    fireVerification(outcome.playlist);
+  }
   return outcome;
+}
+
+let _extractor: Extractor | null = null;
+
+export function setVerificationExtractor(extractor: Extractor): void {
+  _extractor = extractor;
 }
 
 export function formatPlaylistReply(playlist: FinalizedPlaylist): string {

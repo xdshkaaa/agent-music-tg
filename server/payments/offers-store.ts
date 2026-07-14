@@ -93,7 +93,7 @@ export function getOffer(db: AppDb, id: number): Offer | null {
   return row ? toOffer(row) : null;
 }
 
-export function updateOffer(db: AppDb, id: number, patch: Partial<OfferInput> & { starsAmount?: number | null }): Offer | null {
+export function updateOffer(db: AppDb, id: number, patch: Omit<Partial<OfferInput>, 'starsAmount'> & { starsAmount?: number | null }): Offer | null {
   const existing = getOffer(db, id);
   if (!existing) return null;
 

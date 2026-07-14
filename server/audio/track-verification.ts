@@ -45,7 +45,17 @@ export class TrackVerificationStore {
   entries(): IterableIterator<[string, TrackVerificationStatus]> {
     return this.map.entries();
   }
+
+  getSnapshot(uris: string[]): Record<string, TrackVerificationStatus> {
+    const result: Record<string, TrackVerificationStatus> = {};
+    for (const uri of uris) {
+      result[uri] = this.get(uri);
+    }
+    return result;
+  }
 }
+
+export const verificationStore = new TrackVerificationStore();
 
 async function checkTrack(uri: string, extractor: Extractor, store: TrackVerificationStore): Promise<void> {
   store.set(uri, "checking");

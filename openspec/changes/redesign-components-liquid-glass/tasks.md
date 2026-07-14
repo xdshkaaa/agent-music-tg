@@ -1,20 +1,20 @@
 ## 1. CSS-система liquid glass
 
-- [ ] 1.1 Определить CSS custom properties для glass-эффектов в `:root` (`--glass-blur-subtle`, `--glass-blur-regular`, `--glass-blur-prominent`, `--glass-bg-opacity`, `--glass-tint-color`, `--glass-tint-opacity`, `--glass-highlight`, `--glass-shadow-sm`, `--glass-shadow-md`, `--glass-shadow-lg`, `--glass-transition`, `--glass-transition-morph`)
-- [ ] 1.2 Создать базовый класс `.glass-surface` с общими glass-стилями (backdrop-filter, border, highlight ::before, overflow: hidden)
-- [ ] 1.3 Создать модификаторы тона: `.glass-regular`, `.glass-subtle`, `.glass-prominent`, `.glass-tinted`
-- [ ] 1.4 Создать стили для `[data-interactive]` (hover scale(1.02), active scale(0.97), focus-visible, transition)
-- [ ] 1.5 Адаптировать светлую тему `[data-scheme="light"]` для всех новых переменных и классов
-- [ ] 1.6 Переопределить `.glass-panel` через `.glass-surface.glass-regular`, пометить как deprecated комментарием
-- [ ] 1.7 Переопределить `.dock-inner`, `.player-bar`, `.player-screen` через `.glass-surface.glass-regular`, пометить как deprecated
-- [ ] 1.8 Добавить `prefers-reduced-motion: reduce` для отключения transform-анимаций
+- [x] 1.1 Определить CSS custom properties для glass-эффектов в `:root` (`--glass-blur-subtle`, `--glass-blur-regular`, `--glass-blur-prominent`, `--glass-bg-opacity`, `--glass-tint-color`, `--glass-tint-opacity`, `--glass-highlight`, `--glass-shadow-sm`, `--glass-shadow-md`, `--glass-shadow-lg`, `--glass-transition`, `--glass-transition-morph`)
+- [x] 1.2 Создать базовый класс `.glass-surface` с общими glass-стилями (backdrop-filter, border, highlight ::before, overflow: hidden)
+- [x] 1.3 Создать модификаторы тона: `.glass-regular`, `.glass-subtle`, `.glass-prominent`, `.glass-tinted`
+- [x] 1.4 Создать стили для `[data-interactive]` (hover scale(1.02), active scale(0.97), focus-visible, transition)
+- [x] 1.5 Адаптировать светлую тему `[data-scheme="light"]` для всех новых переменных и классов
+- [x] 1.6 Переопределить `.glass-panel` через `.glass-surface.glass-regular`, пометить как deprecated комментарием
+- [x] 1.7 Переопределить `.dock-inner`, `.player-bar`, `.player-screen` через `.glass-surface.glass-regular`, пометить как deprecated
+- [x] 1.8 Добавить `prefers-reduced-motion: reduce` для отключения transform-анимаций
 
 ## 2. GlassPanel — расширение компонента
 
-- [ ] 2.1 Добавить проп `tone?: "regular" | "subtle" | "prominent" | "tinted"` с дефолтом `"regular"`
-- [ ] 2.2 Добавить проп `interactive?: boolean` — при true рендерит `data-interactive`
-- [ ] 2.3 Добавить проп `as?: "div" | "button"` — при `"button"` рендерит `<button type="button">`, сохраняя все стили
-- [ ] 2.4 Маппинг пропсов в CSS-классы: tone → `.glass-{tone}`, базовый `.glass-surface`
+- [x] 2.1 Добавить проп `tone?: "regular" | "subtle" | "prominent" | "tinted"` с дефолтом `"regular"`
+- [x] 2.2 Добавить проп `interactive?: boolean` — при true рендерит `data-interactive`
+- [x] 2.3 Добавить проп `as?: "div" | "button"` — при `"button"` рендерит `<button type="button">`, сохраняя все стили
+- [x] 2.4 Маппинг пропсов в CSS-классы: tone → `.glass-{tone}`, базовый `.glass-surface`
 - [ ] 2.5 Обновить все использования `<GlassPanel>` в screens/components с передачей tone где нужно
 
 ## 3. BottomNav — glass dock с морфингом
