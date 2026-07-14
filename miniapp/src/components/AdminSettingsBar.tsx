@@ -12,7 +12,7 @@ export function AdminSettingsBar({
   if (!settings) return null;
 
   return (
-    <GlassPanel className="admin-settings-bar">
+    <GlassPanel className="admin-settings-bar" tone="subtle">
       <div className="admin-settings-bar-item">
         <span className="admin-settings-bar-label">ИИ</span>
         <Segmented

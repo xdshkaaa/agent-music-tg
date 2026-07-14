@@ -47,6 +47,7 @@ export function PlayerBar({ onOpen }: { onOpen?: () => void }) {
       role="button"
       aria-label="Открыть плеер"
       tabIndex={0}
+      data-interactive
       onClick={() => onOpen?.()}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onOpen?.(); }}
     >

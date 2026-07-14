@@ -211,6 +211,8 @@ export function streamUrl(uri: string): string {
   return `/api/stream/${encodeURIComponent(uri)}?initData=${encodeURIComponent(getInitData())}`;
 }
 
+export type TrackVerificationStatus = "pending" | "checking" | "verified" | "unavailable";
+
 export const api = {
   me: () => request<MeResponse>("/api/me"),
 
@@ -239,6 +241,9 @@ export const api = {
 
   // --- Shop config (public, no admin rights) ---
   shopConfig: () => request<ShopConfig>("/api/shop-config"),
+
+  verifyTracks: (uris: string[]) =>
+    request<Record<string, TrackVerificationStatus>>(`/api/tracks/verify?uris=${encodeURIComponent(uris.join(","))}`),
 
   // --- Payments ---
   offers: () => request<{ offers: Offer[] }>("/api/offers"),

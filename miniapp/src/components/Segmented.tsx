@@ -12,11 +12,13 @@ export function Segmented<T extends string>({
   value,
   onChange,
   ariaLabel,
+  tinted,
 }: {
   options: readonly T[];
   value: T;
   onChange: (value: T) => void;
   ariaLabel?: string;
+  tinted?: boolean;
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const btnRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -34,7 +36,7 @@ export function Segmented<T extends string>({
   return (
     <div className="segmented glass" role="tablist" aria-label={ariaLabel} ref={trackRef}>
       <span
-        className="segmented-indicator glass-indicator"
+        className={`segmented-indicator${tinted ? " segmented-indicator-tinted" : ""} glass-indicator`}
         aria-hidden="true"
         style={{ transform: `translateX(${pill.left}px)`, width: pill.width }}
       />

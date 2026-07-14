@@ -5,6 +5,7 @@ import { bootstrapAllowlist } from "./lib/access-control";
 import { createBot } from "./bot";
 import { loadCustomEmojis, accent } from "./bot/emoji";
 import { createApiRoutes } from "./api/routes";
+import { setVerificationExtractor } from "./core/run-generation";
 import { verifyWebhookSignature, type WebhookUpdate } from "./payments/webhook";
 import { fulfillInvoice, type FulfillResult } from "./payments/fulfillment";
 import { startPoller } from "./payments/poller";
@@ -78,6 +79,7 @@ const createStarsInvoiceLink = async (args: { title: string; description: string
 };
 
 const extractor = new YtDlpExtractor();
+setVerificationExtractor(extractor);
 const audio: AudioDeps = {
   sender: createTelegramAudioSender(bot.api),
   extractor,

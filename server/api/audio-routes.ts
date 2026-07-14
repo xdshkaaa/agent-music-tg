@@ -5,6 +5,7 @@ import { hasAccess } from "../access/entitlements";
 import { isValidTrackUri, type Extractor } from "../audio/extractor";
 import { processDownload, type AudioSender } from "../audio/deliver";
 import type { StreamCache } from "../audio/stream-cache";
+import { verificationStore } from "../audio/track-verification";
 import {
   deleteDownload,
   getDownload,
@@ -143,6 +144,15 @@ export function createAudioRoutes(db: AppDb, deps: AudioDeps): Hono<AppEnv> {
     }
 
     return new Response(file, { status: 200, headers: { ...headers, "Content-Length": String(size) } });
+  });
+
+  app.get("/tracks/verify", async (c) => {
+    const urisParam = c.req.query("uris");
+    if (!urisParam) return c.json({ error: "missing uris query param" }, 400);
+    const uris = urisParam.split(",").filter(Boolean);
+    if (uris.length === 0) return c.json({ error: "empty uris" }, 400);
+    const snapshot = verificationStore.getSnapshot(uris);
+    return c.json(snapshot);
   });
 
   return app;
