@@ -457,6 +457,7 @@ body {
 .glass-input:focus-visible {
   border-color: var(--accent);
   background: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 0 0 3px var(--accent-bg);
 }
 
 :root[data-scheme="light"] .glass-input:focus-visible {
@@ -1398,6 +1399,8 @@ a.icon-btn {
   height: 4px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(var(--glass-blur-subtle));
+  -webkit-backdrop-filter: blur(var(--glass-blur-subtle));
 }
 
 :root[data-scheme="light"] .volume-slider::-webkit-slider-runnable-track {
@@ -1413,11 +1416,12 @@ a.icon-btn {
   background: var(--accent);
   margin-top: -4px;
   border: none;
-  transition: transform 0.12s ease;
+  transition: transform var(--glass-transition), box-shadow var(--glass-transition);
 }
 
 .volume-slider::-webkit-slider-thumb:hover {
   transform: scale(1.25);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 50%, transparent);
 }
 
 .volume-slider:focus-visible {
