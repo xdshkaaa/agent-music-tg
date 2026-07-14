@@ -164,8 +164,8 @@ elif run_ssh "curl -fsS --max-time 10 http://127.0.0.1:8787/healthz && test -f '
 
   if [ "$KEEP_RELEASES" -gt 0 ]; then
     log "Cleaning up old releases (keeping $KEEP_RELEASES)"
-    run_remote "cd '$API_DIR/releases' && cur=\$(readlink -f '$API_DIR/current'); ls -1dt */ | sed 's:/\$::' | awk -v d=\"\$PWD\" '{print d\"/\"\$0}' | grep -vxF \"\$cur\" | tail -n +$((KEEP_RELEASES+1)) | xargs -r rm -rf"
-    run_remote "cd '$STATIC_DIR/releases' && cur=\$(readlink -f '$STATIC_DIR/current'); ls -1dt */ | sed 's:/\$::' | awk -v d=\"\$PWD\" '{print d\"/\"\$0}' | grep -vxF \"\$cur\" | tail -n +$((KEEP_RELEASES+1)) | xargs -r rm -rf"
+    run_remote "cd '$API_DIR/releases' && cur=\$(readlink -f '$API_DIR/current'); ls -1dt */ | sed 's:/\$::' | awk -v d=\"\$PWD\" '{print d\"/\"\$0}' | grep -vxF \"\$cur\" | tail -n +$KEEP_RELEASES | xargs -r rm -rf"
+    run_remote "cd '$STATIC_DIR/releases' && cur=\$(readlink -f '$STATIC_DIR/current'); ls -1dt */ | sed 's:/\$::' | awk -v d=\"\$PWD\" '{print d\"/\"\$0}' | grep -vxF \"\$cur\" | tail -n +$KEEP_RELEASES | xargs -r rm -rf"
   fi
 
   load_notify_config
