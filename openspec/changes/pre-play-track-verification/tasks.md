@@ -7,16 +7,16 @@
 
 ## 2. Track verification service
 
-- [ ] 2.1 Create `TrackVerificationStatus` type (`pending | checking | verified | unavailable`)
-- [ ] 2.2 Create `TrackVerificationStore` class — in-memory `Map<uri, TrackVerificationStatus>` with promise-based wait
-- [ ] 2.3 Implement `verifyTracks(tracks, extractor, store)` with concurrent probe (3 at a time)
-- [ ] 2.4 Integrate verification start into `startGeneration()` / `resumeGeneration()` in `run-generation.ts`
+- [x] 2.1 Create `TrackVerificationStatus` type (`pending | checking | verified | unavailable`)
+- [x] 2.2 Create `TrackVerificationStore` class — in-memory `Map<uri, TrackVerificationStatus>` with promise-based wait
+- [x] 2.3 Implement `verifyTracks(tracks, extractor, store)` with concurrent probe (3 at a time)
+- [x] 2.4 Integrate verification start into `startGeneration()` / `resumeGeneration()` in `run-generation.ts`
 
 ## 3. Verification polling API
 
-- [ ] 3.1 Create `GET /api/tracks/verify?uris=...` endpoint in `audio-routes.ts`
-- [ ] 3.2 Wire `TrackVerificationStore` into `AudioDeps` and pass through server setup
-- [ ] 3.3 Add `api.verifyTracks(uris)` client method in `miniapp/src/lib/api.ts`
+- [x] 3.1 Create `GET /api/tracks/verify?uris=...` endpoint in `audio-routes.ts`
+- [x] 3.2 Wire `TrackVerificationStore` into `AudioDeps` and pass through server setup
+- [x] 3.3 Add `api.verifyTracks(uris)` client method in `miniapp/src/lib/api.ts`
 
 ## 4. Mini App — verification UI
 
