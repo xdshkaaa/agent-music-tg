@@ -10,3 +10,6 @@ miniapp/dist/
 .claude/
 .agents/
 skills-lock.json
+
+# Deploy config (infra details, optional)
+deploy/deploy.conf

@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-07-14
+goal: Allow admins to save offers with any valid Crypto Pay asset (TON, BTC,
+  etc.) by fixing the PATCH /admin/offers/:id validation chain and the Mini App
+  form initialization.

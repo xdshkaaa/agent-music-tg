@@ -1,8 +1,9 @@
 import type { AppDb } from "../db";
 import { createProvider, isProviderId, MissingCredentialError, type ProviderId } from "../agent/registry";
-import { createMusicProvider, isMusicBackend, SpotifyLinkRequiredError } from "../music/registry";
-import { getActiveProviderId, getActiveBackendId } from "../lib/settings";
-import { getValidAccessToken, SpotifyNotLinkedError } from "../spotify/tokens";
+import { createMusicProvider, isMusicBackend } from "../music/registry";
+import { getActiveProviderId, getActiveBackendId, getProviderOverrides } from "../lib/settings";
+import { hasAccess, consumeAccess } from "../access/entitlements";
+import { insertGeneration } from "../access/generations-store";
 import {
   ClarifyNeededError,
   MaxIterationsExceededError,
@@ -11,27 +12,28 @@ import {
   type GeneratePlaylistOptions,
 } from "./generate-playlist";
 import type { AgentMessage } from "../agent/types";
+import { verifyTracks, verificationStore } from "../audio/track-verification";
+import type { Extractor } from "../audio/extractor";
 
 export type GenerationOutcome =
   | { status: "ok"; playlist: FinalizedPlaylist }
   | { status: "clarify"; question: string; options: string[]; messages: AgentMessage[] }
+  | { status: "needs_purchase" }
   | { status: "error"; message: string };
 
 const DEFAULT_PROVIDER: ProviderId = "opencode";
 
-async function buildRunInputs(db: AppDb, chatId: number) {
+async function buildRunInputs(db: AppDb) {
   const providerId = getActiveProviderId(db, DEFAULT_PROVIDER);
   if (!isProviderId(providerId)) throw new Error(`unknown active provider setting: ${providerId}`);
-  const provider = createProvider(providerId);
+  const provider = createProvider(providerId, getProviderOverrides(db, providerId));
 
-  const backendId = getActiveBackendId(db, "youtube-music");
-  if (!isMusicBackend(backendId)) throw new Error(`unknown active backend setting: ${backendId}`);
+  // Stored value may be a legacy/removed backend (e.g. "spotify") — fall back
+  // to the default rather than throwing so existing chats keep working.
+  const stored = getActiveBackendId(db, "youtube-music");
+  const backendId = isMusicBackend(stored) ? stored : "youtube-music";
 
-  let spotifyAccessToken: string | undefined;
-  if (backendId === "spotify") {
-    spotifyAccessToken = await getValidAccessToken(db, chatId);
-  }
-  const music = createMusicProvider(backendId, { spotifyAccessToken });
+  const music = createMusicProvider(backendId);
   return { provider, music };
 }
 
@@ -44,24 +46,33 @@ async function toOutcome(run: () => ReturnType<typeof generatePlaylist>): Promis
       return { status: "clarify", question: e.question, options: e.options, messages: e.messages };
     }
     if (e instanceof MaxIterationsExceededError) {
-      return { status: "error", message: "Couldn't settle on a playlist in time — try a more specific request." };
+      return { status: "error", message: "Не удалось подобрать плейлист вовремя — уточните запрос." };
     }
     if (e instanceof MissingCredentialError) {
       return { status: "error", message: e.message };
-    }
-    if (e instanceof SpotifyLinkRequiredError || e instanceof SpotifyNotLinkedError) {
-      return { status: "error", message: "Link your Spotify account first with /link." };
     }
     return { status: "error", message: e instanceof Error ? e.message : String(e) };
   }
 }
 
+function fireVerification(playlist: FinalizedPlaylist): void {
+  if (!_extractor) return;
+  verifyTracks(playlist.tracks, _extractor, verificationStore).catch(() => {});
+}
+
 export async function startGeneration(db: AppDb, chatId: number, prompt: string): Promise<GenerationOutcome> {
-  return toOutcome(async () => {
-    const { provider, music } = await buildRunInputs(db, chatId);
+  if (!hasAccess(db, chatId)) return { status: "needs_purchase" };
+  const outcome = await toOutcome(async () => {
+    const { provider, music } = await buildRunInputs(db);
     const opts: GeneratePlaylistOptions = { provider, music, prompt };
     return generatePlaylist(opts);
   });
+  if (outcome.status === "ok") {
+    consumeAccess(db, chatId);
+    insertGeneration(db, chatId, prompt, outcome.playlist.name, outcome.playlist.tracks.length);
+    fireVerification(outcome.playlist);
+  }
+  return outcome;
 }
 
 export async function resumeGeneration(
@@ -71,10 +82,22 @@ export async function resumeGeneration(
   resumeMessages: AgentMessage[],
   clarifyAnswer: string,
 ): Promise<GenerationOutcome> {
-  return toOutcome(async () => {
-    const { provider, music } = await buildRunInputs(db, chatId);
+  if (!hasAccess(db, chatId)) return { status: "needs_purchase" };
+  const outcome = await toOutcome(async () => {
+    const { provider, music } = await buildRunInputs(db);
     return generatePlaylist({ provider, music, prompt: originalPrompt, resumeMessages, resumeClarifyAnswer: clarifyAnswer });
   });
+  if (outcome.status === "ok") {
+    consumeAccess(db, chatId);
+    fireVerification(outcome.playlist);
+  }
+  return outcome;
+}
+
+let _extractor: Extractor | null = null;
+
+export function setVerificationExtractor(extractor: Extractor): void {
+  _extractor = extractor;
 }
 
 export function formatPlaylistReply(playlist: FinalizedPlaylist): string {

@@ -12,7 +12,10 @@ import type { AppEnv } from "./context";
  */
 export function requireAuth(db: AppDb): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
-    const initData = c.req.header("X-Telegram-Init-Data") ?? "";
+    // Query fallback: <audio src> (the /stream endpoint) cannot set headers.
+    // initData is the same signed credential either way; verifyInitData
+    // rejects tampering identically.
+    const initData = c.req.header("X-Telegram-Init-Data") ?? c.req.query("initData") ?? "";
     const verified = verifyInitData(initData, env.telegramBotToken);
     if (!verified) {
       return c.json({ error: "unauthenticated" }, 401);
