@@ -9,7 +9,9 @@ import type { BotContext } from "./context";
  */
 export function allowlistGate(db: AppDb) {
   return async (ctx: BotContext, next: NextFunction) => {
-    const chatId = ctx.chat?.id;
+    // pre_checkout_query updates carry no chat — fall back to the sender id
+    // (private-chat bot: chat id === user id) so Stars checkouts aren't dropped.
+    const chatId = ctx.chat?.id ?? ctx.from?.id;
     if (chatId === undefined) return;
     const role = getChatRole(db, chatId);
     if (!role.isAllowed) return;

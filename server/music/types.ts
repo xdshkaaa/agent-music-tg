@@ -1,5 +1,5 @@
 export interface Track {
-  /** Provider-specific URI: spotify:track:x / sc:12345 / ytm:videoId */
+  /** Provider-specific URI: sc:12345 / ytm:videoId */
   uri: string;
   title: string;
   artist: string;
@@ -20,11 +20,11 @@ export interface RemotePlaylist {
 export interface ProviderCapabilities {
   /** Can create playlists on the service side. */
   remotePlaylists: boolean;
-  /** Spotify Connect-style playback controlled via the service's API. */
+  /** Remote playback controlled via the service's API. */
   remotePlayback: boolean;
 }
 
-export type MusicBackend = "spotify" | "soundcloud" | "youtube-music";
+export type MusicBackend = "soundcloud" | "youtube-music";
 
 export interface MusicProvider {
   readonly name: MusicBackend;

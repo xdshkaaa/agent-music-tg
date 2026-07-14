@@ -1,0 +1,8 @@
+{
+  "_comment": "Maps each Telegram custom_emoji_id (string) to a symbolic name used by server/bot/emoji.ts. Populate with the IDs from the bot's own custom-emoji sticker set (EMOJI_STICKER_SET). Entries here are paired with stickers returned by getStickerSet to build the symbol -> custom_emoji_id map at startup. Unknown IDs in the sticker set (not listed here) are silently skipped. Symbols referenced by the bot: info, diamond, music, stats, package, broadcast, gear, check, profile, wallet, plus, ruler, sparkle.",
+  "_format": "<custom_emoji_id as string>: <symbol>",
+  "_example": {
+    "5377637156164392589": "info",
+    "5377637156164392590": "sparkle"
+  }
+}
