@@ -25,13 +25,13 @@ function fakeProvider(turns: AgentResult[]): AgentProvider & { calls: number } {
 function fakeMusic(opts: { remotePlaylists: boolean; searchTrack?: (artist: string, title: string) => Promise<Track | null> }) {
   const searchTrackCalls: string[] = [];
   const music: MusicProvider & { searchTrackCalls: string[] } = {
-    name: "spotify",
+    name: "youtube-music",
     capabilities: { remotePlaylists: opts.remotePlaylists, remotePlayback: opts.remotePlaylists },
     searchTrackCalls,
     async searchTrack(artist, title) {
       searchTrackCalls.push(`${artist}|${title}`);
       if (opts.searchTrack) return opts.searchTrack(artist, title);
-      return { uri: `spotify:track:${artist}-${title}`, title, artist };
+      return { uri: `ytm:${artist}-${title}`, title, artist };
     },
     async searchArtist(name) {
       return { id: `id-${name}`, name };
@@ -42,7 +42,7 @@ function fakeMusic(opts: { remotePlaylists: boolean; searchTrack?: (artist: stri
     ...(opts.remotePlaylists
       ? {
           async createPlaylist(name: string): Promise<RemotePlaylist> {
-            return { id: "pl1", uri: "spotify:playlist:pl1", url: "https://open.spotify.com/playlist/pl1", name };
+            return { id: "pl1", uri: "ytm:playlist:pl1", url: "https://music.youtube.com/playlist?list=pl1", name };
           },
           async addTracksToPlaylist() {},
         }
@@ -72,7 +72,7 @@ describe("generatePlaylist", () => {
     const { playlist } = await generatePlaylist({ provider, music, prompt: "chill vibes" });
     expect(playlist.name).toBe("Vibes");
     expect(playlist.tracks).toHaveLength(1);
-    expect(playlist.remotePlaylistUrl).toBe("https://open.spotify.com/playlist/pl1");
+    expect(playlist.remotePlaylistUrl).toBe("https://music.youtube.com/playlist?list=pl1");
   });
 
   test("finalizes against a resolve-only backend (no remote playlist created)", async () => {

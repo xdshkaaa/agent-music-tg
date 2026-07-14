@@ -8,22 +8,75 @@ export interface PendingClarify {
   options: string[];
 }
 
-export function getPendingClarify(db: AppDb, chatId: number): PendingClarify | null {
+export interface PendingGeneratePrompt {
+  kind: "awaiting_generate_prompt";
+}
+
+/** Admin multi-step flows keyed off the same per-chat session row. */
+export type AdminFlow =
+  | { kind: "admin_add_offer"; step: "title" | "amount" | "asset" | "starsAmount" | "grantKind" | "grantAmount"; draft: Record<string, string> }
+  | { kind: "admin_broadcast" }
+  | { kind: "admin_setting"; field: "shopName" | "supportContact" | "aboutText" }
+  | { kind: "admin_grant_credits"; chatId: number }
+  | { kind: "admin_extend_subscription"; chatId: number }
+  | { kind: "admin_access_add" }
+  | { kind: "admin_provider_config_set"; providerId: string; field: "model" | "baseUrl" }
+  | { kind: "admin_payments_toggle" }
+  | { kind: "admin_all_settings_key" }
+  | { kind: "admin_all_settings_value"; key: string }
+  | { kind: "admin_add_channel"; step: "input" }
+  | { kind: "admin_trial_reset" };
+
+export type SessionState = PendingClarify | PendingGeneratePrompt | AdminFlow;
+
+function readState<T extends SessionState>(db: AppDb, chatId: number, kinds: string[]): T | null {
   const row = db.query<{ state: string }, [number]>(`SELECT state FROM sessions WHERE chat_id = ?`).get(chatId);
   if (!row) return null;
   try {
-    const parsed = JSON.parse(row.state) as PendingClarify;
-    return parsed.kind === "awaiting_clarify" ? parsed : null;
+    const parsed = JSON.parse(row.state) as SessionState;
+    return kinds.includes(parsed.kind) ? (parsed as T) : null;
   } catch {
     return null;
   }
 }
 
-export function setPendingClarify(db: AppDb, chatId: number, pending: PendingClarify): void {
+function writeState(db: AppDb, chatId: number, state: SessionState): void {
   db.query(
     `INSERT INTO sessions (chat_id, state) VALUES (?, ?)
      ON CONFLICT(chat_id) DO UPDATE SET state = excluded.state, updated_at = unixepoch()`
-  ).run(chatId, JSON.stringify(pending));
+  ).run(chatId, JSON.stringify(state));
+}
+
+export function getPendingClarify(db: AppDb, chatId: number): PendingClarify | null {
+  return readState<PendingClarify>(db, chatId, ["awaiting_clarify"]);
+}
+
+export function setPendingClarify(db: AppDb, chatId: number, pending: PendingClarify): void {
+  writeState(db, chatId, pending);
+}
+
+export function getPendingGeneratePrompt(db: AppDb, chatId: number): PendingGeneratePrompt | null {
+  return readState<PendingGeneratePrompt>(db, chatId, ["awaiting_generate_prompt"]);
+}
+
+export function setPendingGeneratePrompt(db: AppDb, chatId: number): void {
+  writeState(db, chatId, { kind: "awaiting_generate_prompt" });
+}
+
+const ADMIN_FLOW_KINDS = [
+  "admin_add_offer", "admin_broadcast", "admin_setting",
+  "admin_grant_credits", "admin_extend_subscription", "admin_access_add",
+  "admin_provider_config_set", "admin_payments_toggle",
+  "admin_all_settings_key", "admin_all_settings_value",
+  "admin_add_channel",
+];
+
+export function getAdminFlow(db: AppDb, chatId: number): AdminFlow | null {
+  return readState<AdminFlow>(db, chatId, ADMIN_FLOW_KINDS);
+}
+
+export function setAdminFlow(db: AppDb, chatId: number, flow: AdminFlow): void {
+  writeState(db, chatId, flow);
 }
 
 export function clearSession(db: AppDb, chatId: number): void {
