@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
+import { useScrollFade } from "../lib/useScrollFade";
 
 /**
  * Glass segmented control: one track, a sliding `.glass-indicator` under the
@@ -32,6 +33,8 @@ export function Segmented<T extends string>({
     if (!btn || !track) return;
     setPill({ left: btn.offsetLeft, width: btn.offsetWidth });
   }, [activeIndex, options]);
+
+  useScrollFade(trackRef);
 
   return (
     <div className="segmented glass" role="tablist" aria-label={ariaLabel} ref={trackRef}>

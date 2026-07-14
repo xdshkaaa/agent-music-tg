@@ -24,6 +24,7 @@ export function BottomNav({
 
   const indicatorRef = useRef<HTMLDivElement>(null);
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  tabRefs.current.length = tabs.length;
 
   const updateIndicator = useCallback(() => {
     const idx = tabs.findIndex((t) => t.key === tab);
@@ -46,6 +47,11 @@ export function BottomNav({
     const parent = tabRefs.current[0]?.parentElement;
     if (parent) ro.observe(parent);
     return () => ro.disconnect();
+  }, [updateIndicator]);
+
+  useEffect(() => {
+    if (typeof document === "undefined" || !document.fonts?.ready) return;
+    document.fonts.ready.then(updateIndicator);
   }, [updateIndicator]);
 
   return (

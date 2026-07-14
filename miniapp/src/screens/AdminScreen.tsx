@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   WarningCircle, Circle, Key, XCircle, Plus, Minus, Star,
   Calendar, Prohibit, Crown, User, PencilSimple,
@@ -20,6 +20,7 @@ import type {
   PaymentsConfig,
 } from "../lib/api";
 import { api } from "../lib/api";
+import { useScrollFade } from "../lib/useScrollFade";
 
 type AdminTab = "stats" | "offers" | "shop" | "users" | "issuance" | "access" | "providers" | "settings" | "payments" | "broadcast";
 
@@ -55,14 +56,22 @@ function StatsPanel() {
   return (
     <GlassPanel className="reveal">
       <h2>Статистика</h2>
-      <p>Пользователей: {stats.totalUsers}</p>
-      <p>Оплаченных покупок: {stats.paidPurchases}</p>
-      <p>
-        Выручка:{" "}
-        {stats.revenue.length === 0
-          ? "0"
-          : stats.revenue.map((r) => `${r.total} ${r.asset}`).join(", ")}
-      </p>
+      <div className="stat-row">
+        <span className="stat-row-label">Пользователи</span>
+        <span className="stat-row-value">{stats.totalUsers}</span>
+      </div>
+      <div className="stat-row">
+        <span className="stat-row-label">Оплаченные покупки</span>
+        <span className="stat-row-value">{stats.paidPurchases}</span>
+      </div>
+      <div className="stat-row">
+        <span className="stat-row-label">Выручка</span>
+        <span className="stat-row-value">
+          {stats.revenue.length === 0
+            ? "0"
+            : stats.revenue.map((r) => `${r.total} ${r.asset}`).join(", ")}
+        </span>
+      </div>
     </GlassPanel>
   );
 }
@@ -865,8 +874,11 @@ function IssuancePanel() {
 // --- Tab bar for admin navigation ---
 
 function AdminTabBar({ tab, onTab }: { tab: AdminTab; onTab: (t: AdminTab) => void }) {
+  const tabsRef = useRef<HTMLElement>(null);
+  useScrollFade(tabsRef);
+
   return (
-    <nav className="admin-tabs" aria-label="Секции админки">
+    <nav className="admin-tabs" aria-label="Секции админки" ref={tabsRef}>
       {(SETTINGS_TABS as AdminTab[]).map((t) => (
         <button
           key={t}

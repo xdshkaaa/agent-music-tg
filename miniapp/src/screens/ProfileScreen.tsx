@@ -298,8 +298,7 @@ export default function ProfileScreen({ me, shopConfig, onGoShop }: { me: MeResp
               <Calendar size={13} weight="bold" /> Подписка: {formatSubscription(me?.subscriptionUntil ?? null)}
             </span>
           </div>
-          <button type="button" className="glass-button primary" onClick={onGoShop}
-            style={{ height: "auto", alignSelf: "stretch", fontSize: 14, padding: "0 16px" }}>
+          <button type="button" className="glass-button primary profile-topup-btn" onClick={onGoShop}>
             <Plus size={18} weight="bold" />
             Пополнить
           </button>
