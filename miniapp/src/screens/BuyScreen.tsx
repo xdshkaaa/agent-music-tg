@@ -132,7 +132,7 @@ export default function BuyScreen({ reason }: { reason?: string }) {
       )}
 
       {trial && !trial.claimed && (
-        <GlassPanel className="reveal">
+        <GlassPanel className="reveal" tone="tinted">
           <div className="section-label">БЕСПЛАТНО</div>
           <div className="trial-card-row">
             <span className="trial-card-info">
