@@ -29,7 +29,7 @@ export const env = {
   publicOrigin: (process.env.PUBLIC_ORIGIN ?? "https://miniapp.xdshka.party").replace(/\/+$/, ""),
   anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
   openaiApiKey: process.env.OPENAI_API_KEY ?? "",
-  openrouterApiKey: process.env.OPENROUTER_API_KEY ?? "",
+  cheapvibecodeApiKey: process.env.CHEAPVIBECODE_API_KEY ?? "",
   opencodeApiKey: process.env.OPENCODE_API_KEY ?? "",
   opencodeBaseUrl: process.env.OPENCODE_BASE_URL ?? "https://opencode.ai/zen/v1",
   opencodeModel: process.env.OPENCODE_MODEL ?? "claude-sonnet-5",

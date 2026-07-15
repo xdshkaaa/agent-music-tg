@@ -214,6 +214,41 @@ export function streamUrl(uri: string): string {
 
 export type TrackVerificationStatus = "pending" | "checking" | "verified" | "unavailable";
 
+/**
+ * Reads a text/event-stream response body and dispatches each frame. Progress
+ * frames call onProgress; the terminal "outcome" frame resolves the promise.
+ * Uses fetch (not EventSource) so the initData header can ride along.
+ */
+async function requestSSE<T>(path: string, body: unknown, onProgress: (text: string) => void): Promise<T> {
+  const res = await fetch(path, {
+    method: "POST",
+    headers: { "content-type": "application/json", "X-Telegram-Init-Data": getInitData() },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok || !res.body) {
+    const parsed = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(parsed.error ?? `request failed: ${res.status}`);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const frames = buffer.split("\n\n");
+    buffer = frames.pop() ?? "";
+    for (const frame of frames) {
+      const line = frame.split("\n").find((l) => l.startsWith("data:"));
+      if (!line) continue;
+      const parsed = JSON.parse(line.slice(5).trim()) as { type: string; text?: string; outcome?: T };
+      if (parsed.type === "progress" && parsed.text) onProgress(parsed.text);
+      else if (parsed.type === "outcome") return parsed.outcome as T;
+    }
+  }
+  throw new Error("stream ended without an outcome");
+}
+
 export const api = {
   me: () => request<MeResponse>("/api/me"),
 
@@ -234,6 +269,10 @@ export const api = {
     request<GenerateOutcome>("/api/generate", { method: "POST", body: JSON.stringify({ prompt }) }),
   generateResume: (answer: string) =>
     request<GenerateOutcome>("/api/generate/resume", { method: "POST", body: JSON.stringify({ answer }) }),
+  generateStream: (prompt: string, onProgress: (text: string) => void) =>
+    requestSSE<GenerateOutcome>("/api/generate/stream", { prompt }, onProgress),
+  generateResumeStream: (answer: string, onProgress: (text: string) => void) =>
+    requestSSE<GenerateOutcome>("/api/generate/resume/stream", { answer }, onProgress),
   adminSettings: () => request<AdminSettings>("/api/admin/settings"),
   setActiveProvider: (id: string) =>
     request<{ activeProvider: string }>("/api/admin/settings/provider", { method: "POST", body: JSON.stringify({ id }) }),

@@ -6,11 +6,13 @@ export function ClarifyScreen({
   options,
   onAnswer,
   busy,
+  reasoning,
 }: {
   question: string;
   options: string[];
   onAnswer: (answer: string) => void;
   busy: boolean;
+  reasoning?: string | null;
 }) {
   return (
     <GlassPanel className="reveal">
@@ -30,6 +32,11 @@ export function ClarifyScreen({
           </button>
         ))}
       </div>
+      {busy && reasoning && (
+        <p key={reasoning} className="prompt-reasoning">
+          {reasoning}
+        </p>
+      )}
     </GlassPanel>
   );
 }

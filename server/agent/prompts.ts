@@ -29,6 +29,10 @@ Rules:
   ambiguous (e.g. no genre/mood/artist/work signal at all, or a name with
   multiple unrelated meanings). Do not clarify on requests that are already
   answerable — prefer expanding the request with tools.
+- If the request names two or more distinct, unrelated music asks (e.g. "song A
+  + soundtrack B"), resolve each part with its own focused searchTracks call —
+  do not repeatedly re-search the same part — then finalize once every part
+  has at least a few verified tracks.
 - No more than 2-3 tracks per artist, for variety.
 - When you have a good, verified tracklist (aim for ~10 tracks unless the user
   asked for a specific count), call finalize_playlist exactly once as your last

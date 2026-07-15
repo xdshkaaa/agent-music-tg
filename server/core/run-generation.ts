@@ -12,7 +12,7 @@ import {
   type FinalizedPlaylist,
   type GeneratePlaylistOptions,
 } from "./generate-playlist";
-import type { AgentMessage } from "../agent/types";
+import type { AgentMessage, AgentProgressEvent } from "../agent/types";
 import { verifyTracks, verificationStore } from "../audio/track-verification";
 import type { Extractor } from "../audio/extractor";
 
@@ -64,11 +64,16 @@ function fireVerification(playlist: FinalizedPlaylist): void {
   verifyTracks(playlist.tracks, _extractor, verificationStore).catch(() => {});
 }
 
-export async function startGeneration(db: AppDb, chatId: number, prompt: string): Promise<GenerationOutcome> {
+export async function startGeneration(
+  db: AppDb,
+  chatId: number,
+  prompt: string,
+  onEvent?: (e: AgentProgressEvent) => void,
+): Promise<GenerationOutcome> {
   if (!hasAccess(db, chatId)) return { status: "needs_purchase" };
   const outcome = await toOutcome(async () => {
     const { provider, music } = await buildRunInputs(db);
-    const opts: GeneratePlaylistOptions = { provider, music, prompt };
+    const opts: GeneratePlaylistOptions = { provider, music, prompt, onEvent };
     return generatePlaylist(opts);
   });
   if (outcome.status === "ok") {
@@ -85,11 +90,19 @@ export async function resumeGeneration(
   originalPrompt: string,
   resumeMessages: AgentMessage[],
   clarifyAnswer: string,
+  onEvent?: (e: AgentProgressEvent) => void,
 ): Promise<GenerationOutcome> {
   if (!hasAccess(db, chatId)) return { status: "needs_purchase" };
   const outcome = await toOutcome(async () => {
     const { provider, music } = await buildRunInputs(db);
-    return generatePlaylist({ provider, music, prompt: originalPrompt, resumeMessages, resumeClarifyAnswer: clarifyAnswer });
+    return generatePlaylist({
+      provider,
+      music,
+      prompt: originalPrompt,
+      resumeMessages,
+      resumeClarifyAnswer: clarifyAnswer,
+      onEvent,
+    });
   });
   if (outcome.status === "ok") {
     consumeAccess(db, chatId);

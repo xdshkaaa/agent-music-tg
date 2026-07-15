@@ -1,11 +1,15 @@
-import type { AgentMessage, AgentProvider } from "../agent/types";
+import type { AgentMessage, AgentProgressEvent, AgentProvider } from "../agent/types";
 import { MUSIC_AGENT_TOOLS, dispatchTool } from "../agent/tools";
 import { PLAYLIST_SYSTEM_PROMPT } from "../agent/prompts";
 import type { MusicProvider, Track } from "../music/types";
-import { mapWithConcurrency } from "./concurrency";
+import { mapWithConcurrency, withTimeout } from "./concurrency";
 
-export const DEFAULT_MAX_ITERATIONS = 8;
+export const DEFAULT_MAX_ITERATIONS = 12;
 const SEARCH_CONCURRENCY = 5;
+const LLM_CALL_TIMEOUT_MS = 30_000;
+const MAX_CONSECUTIVE_EMPTY_TURNS = 2;
+
+const LLM_TIMEOUT_SENTINEL = Symbol("llm-timeout");
 
 export class NoTracksResolvedError extends Error {
   constructor() {
@@ -44,6 +48,22 @@ export interface GeneratePlaylistOptions {
   /** Resumes a run that previously threw ClarifyNeededError, with the user's answer. */
   resumeMessages?: AgentMessage[];
   resumeClarifyAnswer?: string;
+  /** Fired for live progress UI — never affects the run's outcome. */
+  onEvent?: (e: AgentProgressEvent) => void;
+}
+
+function describeToolCall(name: string, args: Record<string, unknown>): string {
+  switch (name) {
+    case "search_soundcloud":
+    case "search_youtube_music":
+      return `Ищу: «${String(args.query ?? "")}»`;
+    case "clarify":
+      return "Уточняю запрос…";
+    case "finalize_playlist":
+      return "Собираю плейлист…";
+    default:
+      return "Обрабатываю…";
+  }
 }
 
 export interface GeneratePlaylistResult {
@@ -123,17 +143,43 @@ export async function generatePlaylist(opts: GeneratePlaylistOptions): Promise<G
   let messages: AgentMessage[] = opts.resumeMessages ?? [{ role: "user", content: opts.prompt }];
   let clarifyUsed = opts.resumeMessages !== undefined; // a resume implies clarify already happened once
   const seenCalls = new Map<string, unknown>();
+  let consecutiveEmptyTurns = 0;
 
   if (opts.resumeClarifyAnswer !== undefined) {
     messages = [...messages, { role: "user", content: opts.resumeClarifyAnswer }];
   }
 
   for (let i = 0; i < maxIterations; i++) {
-    const result = await opts.provider.generateMessages(PLAYLIST_SYSTEM_PROMPT, messages, MUSIC_AGENT_TOOLS);
+    const raced = await withTimeout(
+      opts.provider.generateMessages(PLAYLIST_SYSTEM_PROMPT, messages, MUSIC_AGENT_TOOLS),
+      LLM_CALL_TIMEOUT_MS,
+      LLM_TIMEOUT_SENTINEL as unknown as Awaited<ReturnType<AgentProvider["generateMessages"]>>,
+    );
+    if ((raced as unknown) === LLM_TIMEOUT_SENTINEL) {
+      throw new Error(`LLM call timed out after ${LLM_CALL_TIMEOUT_MS / 1000}s`);
+    }
+    const result = raced;
     const calls = result.toolCalls ?? [];
 
     if (calls.length === 0) {
-      throw new Error("agent turn produced no tool calls and no finalize_playlist");
+      consecutiveEmptyTurns++;
+      if (consecutiveEmptyTurns > MAX_CONSECUTIVE_EMPTY_TURNS) {
+        throw new Error("agent turn produced no tool calls and no finalize_playlist");
+      }
+      messages.push({ role: "assistant", content: result.text, toolCalls: [] });
+      messages.push({
+        role: "user",
+        content: "You must call at least one tool, or finalize_playlist if you have enough tracks.",
+      });
+      continue;
+    }
+    consecutiveEmptyTurns = 0;
+
+    if (result.text.trim().length > 0) {
+      opts.onEvent?.({ type: "assistant_text", text: result.text.trim().slice(0, 200) });
+    }
+    for (const call of calls) {
+      opts.onEvent?.({ type: "tool_call", text: describeToolCall(call.name, call.args) });
     }
 
     const finalizeCall = calls.find((c) => c.name === "finalize_playlist") ?? null;

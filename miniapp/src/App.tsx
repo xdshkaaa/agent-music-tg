@@ -80,6 +80,7 @@ function AppInner() {
   const [transitionDir, setTransitionDir] = useState<"forward" | "back">("forward");
   const [showPlayer, setShowPlayer] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [reasoning, setReasoning] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [scheme, setScheme] = useState<"light" | "dark">(() => initialScheme());
   const [lastGenerate, setLastGenerate] = useState<{ prompt: string } | null>(null);
@@ -151,13 +152,15 @@ function AppInner() {
     setLastClarify(null);
     setBusy(true);
     setError(null);
+    setReasoning(null);
     try {
-      const outcome = await api.generate(prompt);
+      const outcome = await api.generateStream(prompt, setReasoning);
       applyOutcome(outcome);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
+      setReasoning(null);
     }
   }
 
@@ -165,13 +168,15 @@ function AppInner() {
     setLastClarify({ answer });
     setBusy(true);
     setError(null);
+    setReasoning(null);
     try {
-      const outcome = await api.generateResume(answer);
+      const outcome = await api.generateResumeStream(answer, setReasoning);
       applyOutcome(outcome);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
+      setReasoning(null);
     }
   }
 
@@ -214,7 +219,7 @@ function AppInner() {
   function renderScreen(): ReactNode | null {
     switch (screen.kind) {
       case "prompt":
-        return <PromptScreen onSubmit={handleSubmit} busy={busy} />;
+        return <PromptScreen onSubmit={handleSubmit} busy={busy} reasoning={reasoning} />;
       case "clarify":
         return (
           <ClarifyScreen
@@ -222,6 +227,7 @@ function AppInner() {
             options={screen.options}
             onAnswer={handleClarifyAnswer}
             busy={busy}
+            reasoning={reasoning}
           />
         );
       case "results":

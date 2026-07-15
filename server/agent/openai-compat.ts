@@ -36,7 +36,7 @@ export interface OpenAICompatConfig {
   model: string;
 }
 
-/** Shared OpenAI Chat Completions-compatible transport (OpenAI, OpenRouter, Ollama). */
+/** Shared OpenAI Chat Completions-compatible transport (OpenAI, CheapVibeCode, Ollama). */
 export async function openaiCompatChat(
   config: OpenAICompatConfig,
   system: string,

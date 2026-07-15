@@ -7,9 +7,11 @@ const MAX_INPUT_HEIGHT = 132;
 export function PromptScreen({
   onSubmit,
   busy,
+  reasoning,
 }: {
   onSubmit: (prompt: string) => void;
   busy: boolean;
+  reasoning?: string | null;
 }) {
   const [prompt, setPrompt] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -60,6 +62,11 @@ export function PromptScreen({
         </button>
       </div>
 
+      {busy && reasoning && (
+        <p key={reasoning} className="prompt-reasoning">
+          {reasoning}
+        </p>
+      )}
     </GlassPanel>
   );
 }

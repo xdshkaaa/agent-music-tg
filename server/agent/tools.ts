@@ -184,7 +184,7 @@ export async function dispatchTool(
   }
 }
 
-/** Build the `tools` payload for the OpenAI-compatible Chat Completions API (OpenAI/OpenRouter/Ollama). */
+/** Build the `tools` payload for the OpenAI-compatible Chat Completions API (OpenAI/CheapVibeCode/Ollama). */
 export function toolsForOpenAIChat(specs: ToolSpec[]): unknown[] {
   return specs.map((s) => ({
     type: "function",

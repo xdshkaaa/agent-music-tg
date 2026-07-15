@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { streamSSE } from "hono/streaming";
 import type { AppDb } from "../db";
 import type { AppEnv } from "./context";
 import { requireAuth, requireAdmin } from "./middleware";
@@ -575,6 +576,34 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
     return c.json(outcome);
   });
 
+  app.post("/generate/stream", async (c) => {
+    const chatId = c.get("chatId");
+    const body = await readJsonBody<{ prompt: string }>(c.req.raw);
+    if (!body.prompt || body.prompt.trim().length === 0) {
+      return c.json({ error: "prompt is required" }, 400);
+    }
+    const prompt = body.prompt.trim();
+    return streamSSE(c, async (stream) => {
+      const outcome = await startGeneration(db, chatId, prompt, (e) => {
+        stream.writeSSE({ data: JSON.stringify({ type: "progress", text: e.text }) }).catch(() => {});
+      });
+      if (outcome.status === "clarify") {
+        setPendingClarify(db, chatId, {
+          kind: "awaiting_clarify",
+          messages: outcome.messages,
+          question: outcome.question,
+          options: outcome.options,
+        });
+        await stream.writeSSE({
+          data: JSON.stringify({ type: "outcome", outcome: { status: "clarify", question: outcome.question, options: outcome.options } }),
+        });
+        return;
+      }
+      clearSession(db, chatId);
+      await stream.writeSSE({ data: JSON.stringify({ type: "outcome", outcome }) });
+    });
+  });
+
   app.post("/generate/resume", async (c) => {
     const chatId = c.get("chatId");
     const body = await readJsonBody<{ answer: string }>(c.req.raw);
@@ -595,6 +624,36 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
     }
     clearSession(db, chatId);
     return c.json(outcome);
+  });
+
+  app.post("/generate/resume/stream", async (c) => {
+    const chatId = c.get("chatId");
+    const body = await readJsonBody<{ answer: string }>(c.req.raw);
+    const pending = getPendingClarify(db, chatId);
+    if (!pending) return c.json({ error: "no pending clarification for this chat" }, 400);
+    if (!body.answer || body.answer.trim().length === 0) {
+      return c.json({ error: "answer is required" }, 400);
+    }
+    const answer = body.answer.trim();
+    return streamSSE(c, async (stream) => {
+      const outcome = await resumeGeneration(db, chatId, "", pending.messages, answer, (e) => {
+        stream.writeSSE({ data: JSON.stringify({ type: "progress", text: e.text }) }).catch(() => {});
+      });
+      if (outcome.status === "clarify") {
+        setPendingClarify(db, chatId, {
+          kind: "awaiting_clarify",
+          messages: outcome.messages,
+          question: outcome.question,
+          options: outcome.options,
+        });
+        await stream.writeSSE({
+          data: JSON.stringify({ type: "outcome", outcome: { status: "clarify", question: outcome.question, options: outcome.options } }),
+        });
+        return;
+      }
+      clearSession(db, chatId);
+      await stream.writeSSE({ data: JSON.stringify({ type: "outcome", outcome }) });
+    });
   });
 
   return app;
