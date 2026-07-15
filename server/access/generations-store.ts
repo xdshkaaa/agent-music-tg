@@ -139,6 +139,13 @@ export function saveGeneration(db: AppDb, chatId: number, id: number): boolean {
   return info.changes > 0;
 }
 
+export function renameGeneration(db: AppDb, chatId: number, id: number, name: string): boolean {
+  const info = db
+    .query(`UPDATE generations SET playlist_name = ? WHERE id = ? AND chat_id = ?`)
+    .run(name, id, chatId);
+  return info.changes > 0;
+}
+
 export function unsaveGeneration(db: AppDb, chatId: number, id: number): boolean {
   const info = db
     .query(`UPDATE generations SET saved = 0 WHERE id = ? AND chat_id = ?`)

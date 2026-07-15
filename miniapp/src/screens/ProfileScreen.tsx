@@ -310,6 +310,48 @@ function LibrarySection({
 
 type ProfileTab = "Покупки" | "Библиотека";
 
+const MUSIC_BACKENDS = ["youtube-music", "soundcloud"] as const;
+type MusicBackendId = (typeof MUSIC_BACKENDS)[number];
+
+function MusicBackendPicker({ me }: { me: MeResponse | null }) {
+  const [backend, setBackend] = useState<MusicBackendId>(
+    (me?.musicBackend as MusicBackendId | null) ?? "youtube-music",
+  );
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (me?.musicBackend) setBackend(me.musicBackend as MusicBackendId);
+  }, [me?.musicBackend]);
+
+  async function handleChange(id: MusicBackendId) {
+    const previous = backend;
+    setBackend(id);
+    setSaving(true);
+    try {
+      await api.setMyMusicBackend(id);
+    } catch {
+      setBackend(previous);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="admin-settings-bar-item">
+      <span className="admin-settings-bar-label icon-row">
+        <MusicNotes size={13} weight="bold" /> Музыка
+      </span>
+      <Segmented<MusicBackendId>
+        ariaLabel="Источник музыки"
+        options={MUSIC_BACKENDS}
+        value={backend}
+        onChange={handleChange}
+      />
+      {saving && <CircleNotch size={14} className="spin" style={{ marginLeft: 8 }} />}
+    </div>
+  );
+}
+
 export default function ProfileScreen({
   me,
   onGoShop,
@@ -380,6 +422,10 @@ export default function ProfileScreen({
             <Plus size={18} weight="bold" />
             Пополнить
           </button>
+        </div>
+
+        <div className="admin-settings-bar" style={{ marginTop: 14, padding: "14px 0 0" }}>
+          <MusicBackendPicker me={me} />
         </div>
       </GlassPanel>
 

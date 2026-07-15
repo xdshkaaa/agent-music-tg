@@ -118,13 +118,20 @@ export function PlayerScreen({ onClose }: { onClose: () => void }) {
 
         <div className="player-screen-artwork">
           {track?.artwork && !artworkError ? (
-            <img
-              className="player-screen-artwork-img"
-              src={hiResArtwork(track.artwork)}
-              alt=""
-              loading="lazy"
-              onError={() => setArtworkError(true)}
-            />
+            <>
+              <div
+                className="player-screen-artwork-backdrop"
+                style={{ backgroundImage: `url(${hiResArtwork(track.artwork)})` }}
+                aria-hidden="true"
+              />
+              <img
+                className="player-screen-artwork-img"
+                src={hiResArtwork(track.artwork)}
+                alt=""
+                loading="lazy"
+                onError={() => setArtworkError(true)}
+              />
+            </>
           ) : (
             <div className="player-screen-artwork-placeholder" />
           )}

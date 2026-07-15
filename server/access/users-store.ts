@@ -12,6 +12,7 @@ export interface User {
   trialClaimedAt: number | null;
   firstSeen: number;
   lastSeen: number;
+  musicBackend: string | null;
 }
 
 interface UserRow {
@@ -25,6 +26,7 @@ interface UserRow {
   trial_claimed_at: number | null;
   first_seen: number;
   last_seen: number;
+  music_backend: string | null;
 }
 
 function toUser(row: UserRow): User {
@@ -39,6 +41,7 @@ function toUser(row: UserRow): User {
     trialClaimedAt: row.trial_claimed_at,
     firstSeen: row.first_seen,
     lastSeen: row.last_seen,
+    musicBackend: row.music_backend,
   };
 }
 
@@ -114,6 +117,19 @@ export function revokeSubscription(db: AppDb, chatId: number, grantedBy?: number
 export function setPhotoFileId(db: AppDb, chatId: number, fileId: string): void {
   ensureUser(db, chatId);
   db.query(`UPDATE users SET photo_file_id = ? WHERE chat_id = ?`).run(fileId, chatId);
+}
+
+/** Per-user music provider override. `null` clears it back to the admin default. */
+export function setUserMusicBackend(db: AppDb, chatId: number, backend: string | null): void {
+  ensureUser(db, chatId);
+  db.query(`UPDATE users SET music_backend = ? WHERE chat_id = ?`).run(backend, chatId);
+}
+
+export function getUserMusicBackend(db: AppDb, chatId: number): string | null {
+  const row = db
+    .query<{ music_backend: string | null }, [number]>(`SELECT music_backend FROM users WHERE chat_id = ?`)
+    .get(chatId);
+  return row?.music_backend ?? null;
 }
 
 /**
