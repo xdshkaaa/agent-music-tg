@@ -147,9 +147,9 @@ function migrate(db: AppDb): void {
   // downloads.updated_at: touched on every status/track write so a stale
   // pending/processing row (crash/restart mid-job) can be detected by age.
   try {
-    db.run(`ALTER TABLE downloads ADD COLUMN updated_at INTEGER NOT NULL DEFAULT (unixepoch());`);
-    db.run(`UPDATE downloads SET updated_at = created_at WHERE updated_at IS NULL;`);
+    db.run(`ALTER TABLE downloads ADD COLUMN updated_at INTEGER;`);
   } catch {}
+  db.run(`UPDATE downloads SET updated_at = created_at WHERE updated_at IS NULL;`);
 
   db.run(`
     -- Telegram file_id cache: audio uploaded once, re-sent by file_id after.

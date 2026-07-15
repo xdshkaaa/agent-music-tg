@@ -18,6 +18,9 @@ import { btnText, heading } from "./emoji";
 
 export function createBot(db: AppDb): Bot<BotContext> {
   const bot = new Bot<BotContext>(env.telegramBotToken);
+  bot.catch((err) => {
+    console.error(`Bot handler error for update ${err.ctx.update.update_id}:`, err.error);
+  });
   bot.use(allowlistGate(db));
   bot.use(channelSubscriptionGate(db));
 

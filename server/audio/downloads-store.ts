@@ -59,8 +59,8 @@ export function insertDownload(
   const withStatus: DownloadTrack[] = tracks.map((t) => ({ ...t, status: "pending" }));
   const row = db
     .query<Row, [number, string, string]>(
-      `INSERT INTO downloads (chat_id, playlist_name, tracks_json, status)
-       VALUES (?, ?, ?, 'pending')
+      `INSERT INTO downloads (chat_id, playlist_name, tracks_json, status, updated_at)
+       VALUES (?, ?, ?, 'pending', unixepoch())
        RETURNING id, chat_id, playlist_name, tracks_json, status, created_at`,
     )
     .get(chatId, playlistName, JSON.stringify(withStatus));

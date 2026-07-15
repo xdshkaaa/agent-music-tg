@@ -149,9 +149,12 @@ export function ResultsScreen({
         </div>
       )}
       {download.kind === "error" && (
-        <div className="mt-12" style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <p role="alert" style={{ flex: 1, minWidth: 0 }}>
-            <WarningCircle size={16} weight="bold" /> {download.message}
+        <div className="error-row mt-12" style={{ fontSize: 13 }}>
+          <span className="error-row-icon">
+            <WarningCircle size={16} weight="bold" />
+          </span>
+          <p role="alert" className="error-row-message">
+            {download.message}
           </p>
           <button className="glass-button" onClick={() => setDownload({ kind: "idle" })} style={{ padding: "6px 12px", fontSize: 13 }}>
             Повторить
@@ -163,42 +166,33 @@ export function ResultsScreen({
           <Plus size={18} />
           Новый плейлист
         </button>
-        {download.kind === "sent" ? (
-          <p
-            role="status"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "12px 18px",
-              borderRadius: "var(--radius-card, 16px)",
-              border: "1px solid var(--hairline)",
-              fontWeight: 700,
-              color: "var(--text-dark)",
-            }}
-          >
+        <button
+          className="glass-button primary icon-only"
+          onClick={handleDownload}
+          disabled={download.kind === "sending"}
+          aria-label={
+            download.kind === "sending"
+              ? "Отправляю в чат…"
+              : download.kind === "sent"
+                ? "Отправлено в чат"
+                : "Скачать"
+          }
+          title={
+            download.kind === "sending"
+              ? "Отправляю в чат…"
+              : download.kind === "sent"
+                ? "Отправлено в чат"
+                : "Скачать"
+          }
+        >
+          {download.kind === "sending" ? (
+            <CircleNotch size={18} className="spin" />
+          ) : download.kind === "sent" ? (
             <CheckCircle size={18} weight="fill" />
-            Отправлено в чат
-          </p>
-        ) : (
-          <button
-            className="glass-button primary"
-            onClick={handleDownload}
-            disabled={download.kind === "sending"}
-          >
-            {download.kind === "sending" ? (
-              <>
-                <CircleNotch size={18} className="spin" />
-                Отправляю в чат…
-              </>
-            ) : (
-              <>
-                <DownloadSimple size={18} />
-                Скачать
-              </>
-            )}
-          </button>
-        )}
+          ) : (
+            <DownloadSimple size={18} />
+          )}
+        </button>
       </div>
     </GlassPanel>
   );
