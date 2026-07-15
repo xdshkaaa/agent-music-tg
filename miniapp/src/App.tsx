@@ -50,9 +50,9 @@ const TAB_ORDER: Record<string, number> = {
   prompt: 0,
   clarify: 0,
   results: 0,
-  buy: 1,
-  profile: 2,
-  admin: 3,
+  buy: 2,
+  profile: 3,
+  admin: 4,
 };
 
 export function App() {
@@ -338,7 +338,21 @@ function AppInner() {
       </ScreenTransition>
 
       <PlayerBar onOpen={() => setShowPlayer(true)} />
-      <BottomNav tab={tab} isAdmin={isAdmin} onTab={(t) => { navigate(t === "shop" ? { kind: "buy" } : t === "create" ? lastCreateScreen : t === "profile" ? { kind: "profile" } : { kind: "admin" }); }} />
+      <BottomNav
+        tab={tab}
+        isAdmin={isAdmin}
+        onTab={(t) => {
+          navigate(
+            t === "shop"
+              ? { kind: "buy" }
+              : t === "create"
+                ? lastCreateScreen
+                : t === "profile"
+                  ? { kind: "profile" }
+                  : { kind: "admin" },
+          );
+        }}
+      />
     </main>
       {showPlayer && <PlayerScreen onClose={() => setShowPlayer(false)} />}
     </ErrorBoundary>

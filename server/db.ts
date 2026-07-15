@@ -86,6 +86,8 @@ function migrate(db: AppDb): void {
   try { db.run(`ALTER TABLE users ADD COLUMN trial_credits INTEGER NOT NULL DEFAULT 0;`); } catch {}
   try { db.run(`ALTER TABLE users ADD COLUMN trial_until INTEGER;`); } catch {}
   try { db.run(`ALTER TABLE users ADD COLUMN trial_claimed_at INTEGER;`); } catch {}
+  // Per-user music provider override; NULL means "use the admin default".
+  try { db.run(`ALTER TABLE users ADD COLUMN music_backend TEXT;`); } catch {}
 
   // Legacy invoices (crypto-only shape keyed by invoice_id) -> provider/external_id.
   const legacyInvoices = db

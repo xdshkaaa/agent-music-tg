@@ -4,7 +4,7 @@ import type { AppDb } from "../db";
 import type { AppEnv } from "./context";
 import { requireAuth, requireAdmin } from "./middleware";
 import { AVAILABLE_PROVIDERS, isProviderId, getProviderDefaults } from "../agent/registry";
-import { AVAILABLE_BACKENDS, isMusicBackend } from "../music/registry";
+import { AVAILABLE_BACKENDS, isMusicBackend, createMusicProvider } from "../music/registry";
 import {
   getActiveProviderId, setActiveProviderId,
   getActiveBackendId, setActiveBackendId,
@@ -16,8 +16,8 @@ import {
 } from "../lib/settings";
 import { getPendingClarify, setPendingClarify, clearSession } from "../bot/session";
 import { startGeneration, resumeGeneration, extendGeneration } from "../core/run-generation";
-import { getUser, upsertUser, listUsers, addCredits, extendSubscription, revokeSubscription, claimTrial, setPhotoFileId, type User } from "../access/users-store";
-import { countGenerations, saveGeneration, unsaveGeneration, listSavedGenerations } from "../access/generations-store";
+import { getUser, upsertUser, listUsers, addCredits, extendSubscription, revokeSubscription, claimTrial, setPhotoFileId, setUserMusicBackend, type User } from "../access/users-store";
+import { countGenerations, saveGeneration, unsaveGeneration, listSavedGenerations, renameGeneration } from "../access/generations-store";
 import { trialActive } from "../access/entitlements";
 import { env } from "../env";
 import {
@@ -42,6 +42,24 @@ import path from "node:path";
 
 const DEFAULT_PROVIDER = "opencode";
 const DEFAULT_BACKEND = "youtube-music";
+
+// Simple per-chat throttle for the free-text search endpoint (no LLM/credit
+// gate, so it needs its own guard against backend-scraping abuse).
+const SEARCH_RATE_LIMIT = 20;
+const SEARCH_RATE_WINDOW_MS = 60_000;
+const searchHits = new Map<number, number[]>();
+
+function isSearchRateLimited(chatId: number): boolean {
+  const now = Date.now();
+  const hits = (searchHits.get(chatId) ?? []).filter((t) => now - t < SEARCH_RATE_WINDOW_MS);
+  if (hits.length >= SEARCH_RATE_LIMIT) {
+    searchHits.set(chatId, hits);
+    return true;
+  }
+  hits.push(now);
+  searchHits.set(chatId, hits);
+  return false;
+}
 
 export interface ApiDeps {
   /** Sends a Telegram message; enables admin broadcast from the Mini App. */
@@ -188,11 +206,23 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
       trial: trialStatus(user),
       generationsUsed: countGenerations(db, c.get("chatId")),
       photoUrl,
+      musicBackend: user?.musicBackend ?? null,
       // Additive: present only when the bot previously recorded a @username
       // for this chat (via /start). Omitted (not null) when unknown, so the
       // MeResponse shape stays backward-compatible for older clients.
       ...(user?.username ? { username: user.username } : {}),
     });
+  });
+
+  // Per-user music provider override (null clears it back to the admin default).
+  app.post("/me/music-backend", async (c) => {
+    const body = await c.req.json().catch(() => null);
+    const id = body?.id;
+    if (id !== null && !isMusicBackend(id)) {
+      return c.json({ error: "invalid backend id" }, 400);
+    }
+    setUserMusicBackend(db, c.get("chatId"), id);
+    return c.json({ ok: true, musicBackend: id });
   });
 
   app.get("/avatar/:filename", async (c) => {
@@ -230,8 +260,42 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
     return c.json({ ok: true });
   });
 
+  app.patch("/generations/:id", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
+    const body = await c.req.json().catch(() => null);
+    const name = typeof body?.name === "string" ? body.name.trim() : "";
+    if (name.length === 0 || name.length > 200) return c.json({ error: "invalid name" }, 400);
+    const ok = renameGeneration(db, c.get("chatId"), id, name);
+    if (!ok) return c.json({ error: "not found" }, 404);
+    return c.json({ ok: true });
+  });
+
   app.get("/history", (c) => {
     return c.json({ history: listSavedGenerations(db, c.get("chatId")) });
+  });
+
+  // --- Plain search (no AI agent) ---------------------------------------
+
+  app.get("/search", async (c) => {
+    const chatId = c.get("chatId");
+    const q = (c.req.query("q") ?? "").trim().slice(0, 200);
+    if (!q) {
+      return c.json({ error: "q is required" }, 400);
+    }
+    if (isSearchRateLimited(chatId)) {
+      return c.json({ error: "too many requests" }, 429);
+    }
+    const limit = Math.min(Math.max(Number(c.req.query("limit")) || 20, 1), 30);
+    const backendId = getActiveBackendId(db, DEFAULT_BACKEND);
+    const music = createMusicProvider(isMusicBackend(backendId) ? backendId : DEFAULT_BACKEND);
+    try {
+      const tracks = await music.searchTracks(q, limit);
+      return c.json({ tracks });
+    } catch (e) {
+      console.error("[search]", e);
+      return c.json({ error: "search failed" }, 502);
+    }
   });
 
   // --- Offers & purchase -----------------------------------------------
