@@ -588,7 +588,7 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
     const prompt = body.prompt.trim();
     return streamSSE(c, async (stream) => {
       const outcome = await startGeneration(db, chatId, prompt, (e) => {
-        stream.writeSSE({ data: JSON.stringify({ type: "progress", text: e.text }) }).catch(() => {});
+        stream.writeSSE({ data: JSON.stringify({ type: "agent_event", event: e }) }).catch(() => {});
       });
       if (outcome.status === "clarify") {
         setPendingClarify(db, chatId, {
@@ -640,7 +640,7 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
     const answer = body.answer.trim();
     return streamSSE(c, async (stream) => {
       const outcome = await resumeGeneration(db, chatId, "", pending.messages, answer, (e) => {
-        stream.writeSSE({ data: JSON.stringify({ type: "progress", text: e.text }) }).catch(() => {});
+        stream.writeSSE({ data: JSON.stringify({ type: "agent_event", event: e }) }).catch(() => {});
       });
       if (outcome.status === "clarify") {
         setPendingClarify(db, chatId, {
