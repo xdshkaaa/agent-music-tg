@@ -20,6 +20,13 @@ const TONE_CLASS: Record<LineSegment["tone"], string> = {
   error: "reasoning-tone-error",
 };
 
+/** Marker glyphs map to a dot modifier class so CSS can style each kind distinctly. */
+const MARKER_CLASS: Record<string, string> = {
+  "⏺": "reasoning-dot-call",
+  "⎿": "reasoning-dot-result",
+  "·": "reasoning-dot-thought",
+};
+
 export function ReasoningTranscript({ events, collapsed, maxHeight = 160, friendly }: ReasoningTranscriptProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
@@ -45,7 +52,7 @@ export function ReasoningTranscript({ events, collapsed, maxHeight = 160, friend
     if (toolCount === 0) return null;
     return (
       <p className="reasoning-collapsed">
-        ✻ {toolCount} {toolCount === 1 ? "инструмент" : "инструментов"}
+        {toolCount} {toolCount === 1 ? "инструмент" : "инструментов"}
       </p>
     );
   }
@@ -56,7 +63,7 @@ export function ReasoningTranscript({ events, collapsed, maxHeight = 160, friend
     <div ref={scrollRef} className="reasoning-transcript" style={{ maxHeight }} onScroll={handleScroll}>
       {lines.map((line) => (
         <div key={line.key} className="reasoning-line" style={{ paddingLeft: line.depth * 16 }}>
-          <span className="reasoning-marker">{line.marker}</span>
+          <span className={`reasoning-dot ${MARKER_CLASS[line.marker] ?? ""}`} aria-hidden="true" />
           <span className="reasoning-text">
             {line.segments.map((seg, i) => (
               <span key={i} className={TONE_CLASS[seg.tone]}>

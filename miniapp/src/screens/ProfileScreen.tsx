@@ -351,17 +351,17 @@ export default function ProfileScreen({
             </span>
           )}
           <div>
-            <p style={{ fontWeight: 700, fontSize: 18, margin: 0 }}>{displayName(me)}</p>
+            <p style={{ fontWeight: 800, fontSize: 20, letterSpacing: "-0.01em", margin: 0 }}>{displayName(me)}</p>
           </div>
         </div>
 
         <div className="profile-stats">
           <div className="stack" style={{ gap: 4 }}>
-            <span className="text-muted icon-row" style={{ fontSize: 13 }}>
-              <Wallet size={15} weight="bold" /> Баланс
+            <span className="text-muted icon-row" style={{ fontSize: 12 }}>
+              <Wallet size={13} weight="bold" /> Баланс
             </span>
-            <span style={{ fontSize: 24, fontWeight: 700, fontFamily: "var(--font-display)", lineHeight: 1.1 }}>
-              {me?.credits ?? 0} ген
+            <span style={{ fontSize: 38, fontWeight: 800, fontFamily: "var(--font-display)", letterSpacing: "-0.02em", lineHeight: 1.05 }}>
+              {me?.credits ?? 0} <span style={{ fontSize: 18, fontWeight: 700 }}>ген</span>
             </span>
             {me?.trial.active && (
               <span className="text-muted" style={{ fontSize: 12, display: "inline-flex", alignItems: "center", gap: 4 }}>

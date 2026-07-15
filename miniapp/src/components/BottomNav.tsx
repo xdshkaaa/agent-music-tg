@@ -66,7 +66,7 @@ export function BottomNav({
               aria-current={tab === t.key ? "page" : undefined}
               onClick={() => onTab(t.key)}
             >
-              <Icon size={18} weight="bold" />
+              <Icon size={18} weight={tab === t.key ? "fill" : "bold"} />
               {t.label}
             </button>
           );
