@@ -34,6 +34,3 @@ export type AgentEvent =
   | { kind: "reasoning"; delta: string }
   | { kind: "tool_call"; id: string; name: string; args: Record<string, unknown> }
   | { kind: "tool_result"; id: string; ok: boolean; result: unknown };
-
-/** @deprecated use AgentEvent */
-export type AgentProgressEvent = AgentEvent;
