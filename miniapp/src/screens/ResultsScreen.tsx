@@ -3,7 +3,7 @@ import { BookmarkSimple, CheckCircle, CircleNotch, DownloadSimple, Plus, Warning
 import { GlassPanel } from "../components/GlassPanel";
 import { TrackPlayButton } from "../components/PlayerBar";
 import { usePlayer } from "../lib/player";
-import { api, type FinalizedPlaylist, type TrackVerificationStatus } from "../lib/api";
+import { api, type FinalizedPlaylist, type Track, type TrackVerificationStatus } from "../lib/api";
 
 type DownloadState = { kind: "idle" } | { kind: "sending" } | { kind: "sent" } | { kind: "error"; message: string };
 type ToastState = { message: string } | null;
@@ -22,6 +22,7 @@ export function ResultsScreen({
   const player = usePlayer();
   const [current, setCurrent] = useState<FinalizedPlaylist>(playlist);
   const [download, setDownload] = useState<DownloadState>({ kind: "idle" });
+  const [trackDownloads, setTrackDownloads] = useState<Record<string, DownloadState>>({});
   // URIs already sent to the chat: after an extend, «Скачать» delivers only
   // the newly added tracks instead of re-sending the whole playlist.
   const downloadedUris = useRef<Set<string>>(new Set());
@@ -103,6 +104,23 @@ export function ResultsScreen({
       window.dispatchEvent(new CustomEvent("download-created"));
     } catch (e) {
       setDownload({ kind: "error", message: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
+  async function handleTrackDownload(e: React.MouseEvent, track: Track) {
+    e.stopPropagation();
+    if (trackDownloads[track.uri]?.kind === "sending") return;
+    setTrackDownloads((m) => ({ ...m, [track.uri]: { kind: "sending" } }));
+    try {
+      await api.download(`${track.title} — ${track.artist}`, [track]);
+      downloadedUris.current.add(track.uri);
+      setTrackDownloads((m) => ({ ...m, [track.uri]: { kind: "sent" } }));
+      window.dispatchEvent(new CustomEvent("download-created"));
+    } catch (err) {
+      setTrackDownloads((m) => ({
+        ...m,
+        [track.uri]: { kind: "error", message: err instanceof Error ? err.message : String(err) },
+      }));
     }
   }
 
@@ -197,6 +215,34 @@ export function ResultsScreen({
               </p>
             </div>
             {verificationIcon(track.uri)}
+            <button
+              type="button"
+              className="icon-btn track-download-btn"
+              aria-label={
+                trackDownloads[track.uri]?.kind === "sending"
+                  ? "Отправляю…"
+                  : trackDownloads[track.uri]?.kind === "sent"
+                    ? "Отправлено в чат"
+                    : "Сохранить трек"
+              }
+              title={
+                trackDownloads[track.uri]?.kind === "sending"
+                  ? "Отправляю…"
+                  : trackDownloads[track.uri]?.kind === "sent"
+                    ? "Отправлено в чат"
+                    : "Сохранить трек"
+              }
+              disabled={trackDownloads[track.uri]?.kind === "sending"}
+              onClick={(e) => void handleTrackDownload(e, track)}
+            >
+              {trackDownloads[track.uri]?.kind === "sending" ? (
+                <CircleNotch size={18} className="spin" />
+              ) : trackDownloads[track.uri]?.kind === "sent" ? (
+                <CheckCircle size={18} weight="fill" />
+              ) : (
+                <DownloadSimple size={18} />
+              )}
+            </button>
             <TrackPlayButton
               track={{ uri: track.uri, title: track.title, artist: track.artist, artwork: track.artwork }}
               queue={current.tracks.map((t) => ({ uri: t.uri, title: t.title, artist: t.artist, artwork: t.artwork }))}

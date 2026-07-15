@@ -49,11 +49,28 @@ export function argSummary(args: Record<string, unknown>): string {
   return s.length > 40 ? `${s.slice(0, 39)}…` : s;
 }
 
-/** Compact one-line result: string as-is, title/uri/error picked out, else JSON. */
+/** One item from a list result, reduced to its most human-readable field. */
+function itemSummary(item: unknown): string {
+  if (typeof item === "string") return item;
+  if (item && typeof item === "object") {
+    const r = item as Record<string, unknown>;
+    if (typeof r.title === "string") return typeof r.artist === "string" ? `${r.artist} – ${r.title}` : r.title;
+    if (typeof r.uri === "string") return r.uri;
+  }
+  return String(item);
+}
+
+/** Compact one-line result: string as-is, title/uri/error picked out, array as count + preview, else JSON. */
 export function resultSummary(result: unknown): string {
   let s: string;
   if (typeof result === "string") {
     s = result;
+  } else if (Array.isArray(result)) {
+    if (result.length === 0) s = "пусто";
+    else {
+      const preview = itemSummary(result[0]);
+      s = result.length === 1 ? preview : `${preview} + ещё ${result.length - 1}`;
+    }
   } else if (result && typeof result === "object") {
     const r = result as Record<string, unknown>;
     if (typeof r.error === "string") s = r.error;
