@@ -78,6 +78,33 @@ function searchResult(id: string, artist: string, title: string): AgentResult {
 }
 
 describe("generatePlaylist", () => {
+  test("onEvent emits structured tool_call/tool_result pairs with matching ids", async () => {
+    const events: unknown[] = [];
+    const provider = fakeProvider([
+      searchResult("call-1", "Burial", "Archangel"),
+      finalizeResult("Test", [{ artist: "Burial", title: "Archangel" }]),
+    ]);
+    const music = fakeMusic({ remotePlaylists: false });
+
+    await generatePlaylist({ provider, music, prompt: "test", onEvent: (e) => events.push(e) });
+
+    const call = events.find((e) => (e as { kind: string }).kind === "tool_call") as
+      | { kind: string; id: string; name: string; args: Record<string, unknown> }
+      | undefined;
+    const result = events.find((e) => (e as { kind: string }).kind === "tool_result") as
+      | { kind: string; id: string; ok: boolean; result: unknown }
+      | undefined;
+
+    expect(call).toBeDefined();
+    expect(call?.id).toBe("call-1");
+    expect(call?.name).toBe("searchTrack");
+    expect(call?.args).toEqual({ artist: "Burial", title: "Archangel" });
+
+    expect(result).toBeDefined();
+    expect(result?.id).toBe("call-1");
+    expect(result?.ok).toBe(true);
+  });
+
   test("finalizes against a playlist-capable backend (creates a real playlist)", async () => {
     const provider = fakeProvider([finalizeResult("Vibes", [{ artist: "A", title: "One" }])]);
     const music = fakeMusic({ remotePlaylists: true });

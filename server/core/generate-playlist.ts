@@ -1,4 +1,4 @@
-import type { AgentMessage, AgentProgressEvent, AgentProvider } from "../agent/types";
+import type { AgentEvent, AgentMessage, AgentProvider } from "../agent/types";
 import { MUSIC_AGENT_TOOLS, dispatchTool } from "../agent/tools";
 import { PLAYLIST_SYSTEM_PROMPT } from "../agent/prompts";
 import type { MusicProvider, Track } from "../music/types";
@@ -49,21 +49,7 @@ export interface GeneratePlaylistOptions {
   resumeMessages?: AgentMessage[];
   resumeClarifyAnswer?: string;
   /** Fired for live progress UI — never affects the run's outcome. */
-  onEvent?: (e: AgentProgressEvent) => void;
-}
-
-function describeToolCall(name: string, args: Record<string, unknown>): string {
-  switch (name) {
-    case "search_soundcloud":
-    case "search_youtube_music":
-      return `Ищу: «${String(args.query ?? "")}»`;
-    case "clarify":
-      return "Уточняю запрос…";
-    case "finalize_playlist":
-      return "Собираю плейлист…";
-    default:
-      return "Обрабатываю…";
-  }
+  onEvent?: (e: AgentEvent) => void;
 }
 
 export interface GeneratePlaylistResult {
@@ -176,10 +162,10 @@ export async function generatePlaylist(opts: GeneratePlaylistOptions): Promise<G
     consecutiveEmptyTurns = 0;
 
     if (result.text.trim().length > 0) {
-      opts.onEvent?.({ type: "assistant_text", text: result.text.trim().slice(0, 200) });
+      opts.onEvent?.({ kind: "reasoning", delta: result.text.trim() });
     }
     for (const call of calls) {
-      opts.onEvent?.({ type: "tool_call", text: describeToolCall(call.name, call.args) });
+      opts.onEvent?.({ kind: "tool_call", id: call.id, name: call.name, args: call.args });
     }
 
     const finalizeCall = calls.find((c) => c.name === "finalize_playlist") ?? null;
@@ -242,14 +228,17 @@ export async function generatePlaylist(opts: GeneratePlaylistOptions): Promise<G
           name: call.name,
           content: JSON.stringify(dispatchResult),
         };
+        opts.onEvent?.({ kind: "tool_result", id: call.id, ok: true, result: dispatchResult });
       } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
         slots[slot] = {
           role: "tool",
           callId: call.id,
           name: call.name,
-          content: e instanceof Error ? e.message : String(e),
+          content: message,
           isError: true,
         };
+        opts.onEvent?.({ kind: "tool_result", id: call.id, ok: false, result: message });
       }
     });
     for (const m of slots) {
