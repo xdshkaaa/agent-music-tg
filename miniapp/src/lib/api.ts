@@ -1,4 +1,5 @@
 import { getInitData } from "./telegram";
+import type { AgentEvent } from "./reasoning";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
@@ -215,11 +216,11 @@ export function streamUrl(uri: string): string {
 export type TrackVerificationStatus = "pending" | "checking" | "verified" | "unavailable";
 
 /**
- * Reads a text/event-stream response body and dispatches each frame. Progress
- * frames call onProgress; the terminal "outcome" frame resolves the promise.
+ * Reads a text/event-stream response body and dispatches each frame. Agent
+ * events call onEvent; the terminal "outcome" frame resolves the promise.
  * Uses fetch (not EventSource) so the initData header can ride along.
  */
-async function requestSSE<T>(path: string, body: unknown, onProgress: (text: string) => void): Promise<T> {
+async function requestSSE<T>(path: string, body: unknown, onEvent: (e: AgentEvent) => void): Promise<T> {
   const res = await fetch(path, {
     method: "POST",
     headers: { "content-type": "application/json", "X-Telegram-Init-Data": getInitData() },
@@ -241,8 +242,8 @@ async function requestSSE<T>(path: string, body: unknown, onProgress: (text: str
     for (const frame of frames) {
       const line = frame.split("\n").find((l) => l.startsWith("data:"));
       if (!line) continue;
-      const parsed = JSON.parse(line.slice(5).trim()) as { type: string; text?: string; outcome?: T };
-      if (parsed.type === "progress" && parsed.text) onProgress(parsed.text);
+      const parsed = JSON.parse(line.slice(5).trim()) as { type: string; event?: AgentEvent; outcome?: T };
+      if (parsed.type === "agent_event" && parsed.event) onEvent(parsed.event);
       else if (parsed.type === "outcome") return parsed.outcome as T;
     }
   }
@@ -269,10 +270,10 @@ export const api = {
     request<GenerateOutcome>("/api/generate", { method: "POST", body: JSON.stringify({ prompt }) }),
   generateResume: (answer: string) =>
     request<GenerateOutcome>("/api/generate/resume", { method: "POST", body: JSON.stringify({ answer }) }),
-  generateStream: (prompt: string, onProgress: (text: string) => void) =>
-    requestSSE<GenerateOutcome>("/api/generate/stream", { prompt }, onProgress),
-  generateResumeStream: (answer: string, onProgress: (text: string) => void) =>
-    requestSSE<GenerateOutcome>("/api/generate/resume/stream", { answer }, onProgress),
+  generateStream: (prompt: string, onEvent: (e: AgentEvent) => void) =>
+    requestSSE<GenerateOutcome>("/api/generate/stream", { prompt }, onEvent),
+  generateResumeStream: (answer: string, onEvent: (e: AgentEvent) => void) =>
+    requestSSE<GenerateOutcome>("/api/generate/resume/stream", { answer }, onEvent),
   adminSettings: () => request<AdminSettings>("/api/admin/settings"),
   setActiveProvider: (id: string) =>
     request<{ activeProvider: string }>("/api/admin/settings/provider", { method: "POST", body: JSON.stringify({ id }) }),

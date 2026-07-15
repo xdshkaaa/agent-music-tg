@@ -1,17 +1,19 @@
 import { useRef, useState } from "react";
 import { ArrowUp, CircleNotch } from "@phosphor-icons/react";
 import { GlassPanel } from "../components/GlassPanel";
+import { ReasoningTranscript } from "../components/ReasoningTranscript";
+import type { AgentEvent } from "../lib/reasoning";
 
 const MAX_INPUT_HEIGHT = 132;
 
 export function PromptScreen({
   onSubmit,
   busy,
-  reasoning,
+  events,
 }: {
   onSubmit: (prompt: string) => void;
   busy: boolean;
-  reasoning?: string | null;
+  events: AgentEvent[];
 }) {
   const [prompt, setPrompt] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -62,11 +64,7 @@ export function PromptScreen({
         </button>
       </div>
 
-      {busy && reasoning && (
-        <p key={reasoning} className="prompt-reasoning">
-          {reasoning}
-        </p>
-      )}
+      {events.length > 0 && <ReasoningTranscript events={events} collapsed={!busy} />}
     </GlassPanel>
   );
 }

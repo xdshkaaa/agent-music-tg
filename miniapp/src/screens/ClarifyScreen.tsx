@@ -1,18 +1,20 @@
 import { CaretRight, CircleNotch } from "@phosphor-icons/react";
 import { GlassPanel } from "../components/GlassPanel";
+import { ReasoningTranscript } from "../components/ReasoningTranscript";
+import type { AgentEvent } from "../lib/reasoning";
 
 export function ClarifyScreen({
   question,
   options,
   onAnswer,
   busy,
-  reasoning,
+  events,
 }: {
   question: string;
   options: string[];
   onAnswer: (answer: string) => void;
   busy: boolean;
-  reasoning?: string | null;
+  events: AgentEvent[];
 }) {
   return (
     <GlassPanel className="reveal">
@@ -32,11 +34,7 @@ export function ClarifyScreen({
           </button>
         ))}
       </div>
-      {busy && reasoning && (
-        <p key={reasoning} className="prompt-reasoning">
-          {reasoning}
-        </p>
-      )}
+      {events.length > 0 && <ReasoningTranscript events={events} collapsed={!busy} />}
     </GlassPanel>
   );
 }

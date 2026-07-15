@@ -10,6 +10,7 @@ import { ScreenTransition } from "./components/ScreenTransition";
 import { ErrorBanner } from "./components/ErrorBanner";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { api, type MeResponse, type FinalizedPlaylist, type ShopConfig } from "./lib/api";
+import { reduceEvents, type AgentEvent } from "./lib/reasoning";
 import { getTelegramWebApp, getColorScheme } from "./lib/telegram";
 import { PlayerProvider, usePlayer } from "./lib/player";
 import { PlayerBar } from "./components/PlayerBar";
@@ -80,7 +81,7 @@ function AppInner() {
   const [transitionDir, setTransitionDir] = useState<"forward" | "back">("forward");
   const [showPlayer, setShowPlayer] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [reasoning, setReasoning] = useState<string | null>(null);
+  const [events, setEvents] = useState<AgentEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [scheme, setScheme] = useState<"light" | "dark">(() => initialScheme());
   const [lastGenerate, setLastGenerate] = useState<{ prompt: string } | null>(null);
@@ -152,15 +153,14 @@ function AppInner() {
     setLastClarify(null);
     setBusy(true);
     setError(null);
-    setReasoning(null);
+    setEvents([]);
     try {
-      const outcome = await api.generateStream(prompt, setReasoning);
+      const outcome = await api.generateStream(prompt, (e) => setEvents((prev) => reduceEvents(prev, e)));
       applyOutcome(outcome);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
-      setReasoning(null);
     }
   }
 
@@ -168,15 +168,14 @@ function AppInner() {
     setLastClarify({ answer });
     setBusy(true);
     setError(null);
-    setReasoning(null);
+    setEvents([]);
     try {
-      const outcome = await api.generateResumeStream(answer, setReasoning);
+      const outcome = await api.generateResumeStream(answer, (e) => setEvents((prev) => reduceEvents(prev, e)));
       applyOutcome(outcome);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
-      setReasoning(null);
     }
   }
 
@@ -219,7 +218,7 @@ function AppInner() {
   function renderScreen(): ReactNode | null {
     switch (screen.kind) {
       case "prompt":
-        return <PromptScreen onSubmit={handleSubmit} busy={busy} reasoning={reasoning} />;
+        return <PromptScreen onSubmit={handleSubmit} busy={busy} events={events} />;
       case "clarify":
         return (
           <ClarifyScreen
@@ -227,7 +226,7 @@ function AppInner() {
             options={screen.options}
             onAnswer={handleClarifyAnswer}
             busy={busy}
-            reasoning={reasoning}
+            events={events}
           />
         );
       case "results":
