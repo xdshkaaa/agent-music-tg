@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-type GlassTone = "regular" | "subtle" | "prominent" | "tinted";
+type GlassTone = "regular" | "subtle" | "prominent" | "tinted" | "v2" | "v2-float";
 
 export function GlassPanel({
   children,
@@ -21,7 +21,7 @@ export function GlassPanel({
 }) {
   const cls = [
     "glass-surface",
-    `glass-${tone}`,
+    tone === "v2" ? "liquid-glass-v2" : tone === "v2-float" ? "liquid-glass-v2 liquid-glass-v2-float" : `glass-${tone}`,
     interactive ? "glass-interactive" : "",
     className ?? "",
   ]

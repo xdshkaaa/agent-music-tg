@@ -86,7 +86,7 @@ describe("shop offersKeyboard", () => {
 describe("shop purchasePromptText", () => {
   test("starts with the ДОСТУП header (clean text when emoji unset)", () => {
     const text = purchasePromptText();
-    expect(text.startsWith("<b>ДОСТУП ────</b>")).toBe(true);
+    expect(text.startsWith("<b>ДОСТУП</b>")).toBe(true);
     expect(text).toContain("Выберите пакет");
   });
 });

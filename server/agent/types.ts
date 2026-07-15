@@ -28,3 +28,9 @@ export interface AgentProvider {
   id: string;
   generateMessages(system: string, messages: AgentMessage[], tools: ToolSpec[]): Promise<AgentResult>;
 }
+
+/** A structured event emitted while the agent loop runs, for live progress UI. */
+export type AgentEvent =
+  | { kind: "reasoning"; delta: string }
+  | { kind: "tool_call"; id: string; name: string; args: Record<string, unknown> }
+  | { kind: "tool_result"; id: string; ok: boolean; result: unknown };

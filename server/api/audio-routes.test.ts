@@ -142,6 +142,22 @@ describe("POST /api/download", () => {
     });
     expect(res.status).toBe(409);
   });
+
+  test("a stale processing job (crashed/restarted mid-download) does not block new downloads", async () => {
+    const db = freshDb();
+    const app = makeApp(db);
+    const active = insertDownload(db, TEST_CHAT, "Busy", [{ uri: "ytm:x", title: "T", artist: "A" }]);
+    setDownloadStatus(db, active.id, "processing");
+    const staleAt = Math.floor((Date.now() - 20 * 60 * 1000) / 1000);
+    db.run(`UPDATE downloads SET updated_at = ? WHERE id = ?`, [staleAt, active.id]);
+
+    const res = await app.request("/download", {
+      method: "POST",
+      headers: authHeaders(TEST_CHAT),
+      body: JSON.stringify({ playlistName: "P", tracks: [{ uri: "ytm:abc" }] }),
+    });
+    expect(res.status).toBe(202);
+  });
 });
 
 describe("downloads history API", () => {

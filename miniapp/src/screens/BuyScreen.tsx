@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CaretRight, MagnifyingGlass, Check, CreditCard, Gift, Star } from "@phosphor-icons/react";
+import { CaretRight, CircleNotch, MagnifyingGlass, Check, CreditCard, Gift, Star } from "@phosphor-icons/react";
 import { GlassPanel } from "../components/GlassPanel";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { IconOrEmoji } from "../components/IconOrEmoji";
+import { TrackSkeleton } from "../components/TrackSkeleton";
 import { api, type Offer, type Invoice, type PaymentMethod, type TrialStatus } from "../lib/api";
 import { openPayUrl, openStarsInvoice } from "../lib/telegram";
 
@@ -19,24 +20,23 @@ function grantLabel(o: Offer): string {
 }
 
 function formatPrice(amount: string, asset: string): string {
-  const n = parseFloat(amount);
-  const formatted = Number.isInteger(n) ? String(n) : String(n);
-  return `${formatted} ${asset}`;
+  return `${parseFloat(amount)} ${asset}`;
 }
 
-export default function BuyScreen({ reason }: { reason?: string }) {
-  const [offers, setOffers] = useState<Offer[]>([]);
+export default function BuyScreen({ reason, isAdmin = false }: { reason?: string; isAdmin?: boolean }) {
+  const [offers, setOffers] = useState<Offer[] | null>(null);
   const [paidInvoices, setPaidInvoices] = useState<Invoice[]>([]);
   const [trial, setTrial] = useState<TrialStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [trialBusy, setTrialBusy] = useState(false);
-  const [query, setQuery] = useState("");
   const [category, setCategory] = useState<CategoryFilter>("all");
   const [showSuccess, setShowSuccess] = useState(false);
   const [trialSuccess, setTrialSuccess] = useState(false);
 
-  const prevCountRef = useRef(0);
+  // null until the first fetch lands, so pre-existing purchases
+  // don't fire the "payment received" toast on mount.
+  const prevCountRef = useRef<number | null>(null);
 
   const refresh = () =>
     Promise.all([api.offers(), api.purchases(), api.me()])
@@ -45,9 +45,11 @@ export default function BuyScreen({ reason }: { reason?: string }) {
         setTrial(me.trial);
         const paid = p.purchases.filter((i) => i.status === "paid");
         setPaidInvoices(paid);
-        if (paid.length > prevCountRef.current) {
+        if (prevCountRef.current !== null && paid.length > prevCountRef.current) {
           setShowSuccess(true);
           window.setTimeout(() => setShowSuccess(false), 2500);
+          // Purchase landed — refresh the header wallet chip without a reload.
+          window.dispatchEvent(new CustomEvent("balance-changed"));
         }
         prevCountRef.current = paid.length;
       })
@@ -59,14 +61,8 @@ export default function BuyScreen({ reason }: { reason?: string }) {
   }, []);
 
   const visible = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const filtered = offers.filter((o) => {
-      if (category !== "all" && o.grantKind !== category) return false;
-      if (q && !o.title.toLowerCase().includes(q)) return false;
-      return true;
-    });
-    return filtered;
-  }, [offers, query, category]);
+    return (offers ?? []).filter((o) => category === "all" || o.grantKind === category);
+  }, [offers, category]);
 
   async function buy(offerId: number, method: PaymentMethod = "crypto") {
     setBusyId(offerId);
@@ -85,6 +81,12 @@ export default function BuyScreen({ reason }: { reason?: string }) {
         });
       } else {
         openPayUrl(result.payUrl);
+        // Crypto payment happens outside the app (bot chat / browser); poll
+        // for the webhook-driven grant so balance/history catch up without
+        // requiring the user to manually leave and re-enter the screen.
+        window.setTimeout(() => void refresh(), 3000);
+        window.setTimeout(() => void refresh(), 8000);
+        window.setTimeout(() => void refresh(), 15000);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -110,7 +112,7 @@ export default function BuyScreen({ reason }: { reason?: string }) {
     }
   }
 
-  if (error && offers.length === 0) return <ErrorBanner message={error} onClose={() => setError(null)} onRetry={refresh} />;
+  if (error && !offers) return <ErrorBanner message={error} onClose={() => setError(null)} onRetry={refresh} isAdmin={isAdmin} />;
 
   return (
     <div className="stack">
@@ -119,11 +121,11 @@ export default function BuyScreen({ reason }: { reason?: string }) {
       )}
 
       {showSuccess && (
-        <div className="status-card" role="status">
-          <span className="status-icon">
+        <div className="status-card status-card--success" role="status">
+          <span className="status-icon status-icon--success">
             <Check size={20} weight="bold" />
           </span>
-          <span>Платёж получен — доступ активирован.</span>
+          <span>Платёж получен, доступ активирован.</span>
         </div>
       )}
 
@@ -133,7 +135,6 @@ export default function BuyScreen({ reason }: { reason?: string }) {
 
       {trial && !trial.claimed && (
         <GlassPanel className="reveal" tone="tinted">
-          <div className="section-label">БЕСПЛАТНО</div>
           <div className="trial-card-row">
             <span className="trial-card-info">
               <span className="trial-card-title" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Gift size={18} weight="bold" /> Бесплатный пакет</span>
@@ -155,17 +156,6 @@ export default function BuyScreen({ reason }: { reason?: string }) {
       )}
 
       <GlassPanel className="reveal">
-        <div className="search-wrap">
-          <MagnifyingGlass size={18} weight="bold" className="search-icon" />
-          <input
-            className="glass-input"
-            placeholder="Поиск по пакетам…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            style={{ paddingLeft: 42 }}
-          />
-        </div>
-
         <div className="category-pills">
           {CATEGORIES.map((c) => (
             <button
@@ -182,9 +172,10 @@ export default function BuyScreen({ reason }: { reason?: string }) {
       </GlassPanel>
 
       <GlassPanel className="reveal">
-        <div className="section-label">ПАКЕТЫ</div>
-        {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
-        {visible.length === 0 ? (
+        {error && <ErrorBanner message={error} onClose={() => setError(null)} isAdmin={isAdmin} />}
+        {offers === null ? (
+          <TrackSkeleton rows={3} />
+        ) : visible.length === 0 ? (
           <EmptyState icon={<MagnifyingGlass size={40} weight="bold" />} label="ничего не найдено" />
         ) : (
           <div className="stack">
@@ -206,8 +197,14 @@ export default function BuyScreen({ reason }: { reason?: string }) {
                     disabled={busyId === o.id}
                     onClick={() => buy(o.id, "crypto")}
                   >
-                    {formatPrice(o.amount, o.asset)}
-                    {!o.starsAmount && <CaretRight size={16} weight="bold" />}
+                    {busyId === o.id ? (
+                      <CircleNotch size={16} weight="bold" className="spin" />
+                    ) : (
+                      <>
+                        {formatPrice(o.amount, o.asset)}
+                        {!o.starsAmount && <CaretRight size={16} weight="bold" />}
+                      </>
+                    )}
                   </button>
                   {o.starsAmount && (
                     <button
@@ -216,7 +213,13 @@ export default function BuyScreen({ reason }: { reason?: string }) {
                       disabled={busyId === o.id}
                       onClick={() => buy(o.id, "stars")}
                     >
-                      {o.starsAmount} <Star size={14} weight="fill" />
+                      {busyId === o.id ? (
+                        <CircleNotch size={14} weight="bold" className="spin" />
+                      ) : (
+                        <>
+                          {o.starsAmount} <Star size={14} weight="fill" />
+                        </>
+                      )}
                     </button>
                   )}
                 </span>
@@ -228,8 +231,7 @@ export default function BuyScreen({ reason }: { reason?: string }) {
 
       {paidInvoices.length > 0 && (
         <GlassPanel className="reveal">
-          <div className="section-label">ИСТОРИЯ</div>
-          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+          <ul className="plain-list">
             {paidInvoices.map((p) => (
               <li key={p.id} style={{ padding: "8px 0", borderBottom: "1px solid var(--hairline)" }}>
                 #{p.id}: {p.amount} {p.asset === "XTR" ? <Star size={14} weight="fill" /> : p.asset}

@@ -58,7 +58,7 @@ const HEADER_TITLE_KEY = "header_title";
 const SHOP_DEFAULTS: ShopSettings = {
   shopName: "Playlist Bot",
   supportContact: "",
-  aboutText: "Опишите настроение или запрос — соберу плейлист. Доступ к генерации покупается через CryptoBot.",
+  aboutText: "Опишите настроение или запрос, соберу плейлист. Доступ к генерации покупается через CryptoBot.",
   headerIcon: "",
   headerTitle: "agent music",
 };
@@ -143,6 +143,23 @@ export function setPaymentsEnabled(db: AppDb, enabled: boolean | null): void {
     deleteSetting(db, PAYMENTS_ENABLED_KEY);
   } else {
     setSetting(db, PAYMENTS_ENABLED_KEY, enabled ? "true" : "false");
+  }
+}
+
+// --- Open access toggle (bypass the allowlist) ---------------------------
+
+const OPEN_ACCESS_KEY = "open_access";
+
+/** When true, any Telegram user may use the bot/Mini App (allowlist bypassed). */
+export function getOpenAccess(db: AppDb): boolean {
+  return getSetting(db, OPEN_ACCESS_KEY) === "true";
+}
+
+export function setOpenAccess(db: AppDb, enabled: boolean | null): void {
+  if (enabled === null) {
+    deleteSetting(db, OPEN_ACCESS_KEY);
+  } else {
+    setSetting(db, OPEN_ACCESS_KEY, enabled ? "true" : "false");
   }
 }
 

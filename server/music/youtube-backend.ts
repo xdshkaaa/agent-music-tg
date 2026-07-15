@@ -1,4 +1,7 @@
 import type { MusicProvider, ProviderCapabilities, Track } from "./types";
+import { withTimeout } from "../core/concurrency";
+
+const SEARCH_TIMEOUT_MS = 15_000;
 
 interface YtmApi {
   searchSongs(query: string): Promise<any[]>;
@@ -48,7 +51,7 @@ export class YouTubeMusicBackend implements MusicProvider {
 
   async searchTrack(artist: string, title: string): Promise<Track | null> {
     const api = await this.ensureApi();
-    const songs = await api.searchSongs(`${artist} ${title}`);
+    const songs = await withTimeout(api.searchSongs(`${artist} ${title}`), SEARCH_TIMEOUT_MS, [] as any[]);
     const want = normalizeName(artist);
     const match =
       songs.find((s) => {
@@ -56,6 +59,12 @@ export class YouTubeMusicBackend implements MusicProvider {
         return got === want || got.includes(want) || want.includes(got);
       }) ?? songs[0];
     return match ? toTrack(match) : null;
+  }
+
+  async searchTracks(query: string, limit = 10): Promise<Track[]> {
+    const api = await this.ensureApi();
+    const songs = await withTimeout(api.searchSongs(query), SEARCH_TIMEOUT_MS, [] as any[]);
+    return songs.slice(0, limit).map(toTrack);
   }
 
   async searchArtist(name: string): Promise<{ id: string; name: string } | null> {

@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { streamSSE, type SSEStreamingApi } from "hono/streaming";
 import type { AppDb } from "../db";
 import type { AppEnv } from "./context";
 import { requireAuth, requireAdmin } from "./middleware";
@@ -9,12 +10,14 @@ import {
   getActiveBackendId, setActiveBackendId,
   getProviderOverrides, setProviderOverrides,
   getPaymentsEnabled, setPaymentsEnabled,
+  getOpenAccess, setOpenAccess,
   getAllSettings, setSettingValue, createSetting,
   getShopSettings, setShopSettings,
 } from "../lib/settings";
 import { getPendingClarify, setPendingClarify, clearSession } from "../bot/session";
-import { startGeneration, resumeGeneration } from "../core/run-generation";
-import { getUser, upsertUser, listUsers, addCredits, extendSubscription, revokeSubscription, claimTrial, type User } from "../access/users-store";
+import { startGeneration, resumeGeneration, extendGeneration } from "../core/run-generation";
+import { getUser, upsertUser, listUsers, addCredits, extendSubscription, revokeSubscription, claimTrial, setPhotoFileId, type User } from "../access/users-store";
+import { countGenerations, saveGeneration, unsaveGeneration, listSavedGenerations } from "../access/generations-store";
 import { trialActive } from "../access/entitlements";
 import { env } from "../env";
 import {
@@ -98,6 +101,25 @@ async function readJsonBody<T extends Record<string, unknown>>(req: Request): Pr
   }
 }
 
+/**
+ * Last-resort SSE error handler: an unhandled exception inside a stream
+ * callback must still deliver a terminal outcome frame, otherwise the Mini App
+ * shows "stream ended without an outcome".
+ */
+async function sseErrorOutcome(e: Error, stream: SSEStreamingApi): Promise<void> {
+  console.error("[generate stream]", e);
+  try {
+    await stream.writeSSE({
+      data: JSON.stringify({
+        type: "outcome",
+        outcome: { status: "error", message: "Внутренняя ошибка сервера. Попробуйте ещё раз." },
+      }),
+    });
+  } catch {
+    // client already disconnected
+  }
+}
+
 export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
   app.use("*", requireAuth(db));
@@ -108,13 +130,36 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
     await next();
   });
 
+  // Fetch the user's current profile photo file_id from Telegram and persist
+  // it, so avatars work even for users who never sent /start (or changed photo).
+  async function fetchAndStorePhotoFileId(chatId: number): Promise<string | null> {
+    const res = await fetch(`https://api.telegram.org/bot${env.telegramBotToken}/getUserProfilePhotos?user_id=${chatId}&limit=1`);
+    const data = await res.json() as { ok: boolean; result?: { photos: { file_id: string }[][] } };
+    const first = data.ok ? data.result?.photos?.[0] : undefined;
+    const fileId = first && first.length > 0 ? first[first.length - 1]!.file_id : null;
+    if (fileId) setPhotoFileId(db, chatId, fileId);
+    return fileId;
+  }
+
   app.get("/me", async (c) => {
     const user = getUser(db, c.get("chatId"));
     let photoUrl: string | null = null;
-    if (user?.photoFileId) {
-      try {
-        const res = await fetch(`https://api.telegram.org/bot${env.telegramBotToken}/getFile?file_id=${user.photoFileId}`);
-        const data = await res.json() as { ok: boolean; result?: { file_path: string; file_unique_id: string } };
+    try {
+      let fileId = user?.photoFileId ?? null;
+      if (!fileId) {
+        fileId = await fetchAndStorePhotoFileId(c.get("chatId"));
+      }
+      if (fileId) {
+        let res = await fetch(`https://api.telegram.org/bot${env.telegramBotToken}/getFile?file_id=${fileId}`);
+        let data = await res.json() as { ok: boolean; result?: { file_path: string; file_unique_id: string } };
+        if (!data.ok && user?.photoFileId) {
+          // Stored file_id went stale (photo deleted/changed) — refresh it.
+          fileId = await fetchAndStorePhotoFileId(c.get("chatId"));
+          if (fileId) {
+            res = await fetch(`https://api.telegram.org/bot${env.telegramBotToken}/getFile?file_id=${fileId}`);
+            data = await res.json() as { ok: boolean; result?: { file_path: string; file_unique_id: string } };
+          }
+        }
         if (data.ok && data.result?.file_path) {
           const { file_path, file_unique_id } = data.result;
           if (isAnimatedAvatar(file_path) && file_unique_id) {
@@ -133,14 +178,15 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
             photoUrl = `https://api.telegram.org/file/bot${env.telegramBotToken}/${file_path}`;
           }
         }
-      } catch { /* photoUrl stays null */ }
-    }
+      }
+    } catch { /* photoUrl stays null */ }
     return c.json({
       chatId: c.get("chatId"),
       isAdmin: c.get("isAdmin"),
       credits: user?.credits ?? 0,
       subscriptionUntil: user?.subscriptionUntil ?? null,
       trial: trialStatus(user),
+      generationsUsed: countGenerations(db, c.get("chatId")),
       photoUrl,
       // Additive: present only when the bot previously recorded a @username
       // for this chat (via /start). Omitted (not null) when unknown, so the
@@ -164,6 +210,28 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
 
   app.get("/me/purchases", (c) => {
     return c.json({ purchases: listInvoicesForChat(db, c.get("chatId")) });
+  });
+
+  // --- Playlist history (opt-in) ----------------------------------------
+
+  app.post("/generations/:id/save", (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
+    const ok = saveGeneration(db, c.get("chatId"), id);
+    if (!ok) return c.json({ error: "not found" }, 404);
+    return c.json({ ok: true });
+  });
+
+  app.delete("/generations/:id/save", (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
+    const ok = unsaveGeneration(db, c.get("chatId"), id);
+    if (!ok) return c.json({ error: "not found" }, 404);
+    return c.json({ ok: true });
+  });
+
+  app.get("/history", (c) => {
+    return c.json({ history: listSavedGenerations(db, c.get("chatId")) });
   });
 
   // --- Offers & purchase -----------------------------------------------
@@ -233,8 +301,11 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
   // renders this screen for the calling chat.
 
   app.get("/admin/settings", requireAdmin, (c) => {
+    // Stored value may be a legacy/removed provider (e.g. "openrouter") — fall
+    // back to the default rather than surfacing an id the dropdown can't render.
+    const storedProvider = getActiveProviderId(db, DEFAULT_PROVIDER);
     return c.json({
-      activeProvider: getActiveProviderId(db, DEFAULT_PROVIDER),
+      activeProvider: isProviderId(storedProvider) ? storedProvider : DEFAULT_PROVIDER,
       activeBackend: getActiveBackendId(db, DEFAULT_BACKEND),
       availableProviders: AVAILABLE_PROVIDERS,
       availableBackends: AVAILABLE_BACKENDS,
@@ -507,6 +578,19 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
     return c.json({ ok: true });
   });
 
+  // --- Admin: open access toggle (allowlist bypass) -----------------------
+
+  app.get("/admin/access-config", requireAdmin, (c) => {
+    return c.json({ openAccess: getOpenAccess(db) });
+  });
+
+  app.post("/admin/access-config", requireAdmin, async (c) => {
+    const b = await readJsonBody<{ openAccess?: boolean }>(c.req.raw);
+    if (typeof b.openAccess !== "boolean") return c.json({ error: "openAccess must be boolean" }, 400);
+    setOpenAccess(db, b.openAccess);
+    return c.json({ ok: true });
+  });
+
   // --- Admin: grant history ----------------------------------------------
 
   app.get("/admin/grant-history", requireAdmin, (c) => {
@@ -540,14 +624,47 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
     if (outcome.status === "clarify") {
       setPendingClarify(db, chatId, {
         kind: "awaiting_clarify",
+        originalPrompt: body.prompt.trim(),
         messages: outcome.messages,
         question: outcome.question,
         options: outcome.options,
+        round: outcome.round,
       });
       return c.json({ status: "clarify", question: outcome.question, options: outcome.options });
     }
     clearSession(db, chatId);
+    if (outcome.status === "rate_limited") return c.json(outcome, 429);
     return c.json(outcome);
+  });
+
+  app.post("/generate/stream", async (c) => {
+    const chatId = c.get("chatId");
+    const body = await readJsonBody<{ prompt: string }>(c.req.raw);
+    if (!body.prompt || body.prompt.trim().length === 0) {
+      return c.json({ error: "prompt is required" }, 400);
+    }
+    const prompt = body.prompt.trim();
+    return streamSSE(c, async (stream) => {
+    const outcome = await startGeneration(db, chatId, prompt, (e) => {
+      stream.writeSSE({ data: JSON.stringify({ type: "agent_event", event: e }) }).catch(() => {});
+    });
+    if (outcome.status === "clarify") {
+      setPendingClarify(db, chatId, {
+        kind: "awaiting_clarify",
+        originalPrompt: prompt,
+        messages: outcome.messages,
+        question: outcome.question,
+        options: outcome.options,
+        round: outcome.round,
+      });
+        await stream.writeSSE({
+          data: JSON.stringify({ type: "outcome", outcome: { status: "clarify", question: outcome.question, options: outcome.options } }),
+        });
+        return;
+      }
+      clearSession(db, chatId);
+      await stream.writeSSE({ data: JSON.stringify({ type: "outcome", outcome }) });
+    }, sseErrorOutcome);
   });
 
   app.post("/generate/resume", async (c) => {
@@ -558,18 +675,120 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
     if (!body.answer || body.answer.trim().length === 0) {
       return c.json({ error: "answer is required" }, 400);
     }
-    const outcome = await resumeGeneration(db, chatId, "", pending.messages, body.answer.trim());
+    const outcome = await resumeGeneration(db, chatId, pending.originalPrompt, pending.messages, body.answer.trim(), pending.round);
     if (outcome.status === "clarify") {
       setPendingClarify(db, chatId, {
         kind: "awaiting_clarify",
+        originalPrompt: pending.originalPrompt,
         messages: outcome.messages,
         question: outcome.question,
         options: outcome.options,
+        round: outcome.round,
       });
       return c.json({ status: "clarify", question: outcome.question, options: outcome.options });
     }
-    clearSession(db, chatId);
+    // Keep the pending clarification on error/needs_purchase/rate_limited so the
+    // user can re-answer instead of being stranded with no session to resume.
+    if (outcome.status === "ok") clearSession(db, chatId);
     return c.json(outcome);
+  });
+
+  app.post("/generate/resume/stream", async (c) => {
+    const chatId = c.get("chatId");
+    const body = await readJsonBody<{ answer: string }>(c.req.raw);
+    const pending = getPendingClarify(db, chatId);
+    if (!pending) return c.json({ error: "no pending clarification for this chat" }, 400);
+    if (!body.answer || body.answer.trim().length === 0) {
+      return c.json({ error: "answer is required" }, 400);
+    }
+    const answer = body.answer.trim();
+    return streamSSE(c, async (stream) => {
+      const outcome = await resumeGeneration(db, chatId, pending.originalPrompt, pending.messages, answer, pending.round, (e) => {
+        stream.writeSSE({ data: JSON.stringify({ type: "agent_event", event: e }) }).catch(() => {});
+      });
+      if (outcome.status === "clarify") {
+        setPendingClarify(db, chatId, {
+          kind: "awaiting_clarify",
+          originalPrompt: pending.originalPrompt,
+          messages: outcome.messages,
+          question: outcome.question,
+          options: outcome.options,
+          round: outcome.round,
+        });
+        await stream.writeSSE({
+          data: JSON.stringify({ type: "outcome", outcome: { status: "clarify", question: outcome.question, options: outcome.options } }),
+        });
+        return;
+      }
+      // Keep the pending clarification on error/needs_purchase/rate_limited so
+      // the user can re-answer instead of being stranded with no session.
+      if (outcome.status === "ok") clearSession(db, chatId);
+      await stream.writeSSE({ data: JSON.stringify({ type: "outcome", outcome }) });
+    }, sseErrorOutcome);
+  });
+
+  app.post("/generate/extend", async (c) => {
+    const chatId = c.get("chatId");
+    const body = await readJsonBody<{ generationId: number; prompt: string }>(c.req.raw);
+    if (!body.generationId || typeof body.generationId !== "number") {
+      return c.json({ error: "generationId is required" }, 400);
+    }
+    if (!body.prompt || body.prompt.trim().length === 0) {
+      return c.json({ error: "prompt is required" }, 400);
+    }
+    const outcome = await extendGeneration(db, chatId, body.generationId, body.prompt.trim());
+    if (outcome.status === "clarify") {
+      setPendingClarify(db, chatId, {
+        kind: "awaiting_clarify",
+        originalPrompt: body.prompt.trim(),
+        messages: outcome.messages,
+        question: outcome.question,
+        options: outcome.options,
+        round: outcome.round,
+      });
+      return c.json({ status: "clarify", question: outcome.question, options: outcome.options });
+    }
+    // Only clear the session after a successful extend; keep any pending
+    // clarification from another flow intact on error/needs_purchase/rate_limited.
+    if (outcome.status === "ok") clearSession(db, chatId);
+    if (outcome.status === "rate_limited") return c.json(outcome, 429);
+    return c.json(outcome);
+  });
+
+  app.post("/generate/extend/stream", async (c) => {
+    const chatId = c.get("chatId");
+    const body = await readJsonBody<{ generationId: number; prompt: string }>(c.req.raw);
+    if (!body.generationId || typeof body.generationId !== "number") {
+      return c.json({ error: "generationId is required" }, 400);
+    }
+    if (!body.prompt || body.prompt.trim().length === 0) {
+      return c.json({ error: "prompt is required" }, 400);
+    }
+    const generationId = body.generationId;
+    const prompt = body.prompt.trim();
+    return streamSSE(c, async (stream) => {
+      const outcome = await extendGeneration(db, chatId, generationId, prompt, (e) => {
+        stream.writeSSE({ data: JSON.stringify({ type: "agent_event", event: e }) }).catch(() => {});
+      });
+      if (outcome.status === "clarify") {
+        setPendingClarify(db, chatId, {
+          kind: "awaiting_clarify",
+          originalPrompt: prompt,
+          messages: outcome.messages,
+          question: outcome.question,
+          options: outcome.options,
+          round: outcome.round,
+        });
+        await stream.writeSSE({
+          data: JSON.stringify({ type: "outcome", outcome: { status: "clarify", question: outcome.question, options: outcome.options } }),
+        });
+        return;
+      }
+      // Only clear the session after a successful extend; keep any pending
+      // clarification from another flow intact on error/needs_purchase/rate_limited.
+      if (outcome.status === "ok") clearSession(db, chatId);
+      await stream.writeSSE({ data: JSON.stringify({ type: "outcome", outcome }) });
+    }, sseErrorOutcome);
   });
 
   return app;

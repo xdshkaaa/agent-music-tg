@@ -10,7 +10,7 @@ export function EmptyState({
   action?: { label: string; onClick: () => void } | null;
 }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, padding: "16px 0" }}>
+    <div className="empty-state">
       <span className="chevron">{icon}</span>
       <p className="text-muted">{label}</p>
       {action && (

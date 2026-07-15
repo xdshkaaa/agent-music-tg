@@ -4,24 +4,23 @@ import { env } from "../env";
 import type { BotContext } from "./context";
 import { allowlistGate } from "./middleware";
 import { channelSubscriptionGate } from "./channel-subscription-gate";
-import { getPendingClarify, getPendingGeneratePrompt, setPendingClarify, clearSession } from "./session";
-import { startGeneration, resumeGeneration, formatPlaylistReply } from "../core/run-generation";
-import { deliverAutoAudio } from "./auto-audio";
 import { AVAILABLE_PROVIDERS, isProviderId } from "../agent/registry";
 import { AVAILABLE_BACKENDS, isMusicBackend } from "../music/registry";
 import { getActiveProviderId, setActiveProviderId, getActiveBackendId, setActiveBackendId, getShopSettings } from "../lib/settings";
 import { upsertUser, setPhotoFileId } from "../access/users-store";
-import { registerShop, sendOffers, purchasePromptText, showProfile } from "./shop";
+import { registerShop, buildProfileView, buildBuyView, type ShopView } from "./shop";
 import { registerAdminPanel, handleAdminText, menuKeyboard } from "./admin-panel";
-import { registerGenerate, showGenerate } from "./generate";
 import { registerCredits } from "./credits";
 import { registerModel } from "./model";
 import { registerReset } from "./reset";
-import { registerHistory, showHistory } from "./history";
+import { registerHistory, buildHistoryView } from "./history";
 import { btnText, heading } from "./emoji";
 
 export function createBot(db: AppDb): Bot<BotContext> {
   const bot = new Bot<BotContext>(env.telegramBotToken);
+  bot.catch((err) => {
+    console.error(`Bot handler error for update ${err.ctx.update.update_id}:`, err.error);
+  });
   bot.use(allowlistGate(db));
   bot.use(channelSubscriptionGate(db));
 
@@ -31,16 +30,30 @@ export function createBot(db: AppDb): Bot<BotContext> {
 
   function buildStartKeyboard(ctx: BotContext): InlineKeyboard {
     const kb = new InlineKeyboard()
-      .webApp(btnText("Открыть приложение", "sparkle"), env.publicOrigin).row()
-      .text(btnText("Купить", "ruler"), "nav:buy")
-      .text(btnText("Генерация", "music"), "nav:generate").row()
+      .webApp(btnText("Открыть приложение", "app"), env.publicOrigin).row()
+      .text(btnText("Купить", "money"), "nav:buy")
       .text(btnText("Профиль", "profile"), "nav:profile")
-      .text(btnText("История", "headphone"), "nav:history").row()
+      .text(btnText("История", "history"), "nav:history").row()
       .text(btnText("Поддержка", "info"), "nav:support").row();
     if (ctx.isAdmin) {
       kb.text(btnText("Админка", "gear"), "nav:admin");
     }
     return kb;
+  }
+
+  function buildMenuView(ctx: BotContext): ShopView {
+    const shop = getShopSettings(db);
+    const header = `<b>${heading("info", "AGENT MUSIC")}</b>`;
+    const bullets = ["• Сгенерируй плейлист", "• Купи доступ"].join("\n");
+    const body = `${shop.shopName}\n\n${shop.aboutText}`;
+    return { text: `${header}\n${bullets}\n\n${body}`, keyboard: buildStartKeyboard(ctx) };
+  }
+
+  function buildSupportView(): ShopView {
+    const shop = getShopSettings(db);
+    const text = shop.supportContact ? `Поддержка: ${shop.supportContact}` : "Контакт поддержки не указан.";
+    const kb = new InlineKeyboard().text(btnText("Назад", "back"), "nav:menu");
+    return { text, keyboard: kb };
   }
 
   bot.command("start", async (ctx) => {
@@ -52,18 +65,12 @@ export function createBot(db: AppDb): Bot<BotContext> {
         setPhotoFileId(db, ctx.chat.id, first[first.length - 1]!.file_id);
       }
     } catch { /* non-critical; profile will show placeholder */ }
-    const shop = getShopSettings(db);
-    const header = `<b>${heading("info", "AGENT MUSIC")}</b>`;
-    const bullets = ["• Сгенерируй плейлист", "• Купи доступ"].join("\n");
-    const body = `${shop.shopName}\n\n${shop.aboutText}`;
-    await ctx.reply(`${header}\n${bullets}\n\n${body}`, {
-      reply_markup: buildStartKeyboard(ctx),
-      parse_mode: "HTML",
-    });
+    const view = buildMenuView(ctx);
+    await ctx.reply(view.text, { reply_markup: view.keyboard, parse_mode: "HTML" });
   });
 
   bot.command("app", async (ctx) => {
-    const keyboard = new InlineKeyboard().webApp(btnText("Открыть приложение", "sparkle"), env.publicOrigin);
+    const keyboard = new InlineKeyboard().webApp(btnText("Открыть приложение", "app"), env.publicOrigin);
     await ctx.reply(`${heading("info", "Откройте мини-приложение:")}`, {
       reply_markup: keyboard,
       parse_mode: "HTML",
@@ -82,32 +89,44 @@ export function createBot(db: AppDb): Bot<BotContext> {
 
   registerShop(bot, db);
   registerAdminPanel(bot, db);
-  registerGenerate(bot, db);
   registerCredits(bot, db);
   registerModel(bot, db);
   registerReset(bot, db);
   registerHistory(bot, db);
 
+  async function editOrReply(ctx: BotContext, view: ShopView): Promise<void> {
+    try {
+      await ctx.editMessageText(view.text, { reply_markup: view.keyboard, parse_mode: "HTML" });
+    } catch {
+      await ctx.reply(view.text, { reply_markup: view.keyboard, parse_mode: "HTML" });
+    }
+  }
+
   bot.callbackQuery(/^nav:(\w+)$/, async (ctx) => {
     await ctx.answerCallbackQuery();
+    const chatId = ctx.chat!.id;
     switch (ctx.match[1]) {
-      case "buy":
-        await sendOffers(ctx, db, purchasePromptText());
+      case "menu":
+        await editOrReply(ctx, buildMenuView(ctx));
         break;
-      case "generate":
-        await showGenerate(ctx, db);
-        break;
-      case "profile":
-        await showProfile(ctx, db);
-        break;
-      case "history":
-        await showHistory(ctx, db);
-        break;
-      case "support": {
-        const shop = getShopSettings(db);
-        await ctx.reply(shop.supportContact ? `Поддержка: ${shop.supportContact}` : "Контакт поддержки не указан.");
+      case "buy": {
+        const view = buildBuyView(db, chatId);
+        if (!view) {
+          await ctx.reply("Пакеты пока не настроены. Загляните позже.");
+          break;
+        }
+        await editOrReply(ctx, view);
         break;
       }
+      case "profile":
+        await editOrReply(ctx, buildProfileView(db, chatId));
+        break;
+      case "history":
+        await editOrReply(ctx, buildHistoryView(db, chatId));
+        break;
+      case "support":
+        await editOrReply(ctx, buildSupportView());
+        break;
       case "admin": {
         if (!ctx.isAdmin) return;
         await ctx.reply("Админ-панель:", { reply_markup: menuKeyboard() });
@@ -148,9 +167,12 @@ export function createBot(db: AppDb): Bot<BotContext> {
     await ctx.reply(`Активный источник установлен: ${arg}.`);
   });
 
+  bot.api.setChatMenuButton({
+    menu_button: { type: "web_app", text: "Открыть", web_app: { url: env.publicOrigin } },
+  }).catch(() => {});
+
   bot.api.setMyCommands([
     { command: "start", description: "Главное меню" },
-    { command: "generate", description: "Сгенерировать плейлист" },
     { command: "credits", description: "Мои кредиты и подписка" },
     { command: "model", description: "Выбрать AI модель" },
     { command: "history", description: "История генераций" },
@@ -165,75 +187,15 @@ export function createBot(db: AppDb): Bot<BotContext> {
   bot.on("message:text", async (ctx) => {
     const chatId = ctx.chat.id;
     const text = ctx.message.text.trim();
-    if (text.startsWith("/")) return; // unknown commands: ignore rather than forwarding to generation
+    if (text.startsWith("/")) return; // unknown commands: ignore
 
     upsertUser(db, chatId, ctx.from?.username ?? null);
 
     // Admin multi-step flows (add offer / broadcast / settings) consume text first.
     if (await handleAdminText(ctx, db, send)) return;
 
-    // /generate without args expects the next text as the prompt.
-    const pendingGenerate = getPendingGeneratePrompt(db, chatId);
-    if (pendingGenerate) {
-      clearSession(db, chatId);
-      await ctx.replyWithChatAction("typing");
-      const outcome = await startGeneration(db, chatId, text);
-      if (outcome.status === "needs_purchase") {
-        await sendOffers(ctx, db, purchasePromptText());
-        return;
-      }
-      if (outcome.status === "clarify") {
-        setPendingClarify(db, chatId, {
-          kind: "awaiting_clarify",
-          messages: outcome.messages,
-          question: outcome.question,
-          options: outcome.options,
-        });
-        const optionsText = outcome.options.map((o, i) => `${i + 1}. ${o}`).join("\n");
-        await ctx.reply(`${outcome.question}\n\n${optionsText}`);
-        return;
-      }
-      if (outcome.status === "error") {
-        await ctx.reply(`Не удалось собрать плейлист: ${outcome.message}`);
-        return;
-      }
-      await ctx.reply(formatPlaylistReply(outcome.playlist), { parse_mode: "Markdown" });
-      deliverAutoAudio(db, chatId, outcome.playlist.tracks, outcome.playlist.name, ctx.api).catch(() => {});
-      return;
-    }
-
-    const pending = getPendingClarify(db, chatId);
-    await ctx.replyWithChatAction("typing");
-
-    const outcome = pending
-      ? await resumeGeneration(db, chatId, text, pending.messages, text)
-      : await startGeneration(db, chatId, text);
-
-    if (outcome.status === "needs_purchase") {
-      clearSession(db, chatId);
-      await sendOffers(ctx, db, purchasePromptText());
-      return;
-    }
-
-    if (outcome.status === "clarify") {
-      setPendingClarify(db, chatId, {
-        kind: "awaiting_clarify",
-        messages: outcome.messages,
-        question: outcome.question,
-        options: outcome.options,
-      });
-      const optionsText = outcome.options.map((o, i) => `${i + 1}. ${o}`).join("\n");
-      await ctx.reply(`${outcome.question}\n\n${optionsText}`);
-      return;
-    }
-
-    clearSession(db, chatId);
-    if (outcome.status === "error") {
-      await ctx.reply(`Не удалось собрать плейлист: ${outcome.message}`);
-      return;
-    }
-    await ctx.reply(formatPlaylistReply(outcome.playlist), { parse_mode: "Markdown" });
-    deliverAutoAudio(db, chatId, outcome.playlist.tracks, outcome.playlist.name, ctx.api).catch(() => {});
+    // Playlist generation happens only in the Mini App now.
+    await ctx.reply(`${heading("info", "Открой мини-приложение, чтобы сгенерировать плейлист.")}`, { parse_mode: "HTML" });
   });
 
   return bot;

@@ -8,10 +8,16 @@ const POLL_INTERVAL_MS = 60_000;
 
 export type OnFulfilled = (result: FulfillResult) => void | Promise<void>;
 
-async function pollOnce(db: AppDb, onFulfilled?: OnFulfilled): Promise<void> {
+type FetchInvoices = typeof getInvoices;
+
+export async function pollOnce(
+  db: AppDb,
+  onFulfilled?: OnFulfilled,
+  fetchInvoices: FetchInvoices = getInvoices,
+): Promise<void> {
   const pending = listPendingInvoices(db, "crypto");
   if (pending.length === 0) return;
-  const remote = await getInvoices(pending.map((i) => Number(i.externalId)));
+  const remote = await fetchInvoices(pending.map((i) => Number(i.externalId)));
   for (const inv of remote) {
     if (inv.status !== "paid") continue;
     const result = fulfillInvoice(db, inv.invoice_id);

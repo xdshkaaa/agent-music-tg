@@ -1,5 +1,6 @@
 import type { AgentMessage, AgentProvider, AgentResult, ToolCall, ToolSpec } from "../types";
 import { toolsForAnthropic } from "../tools";
+import { openaiCompatChat } from "../openai-compat";
 
 const DEFAULT_BASE_URL = "https://opencode.ai/zen/v1";
 const DEFAULT_MODEL = "claude-sonnet-5";
@@ -38,15 +39,26 @@ function toAnthropicMessages(messages: AgentMessage[]): Array<{ role: string; co
   return out;
 }
 
+// Anthropic-family models on opencode Zen speak the Messages API wire shape;
+// every other model on the gateway (DeepSeek, GLM, Kimi, gpt-oss, ...) speaks
+// the OpenAI Chat Completions-compat dialect instead.
+const ANTHROPIC_FAMILY_MODEL = /^claude-/i;
+
 /**
- * opencode's hosted Zen/Go gateway proxies to Anthropic-family models using
- * the same Messages API wire shape as anthropic.ts, but authenticates with a
- * plain `Authorization: Bearer <key>` (no x-api-key/anthropic-version
- * headers) — see https://opencode.ai/zen. Assumes a Zen-tier Anthropic-family
- * model (default claude-sonnet-5); Go-tier GLM/Kimi models speak the
- * OpenAI-compat dialect instead and would need a different transport.
+ * opencode's hosted Zen gateway proxies many model families behind one API
+ * key, but the two dialects need different transports: Anthropic-family
+ * models use the Messages API shape (below), everything else uses the shared
+ * OpenAI-compat chat-completions transport. Both authenticate with a plain
+ * `Authorization: Bearer <key>` — see https://opencode.ai/zen.
  */
 export function createOpencodeProvider(apiKey: string, baseUrl = DEFAULT_BASE_URL, model = DEFAULT_MODEL): AgentProvider {
+  if (!ANTHROPIC_FAMILY_MODEL.test(model)) {
+    return {
+      id: "opencode",
+      generateMessages: (system, messages, tools) => openaiCompatChat({ baseUrl, apiKey, model }, system, messages, tools),
+    };
+  }
+
   return {
     id: "opencode",
     async generateMessages(system: string, messages: AgentMessage[], tools: ToolSpec[]): Promise<AgentResult> {

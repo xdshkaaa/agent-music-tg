@@ -135,10 +135,13 @@ export async function processDownload(db: AppDb, record: DownloadRecord, deps: D
     setDownloadTracks(db, record.id, tracks);
   }
 
-  setDownloadStatus(db, record.id, finalStatusFor(tracks));
   try {
     await deps.sender.sendText(record.chatId, summaryText(record.playlistName, tracks));
   } catch {
-    // user may have blocked the bot — job status is already persisted
+    // user may have blocked the bot — status still gets finalized below
+  } finally {
+    // Always runs, even if sendText throws something unexpected, so the row
+    // can never wedge at "processing" past the end of this function.
+    setDownloadStatus(db, record.id, finalStatusFor(tracks));
   }
 }

@@ -52,7 +52,7 @@ export function IconOrEmoji({ icon, size, fallback }: {
           style={{
             width: size,
             height: size,
-            borderRadius: "50%",
+            borderRadius: size * 0.3,
             objectFit: "cover",
             display: "block",
           }}

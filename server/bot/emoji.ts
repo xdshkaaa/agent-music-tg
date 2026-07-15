@@ -1,15 +1,16 @@
 import type { Bot } from "grammy";
 import type { BotContext } from "./context";
-import { env } from "../env";
 
 /**
  * Optional Telegram Premium custom-emoji integration.
  *
- * When `EMOJI_STICKER_SET` is set, `loadCustomEmojis(bot)` fetches the named
- * sticker set once at startup and pairs each sticker's `custom_emoji_id` with
- * a symbolic name read from `emoji-symbols.json` (which maps
- * `custom_emoji_id → symbol`). The resulting `symbol → custom_emoji_id` map
- * is cached for the process lifetime.
+ * `loadCustomEmojis(bot)` reads `emoji-symbols.json` (which maps
+ * `custom_emoji_id → symbol`) and resolves every listed ID via
+ * `getCustomEmojiStickers` once at startup — the IDs are a flat personal
+ * custom-emoji export, not a bot-owned sticker set, so no `getStickerSet`
+ * lookup or set ownership is required. IDs Telegram doesn't return (deleted
+ * or invalid) are silently dropped. The resulting `symbol → custom_emoji_id`
+ * map is cached for the process lifetime.
  *
  * Surfaces (per the telegram-premium-emoji skill):
  *  - Message text: `accent(symbol)` returns a `<tg-emoji emoji-id="ID">…</tg-emoji>`
@@ -21,10 +22,9 @@ import { env } from "../env";
  *    `icon_custom_emoji_id`, never prepended to the label. When unmapped,
  *    returns `{ text: label }` (clean text, no emoji).
  *
- * When `EMOJI_STICKER_SET` is unset (or the fetch fails, or a symbol is not
- * mapped), bot messages use clean text with no emoji — the redesign's visual
- * identity lives in the Mini App regardless; the bot side unlocks the purple
- * glyphs once the sticker set is configured.
+ * When `emoji-symbols.json` is empty, the fetch fails, or a symbol is not
+ * mapped, bot messages use clean text with no emoji — the redesign's visual
+ * identity lives in the Mini App regardless.
  */
 
 /** Unicode fallback glyphs used as the visible inner text of <tg-emoji> tags. */
@@ -52,6 +52,15 @@ const FALLBACK: Record<string, string> = {
   link: "🔗",
   success_on: "🟢",
   success_off: "🔴",
+  fire: "🔥",
+  star: "⭐️",
+  trash: "🗑",
+  back: "◁",
+  search: "🔎",
+  bell: "🔔",
+  app: "🌐",
+  money: "💵",
+  history: "📖",
 };
 
 /**
@@ -68,15 +77,13 @@ const symbolToEmojiId = new Map<string, string>();
 let loaded = false;
 
 /**
- * Fetches the bot's custom-emoji sticker set once and populates
- * `symbolToEmojiId` from the `emoji-symbols.json` convention file.
- * Safe to call multiple times — only the first call does the fetch.
+ * Resolves every ID in the `emoji-symbols.json` convention file via
+ * `getCustomEmojiStickers` and populates `symbolToEmojiId`. Safe to call
+ * multiple times — only the first call does the fetch.
  */
 export async function loadCustomEmojis(bot: Bot<BotContext>): Promise<void> {
   if (loaded) return;
   loaded = true;
-  const setName = env.emojiStickerSet.trim();
-  if (!setName) return;
   let symbolsFile: Record<string, string>;
   try {
     const fs = await import("node:fs");
@@ -94,16 +101,21 @@ export async function loadCustomEmojis(bot: Bot<BotContext>): Promise<void> {
     idToSymbol.set(id, sym);
   }
   if (idToSymbol.size === 0) return;
+  // getCustomEmojiStickers accepts up to 200 IDs per call.
+  const ids = [...idToSymbol.keys()];
   try {
-    const set = await bot.api.getStickerSet(setName);
-    for (const sticker of set.stickers) {
-      const id = sticker.custom_emoji_id;
-      if (!id) continue;
-      const sym = idToSymbol.get(id);
-      if (sym) symbolToEmojiId.set(sym, id);
+    for (let i = 0; i < ids.length; i += 200) {
+      const batch = ids.slice(i, i + 200);
+      const stickers = await bot.api.getCustomEmojiStickers(batch);
+      for (const sticker of stickers) {
+        const id = sticker.custom_emoji_id;
+        if (!id) continue;
+        const sym = idToSymbol.get(id);
+        if (sym) symbolToEmojiId.set(sym, id);
+      }
     }
   } catch {
-    // sticker set not found / not owned by bot → leave map empty
+    // fetch failed → leave map empty, clean-text fallback will be used
   }
 }
 

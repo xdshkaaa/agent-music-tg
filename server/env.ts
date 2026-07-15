@@ -9,6 +9,13 @@ function bool(raw: string | undefined, fallback: boolean): boolean {
   return /^(1|true|yes|on)$/i.test(raw.trim());
 }
 
+function intWithDefault(raw: string | undefined, fallback: number): number {
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const n = Number(raw.trim());
+  if (!Number.isInteger(n) || n < 0) throw new Error(`Invalid integer in env: ${raw}`);
+  return n;
+}
+
 function splitChatIds(raw: string | undefined): number[] {
   if (!raw) return [];
   return raw
@@ -29,7 +36,7 @@ export const env = {
   publicOrigin: (process.env.PUBLIC_ORIGIN ?? "https://miniapp.xdshka.party").replace(/\/+$/, ""),
   anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
   openaiApiKey: process.env.OPENAI_API_KEY ?? "",
-  openrouterApiKey: process.env.OPENROUTER_API_KEY ?? "",
+  cheapvibecodeApiKey: process.env.CHEAPVIBECODE_API_KEY ?? "",
   opencodeApiKey: process.env.OPENCODE_API_KEY ?? "",
   opencodeBaseUrl: process.env.OPENCODE_BASE_URL ?? "https://opencode.ai/zen/v1",
   opencodeModel: process.env.OPENCODE_MODEL ?? "claude-sonnet-5",
@@ -40,12 +47,15 @@ export const env = {
   // CryptoBot Crypto Pay — payments feature. Token is required only when
   // paymentsEnabled is true; validated lazily by the payments client.
   paymentsEnabled: bool(process.env.PAYMENTS_ENABLED, true),
+  // Hourly cap on successful generations for subscription-only access.
+  // 0 disables the limit. Credit/trial users and admins are never limited.
+  subscriptionHourlyLimit: intWithDefault(process.env.SUBSCRIPTION_HOURLY_LIMIT, 25),
   cryptobotToken: process.env.CRYPTOBOT_TOKEN ?? "",
   cryptobotNetwork: (process.env.CRYPTOBOT_NETWORK ?? "mainnet").trim().toLowerCase() === "testnet" ? "testnet" : "mainnet",
-  // Optional Telegram Premium custom-emoji sticker set owned by the bot.
-  // When set, server/bot/emoji.ts fetches it once at startup and resolves
-  // symbolic names → custom_emoji_id for inline-button labels and <tg-emoji>
-  // message decorations. When unset, plain unicode emoji fallbacks are used.
+  // Unused: server/bot/emoji.ts now resolves Telegram Premium custom-emoji
+  // IDs straight from server/bot/emoji-symbols.json via getCustomEmojiStickers
+  // (no bot-owned sticker set required). Kept only so an existing
+  // EMOJI_STICKER_SET in a deployed .env doesn't error; safe to remove.
   emojiStickerSet: process.env.EMOJI_STICKER_SET ?? "",
   // Audio download/streaming: yt-dlp scratch dir (files deleted after upload)
   // and the on-disk stream cache with LRU size cap + TTL.
