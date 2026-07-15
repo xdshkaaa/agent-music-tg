@@ -12,7 +12,7 @@ import {
   type FinalizedPlaylist,
   type GeneratePlaylistOptions,
 } from "./generate-playlist";
-import type { AgentMessage, AgentProgressEvent } from "../agent/types";
+import type { AgentEvent, AgentMessage } from "../agent/types";
 import { verifyTracks, verificationStore } from "../audio/track-verification";
 import type { Extractor } from "../audio/extractor";
 
@@ -70,7 +70,7 @@ export async function startGeneration(
   db: AppDb,
   chatId: number,
   prompt: string,
-  onEvent?: (e: AgentProgressEvent) => void,
+  onEvent?: (e: AgentEvent) => void,
 ): Promise<GenerationOutcome> {
   if (!hasAccess(db, chatId)) return { status: "needs_purchase" };
   const outcome = await toOutcome(async () => {
@@ -92,7 +92,7 @@ export async function resumeGeneration(
   originalPrompt: string,
   resumeMessages: AgentMessage[],
   clarifyAnswer: string,
-  onEvent?: (e: AgentProgressEvent) => void,
+  onEvent?: (e: AgentEvent) => void,
 ): Promise<GenerationOutcome> {
   if (!hasAccess(db, chatId)) return { status: "needs_purchase" };
   const outcome = await toOutcome(async () => {
