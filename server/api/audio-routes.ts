@@ -63,8 +63,8 @@ export function createAudioRoutes(db: AppDb, deps: AudioDeps): Hono<AppEnv> {
 
   app.post("/download", async (c) => {
     const chatId = c.get("chatId");
-    if (!hasAccess(db, chatId)) return c.json({ error: "нет доступа — пополните баланс" }, 403);
-    if (hasActiveDownload(db, chatId)) return c.json({ error: "загрузка уже идёт — дождитесь завершения" }, 409);
+    if (!hasAccess(db, chatId)) return c.json({ error: "нет доступа, пополните баланс" }, 403);
+    if (hasActiveDownload(db, chatId)) return c.json({ error: "загрузка уже идёт, дождитесь завершения" }, 409);
 
     let body: DownloadBody;
     try {
@@ -90,7 +90,7 @@ export function createAudioRoutes(db: AppDb, deps: AudioDeps): Hono<AppEnv> {
     if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
     const record = getDownload(db, chatId, id);
     if (!record) return c.json({ error: "not found" }, 404);
-    if (hasActiveDownload(db, chatId)) return c.json({ error: "загрузка уже идёт — дождитесь завершения" }, 409);
+    if (hasActiveDownload(db, chatId)) return c.json({ error: "загрузка уже идёт, дождитесь завершения" }, 409);
 
     // Re-send as a fresh job over the same tracks: cached file_ids make this
     // near-instant; previously failed tracks get another attempt.

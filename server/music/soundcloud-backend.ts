@@ -97,6 +97,12 @@ export class SoundCloudBackend implements MusicProvider {
     return item ? toTrack(item) : null;
   }
 
+  async searchTracks(query: string, limit = 10): Promise<Track[]> {
+    const q = encodeURIComponent(query);
+    const data = await this.request(`/search/tracks?q=${q}&limit=${limit}`);
+    return ((data.collection ?? []) as any[]).slice(0, limit).map(toTrack);
+  }
+
   async searchArtist(name: string): Promise<{ id: string; name: string } | null> {
     const q = encodeURIComponent(name);
     const data = await this.request(`/search/users?q=${q}&limit=1`);

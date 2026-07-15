@@ -99,7 +99,7 @@ load_notify_config() {
 
 notify_telegram() {
   [ "$NOTIFY" != "true" ] && return
-  [ -z "$NOTIFY_TOKEN" ] && { warn "TELEGRAM_BOT_TOKEN not found in .env"; return; }
+  [ -z "$NOTIFY_TOKEN" ] && return
   [ -z "$NOTIFY_CHAT" ] && { warn "ADMIN_CHAT_IDS not found in .env"; return; }
   curl -fsS -X POST "https://api.telegram.org/bot$NOTIFY_TOKEN/sendMessage" \
     -d "chat_id=$NOTIFY_CHAT" \

@@ -5,7 +5,7 @@ import { bootstrapAllowlist } from "./lib/access-control";
 import { createBot } from "./bot";
 import { loadCustomEmojis, accent } from "./bot/emoji";
 import { createApiRoutes } from "./api/routes";
-import { setVerificationExtractor } from "./core/run-generation";
+import { setVerificationExtractor, setPrewarmStreamCache } from "./core/run-generation";
 import { verifyWebhookSignature, type WebhookUpdate } from "./payments/webhook";
 import { fulfillInvoice, type FulfillResult } from "./payments/fulfillment";
 import { startPoller } from "./payments/poller";
@@ -13,9 +13,14 @@ import { YtDlpExtractor } from "./audio/extractor";
 import { StreamCache } from "./audio/stream-cache";
 import { createTelegramAudioSender } from "./audio/telegram-sender";
 import type { AudioDeps } from "./api/audio-routes";
+import { reconcileStaleDownloads } from "./audio/downloads-store";
 
 const db = openDb(env.dbPath);
 bootstrapAllowlist(db);
+
+// Finalize any download rows left mid-job by a previous process (crash or
+// restart) so they can't wedge the active-download lock for that chat.
+reconcileStaleDownloads(db);
 
 // Long-polling, not a webhook: no public route needed for the bot itself,
 // only the Mini App + its API (see design.md — matches this VPS's existing
@@ -23,8 +28,8 @@ bootstrapAllowlist(db);
 const bot = createBot(db);
 
 // Best-effort: prime the premium-emoji map before the first update arrives.
-// When EMOJI_STICKER_SET is unset or the fetch fails, the map stays empty and
-// bot replies fall back to plain unicode emoji. See server/bot/emoji.ts.
+// When emoji-symbols.json is empty or the fetch fails, the map stays empty
+// and bot replies fall back to clean text. See server/bot/emoji.ts.
 void loadCustomEmojis(bot);
 
 const send = async (chatId: number, text: string): Promise<void> => {
@@ -90,6 +95,8 @@ const audio: AudioDeps = {
     ttlSeconds: env.streamCacheTtlSeconds,
   }),
 };
+// Warm the stream cache right after each generation so first playback is instant.
+setPrewarmStreamCache(audio.streamCache);
 
 app.route("/api", createApiRoutes(db, { send, createStarsInvoiceLink, audio }));
 

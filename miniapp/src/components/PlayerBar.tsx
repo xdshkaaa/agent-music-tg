@@ -1,9 +1,8 @@
-import { CircleNotch, Pause, Play, WarningCircle } from "@phosphor-icons/react";
+import { CircleNotch, Pause, Play, SkipForward, WarningCircle } from "@phosphor-icons/react";
 import { usePlayer, type PlayerTrackInfo } from "../lib/player";
-import { VolumeControl } from "./VolumeControl";
 
 /** Play/pause toggle for a track row; reflects the shared player's state. */
-export function TrackPlayButton({ track, stopPropagation, onBeforePlay }: { track: PlayerTrackInfo; stopPropagation?: boolean; onBeforePlay?: () => boolean | void }) {
+export function TrackPlayButton({ track, queue, stopPropagation, onBeforePlay }: { track: PlayerTrackInfo; queue?: PlayerTrackInfo[]; stopPropagation?: boolean; onBeforePlay?: () => boolean | void }) {
   const player = usePlayer();
   const isActive = player.track?.uri === track.uri;
   const status = isActive ? player.status : "idle";
@@ -27,7 +26,7 @@ export function TrackPlayButton({ track, stopPropagation, onBeforePlay }: { trac
       onClick={(e) => {
         if (stopPropagation) e.stopPropagation();
         if (onBeforePlay?.() === false) return;
-        player.toggle(track);
+        player.toggle(track, queue);
       }}
     >
       {icon}
@@ -39,61 +38,57 @@ export function TrackPlayButton({ track, stopPropagation, onBeforePlay }: { trac
 export function PlayerBar({ onOpen }: { onOpen?: () => void }) {
   const player = usePlayer();
   if (!player.track) return null;
-  const { track, status, progress } = player;
+  const { track, status } = player;
+  const hasNext = player.queueIndex >= 0 && player.queueIndex < player.queue.length - 1;
+
+  const playIcon =
+    status === "loading" ? (
+      <CircleNotch size={22} weight="bold" className="spin" />
+    ) : status === "playing" ? (
+      <Pause size={22} weight="fill" />
+    ) : status === "error" ? (
+      <WarningCircle size={22} weight="bold" />
+    ) : (
+      <Play size={22} weight="fill" />
+    );
 
   return (
-    <div
-      className={`player-bar glass${status === "playing" || status === "loading" ? " liquid-glow" : ""}`}
-      role="button"
-      aria-label="Открыть плеер"
-      tabIndex={0}
-      data-interactive
-      onClick={() => onOpen?.()}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onOpen?.(); }}
-    >
-      <div className="player-bar-row">
+    <div className="player-bar glass">
+      <button
+        type="button"
+        className="player-bar-open"
+        aria-label="Открыть плеер"
+        onClick={() => onOpen?.()}
+      >
         {track.artwork ? (
           <img className="player-bar-thumbnail" src={track.artwork} alt="" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
-        ) : null}
-        <TrackPlayButton track={track} stopPropagation />
-        <div className="player-info">
-          <p className="player-title">{track.title}</p>
-          <p className="player-artist text-muted">
+        ) : (
+          <div className="player-bar-thumbnail" aria-hidden="true" />
+        )}
+        <span className="player-info">
+          <span className="player-title">{track.title}</span>
+          <span className="player-artist text-muted">
             {status === "error" ? "Не удалось воспроизвести" : track.artist}
-          </p>
-        </div>
-      </div>
-      <div className="player-bar-divider" />
-      <div className="player-bar-row">
-        <div
-          className="player-progress"
-          role="slider"
-          aria-label="Прогресс"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={Math.round(progress * 100)}
-          tabIndex={0}
-          onClick={(e) => {
-            e.stopPropagation();
-            const rect = e.currentTarget.getBoundingClientRect();
-            player.seek((e.clientX - rect.left) / rect.width);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "ArrowRight") player.seek(progress + 0.05);
-            if (e.key === "ArrowLeft") player.seek(progress - 0.05);
-          }}
-        >
-          <span className="player-progress-fill" style={{ width: `${progress * 100}%` }} />
-        </div>
-        <VolumeControl
-          volume={player.volume}
-          muted={player.muted}
-          onSetVolume={player.setVolume}
-          onToggleMute={player.toggleMute}
-          variant="bar"
-          stopPropagation
-        />
-      </div>
+          </span>
+        </span>
+      </button>
+      <button
+        type="button"
+        className="player-bar-btn"
+        aria-label={status === "playing" ? `Пауза: ${track.title}` : `Слушать: ${track.title}`}
+        onClick={() => player.toggle(track)}
+      >
+        {playIcon}
+      </button>
+      <button
+        type="button"
+        className="player-bar-btn"
+        aria-label="Следующий трек"
+        disabled={!hasNext}
+        onClick={() => player.nextTrack()}
+      >
+        <SkipForward size={22} weight="fill" />
+      </button>
     </div>
   );
 }

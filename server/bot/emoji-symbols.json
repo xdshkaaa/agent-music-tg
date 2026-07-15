@@ -1,8 +1,30 @@
 {
-  "_comment": "Maps each Telegram custom_emoji_id (string) to a symbolic name used by server/bot/emoji.ts. Populate with the IDs from the bot's own custom-emoji sticker set (EMOJI_STICKER_SET). Entries here are paired with stickers returned by getStickerSet to build the symbol -> custom_emoji_id map at startup. Unknown IDs in the sticker set (not listed here) are silently skipped. Symbols referenced by the bot: info, diamond, music, stats, package, broadcast, gear, check, profile, wallet, plus, ruler, sparkle.",
+  "_comment": "Maps each Telegram custom_emoji_id (string) to a symbolic name used by server/bot/emoji.ts. Populated from a personal Unigram custom-emoji export (@SOUICdsgn, 119 IDs). Loaded via getCustomEmojiStickers at startup — no bot-owned sticker set required. Unknown/invalid IDs are silently skipped. Symbols referenced by the bot: info, diamond, music, stats, package, broadcast, gear, check, profile, wallet, plus, ruler, sparkle, gift, cross, warning, prohibited, headphone, crown, key, link, success_on, success_off, star, trash, back, search, bell.",
   "_format": "<custom_emoji_id as string>: <symbol>",
   "_example": {
     "5377637156164392589": "info",
     "5377637156164392590": "sparkle"
-  }
+  },
+  "5870609858520158157": "info",
+  "5870982283724328568": "gear",
+  "5870633910337015697": "check",
+  "5870994129244131212": "profile",
+  "5870741379008698885": "plus",
+  "5870657884844462243": "cross",
+  "5870931487146119264": "warning",
+  "5872988737826197458": "prohibited",
+  "5870704313440932932": "key",
+  "5870527201874546272": "link",
+  "5870563425628721113": "broadcast",
+  "5870930636742595124": "stats",
+  "5870794890006237381": "music",
+  "5870570722778156940": "package",
+  "5870801633104891858": "star",
+  "5870875489362513438": "trash",
+  "5870723666563566827": "back",
+  "5870974879200711167": "search",
+  "5870687545888607770": "bell",
+  "5870718740236079262": "app",
+  "5870478797593120516": "money",
+  "5870995890180722030": "history"
 }

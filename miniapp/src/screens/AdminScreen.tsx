@@ -40,6 +40,9 @@ const SETTINGS_LABELS: Record<AdminTab, string> = {
 
 const EMPTY_OFFER: OfferInput = { title: "", amount: "", asset: "USDT", starsAmount: null, icon: "", grantKind: "credits", grantAmount: 1 };
 
+// Crypto Pay-supported assets — a single one per offer (no comma-separated lists).
+const CRYPTO_ASSETS = ["USDT", "TON", "BTC", "ETH", "LTC", "BNB", "TRX", "USDC"] as const;
+
 // --- Existing panels (unchanged) ---
 
 function StatsPanel() {
@@ -105,7 +108,11 @@ function OfferForm({ initial, submitLabel, onSubmit, onCancel }: {
       <input className="glass-input" placeholder="Название" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required />
       <div className="row">
         <input className="glass-input" placeholder="Цена" inputMode="decimal" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} required />
-        <input className="glass-input" placeholder="Актив (USDT, TON…)" value={form.asset} onChange={(e) => setForm({ ...form, asset: e.target.value.toUpperCase() })} required />
+        <select className="glass-input" value={form.asset} onChange={(e) => setForm({ ...form, asset: e.target.value })} required>
+          {CRYPTO_ASSETS.map((a) => (
+            <option key={a} value={a}>{a}</option>
+          ))}
+        </select>
       </div>
       <input
         className="glass-input"
@@ -160,7 +167,7 @@ function OffersPanel() {
             <OfferForm key={o.id} initial={{ title: o.title, amount: o.amount, asset: o.asset, starsAmount: o.starsAmount, icon: o.icon ?? "", active: o.active, grantKind: o.grantKind, grantAmount: o.grantAmount }} submitLabel="Сохранить" onSubmit={async (input) => { await api.adminUpdateOffer(o.id, input); setEditing(null); refresh(); }} onCancel={() => setEditing(null)} />
           ) : (
             <div key={o.id} className="row wrap">
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>{o.active ? <Circle size={12} weight="fill" color="var(--accent-green-text)" /> : <Circle size={12} weight="regular" />} {o.icon ?? ""} {o.title} — {o.amount} {o.asset}{o.starsAmount ? ` / ${o.starsAmount} ` : ""}{o.starsAmount ? <Star size={12} weight="fill" /> : ""} ({o.grantKind === "subscription" ? `${o.grantAmount} дн.` : `${o.grantAmount} ген.`})</span>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>{o.active ? <Circle size={12} weight="fill" color="var(--accent-green-text)" /> : <Circle size={12} weight="regular" />} {o.icon ?? ""} {o.title}: {o.amount} {o.asset}{o.starsAmount ? ` / ${o.starsAmount} ` : ""}{o.starsAmount ? <Star size={12} weight="fill" /> : ""} ({o.grantKind === "subscription" ? `${o.grantAmount} дн.` : `${o.grantAmount} ген.`})</span>
               <button className="glass-button" onClick={() => setEditing(o)}>Изменить</button>
               <button className="glass-button" onClick={() => toggleActive(o)}>{o.active ? "Скрыть" : "Показать"}</button>
               <button className="glass-button" onClick={() => remove(o)}>Удалить</button>
@@ -663,6 +670,49 @@ function PaymentsPanel() {
   );
 }
 
+function AccessModePanel() {
+  const [openAccess, setOpenAccess] = useState<boolean | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api.adminAccessConfig().then((c) => setOpenAccess(c.openAccess)).catch((e) => setError(e.message));
+  }, []);
+
+  async function toggle() {
+    if (openAccess === null) return;
+    setBusy(true);
+    try {
+      await api.adminSetAccessConfig(!openAccess);
+      const updated = await api.adminAccessConfig();
+      setOpenAccess(updated.openAccess);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (error) return <GlassPanel role="alert"><WarningCircle size={18} weight="bold" /> {error}</GlassPanel>;
+  if (openAccess === null) return <GlassPanel>Загрузка…</GlassPanel>;
+
+  return (
+    <GlassPanel className="reveal">
+      <h2>Доступ</h2>
+      <p style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+        Режим: {openAccess
+          ? <><Circle size={12} weight="fill" color="var(--accent-green-text)" /> Открыт для всех</>
+          : <><Circle size={12} weight="fill" color="var(--accent-red-text)" /> Только белый список</>}
+      </p>
+      <div className="row mt-12">
+        <button className="glass-button primary" onClick={toggle} disabled={busy}>
+          {openAccess ? "Только белый список" : "Открыть для всех"}
+        </button>
+      </div>
+    </GlassPanel>
+  );
+}
+
 // --- Issuance panel (grant credits, subscription, history) ---------------
 
 function IssuancePanel() {
@@ -923,7 +973,12 @@ export default function AdminScreen() {
       {tab === "access" && <AccessPanel />}
       {tab === "providers" && <ProviderConfigPanel />}
       {tab === "settings" && <UnifiedSettingsPanel />}
-      {tab === "payments" && <PaymentsPanel />}
+      {tab === "payments" && (
+        <>
+          <PaymentsPanel />
+          <AccessModePanel />
+        </>
+      )}
       {tab === "broadcast" && <BroadcastPanel />}
     </div>
   );

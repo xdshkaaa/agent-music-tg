@@ -1,4 +1,5 @@
 import { getInitData } from "./telegram";
+import type { AgentEvent } from "./reasoning";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
@@ -31,6 +32,7 @@ export interface MeResponse {
   credits: number;
   subscriptionUntil: number | null;
   trial: TrialStatus;
+  generationsUsed: number;
 }
 
 export type GrantKind = "credits" | "subscription";
@@ -115,9 +117,10 @@ export interface FinalizedPlaylist {
 }
 
 export type GenerateOutcome =
-  | { status: "ok"; playlist: FinalizedPlaylist }
+  | { status: "ok"; playlist: FinalizedPlaylist; generationId: number }
   | { status: "clarify"; question: string; options: string[] }
   | { status: "needs_purchase" }
+  | { status: "rate_limited"; retryAt: number }
   | { status: "error"; message: string };
 
 export interface AdminSettings {
@@ -203,6 +206,15 @@ export interface DownloadRecord {
   createdAt: number;
 }
 
+export interface HistoryEntry {
+  id: number;
+  prompt: string;
+  playlistName: string | null;
+  trackCount: number | null;
+  tracks: Track[];
+  createdAt: number;
+}
+
 /**
  * Streaming URL for <audio src>: audio elements cannot set headers, so the
  * signed initData rides in the query string (accepted by requireAuth).
@@ -212,6 +224,41 @@ export function streamUrl(uri: string): string {
 }
 
 export type TrackVerificationStatus = "pending" | "checking" | "verified" | "unavailable";
+
+/**
+ * Reads a text/event-stream response body and dispatches each frame. Agent
+ * events call onEvent; the terminal "outcome" frame resolves the promise.
+ * Uses fetch (not EventSource) so the initData header can ride along.
+ */
+async function requestSSE<T>(path: string, body: unknown, onEvent: (e: AgentEvent) => void): Promise<T> {
+  const res = await fetch(path, {
+    method: "POST",
+    headers: { "content-type": "application/json", "X-Telegram-Init-Data": getInitData() },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok || !res.body) {
+    const parsed = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(parsed.error ?? `request failed: ${res.status}`);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const frames = buffer.split("\n\n");
+    buffer = frames.pop() ?? "";
+    for (const frame of frames) {
+      const line = frame.split("\n").find((l) => l.startsWith("data:"));
+      if (!line) continue;
+      const parsed = JSON.parse(line.slice(5).trim()) as { type: string; event?: AgentEvent; outcome?: T };
+      if (parsed.type === "agent_event" && parsed.event) onEvent(parsed.event);
+      else if (parsed.type === "outcome") return parsed.outcome as T;
+    }
+  }
+  throw new Error("stream ended without an outcome");
+}
 
 export const api = {
   me: () => request<MeResponse>("/api/me"),
@@ -233,6 +280,12 @@ export const api = {
     request<GenerateOutcome>("/api/generate", { method: "POST", body: JSON.stringify({ prompt }) }),
   generateResume: (answer: string) =>
     request<GenerateOutcome>("/api/generate/resume", { method: "POST", body: JSON.stringify({ answer }) }),
+  generateStream: (prompt: string, onEvent: (e: AgentEvent) => void) =>
+    requestSSE<GenerateOutcome>("/api/generate/stream", { prompt }, onEvent),
+  generateResumeStream: (answer: string, onEvent: (e: AgentEvent) => void) =>
+    requestSSE<GenerateOutcome>("/api/generate/resume/stream", { answer }, onEvent),
+  extendStream: (generationId: number, prompt: string, onEvent: (e: AgentEvent) => void) =>
+    requestSSE<GenerateOutcome>("/api/generate/extend/stream", { generationId, prompt }, onEvent),
   adminSettings: () => request<AdminSettings>("/api/admin/settings"),
   setActiveProvider: (id: string) =>
     request<{ activeProvider: string }>("/api/admin/settings/provider", { method: "POST", body: JSON.stringify({ id }) }),
@@ -251,6 +304,11 @@ export const api = {
     request<InvoiceResult>("/api/invoices", { method: "POST", body: JSON.stringify({ offerId, method }) }),
   purchases: () => request<{ purchases: Invoice[] }>("/api/me/purchases"),
   claimTrial: () => request<{ trial: TrialStatus }>("/api/trial/claim", { method: "POST" }),
+
+  // --- Playlist history ---
+  saveGeneration: (id: number) => request<{ ok: boolean }>(`/api/generations/${id}/save`, { method: "POST" }),
+  unsaveGeneration: (id: number) => request<{ ok: boolean }>(`/api/generations/${id}/save`, { method: "DELETE" }),
+  fetchHistory: () => request<{ history: HistoryEntry[] }>("/api/history"),
 
   // --- Admin: payments management ---
   adminStats: () => request<AdminStats>("/api/admin/stats"),
@@ -302,6 +360,9 @@ export const api = {
     request<{ ok: boolean }>(`/api/admin/all-settings/${encodeURIComponent(key)}`, { method: "POST", body: JSON.stringify({ value }) }),
 
   // --- Admin: payments toggle ---
+  adminAccessConfig: () => request<{ openAccess: boolean }>("/api/admin/access-config"),
+  adminSetAccessConfig: (openAccess: boolean) =>
+    request<{ ok: boolean }>("/api/admin/access-config", { method: "POST", body: JSON.stringify({ openAccess }) }),
   adminPaymentsConfig: () => request<PaymentsConfig>("/api/admin/payments-config"),
   adminSetPaymentsConfig: (paymentsEnabled: boolean | null) =>
     request<{ ok: boolean }>("/api/admin/payments-config", { method: "POST", body: JSON.stringify({ paymentsEnabled }) }),

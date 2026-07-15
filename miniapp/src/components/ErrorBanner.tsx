@@ -1,48 +1,97 @@
-import { useEffect, useState } from "react";
-import { X, WarningCircle } from "@phosphor-icons/react";
-import { GlassPanel } from "./GlassPanel";
+import { useEffect, useRef, useState } from "react";
+import { X, WarningCircle, ArrowsClockwise, CaretDown } from "@phosphor-icons/react";
+import { humanizeError } from "../lib/errorText";
 
 export function ErrorBanner({
   message,
   onClose,
   onRetry,
+  isAdmin = false,
 }: {
   message: string;
   onClose: () => void;
   onRetry?: () => void;
+  /** When true, reveals the technical "Подробнее" disclosure. */
+  isAdmin?: boolean;
 }) {
+  const friendly = humanizeError(message);
   const [visible, setVisible] = useState(true);
+  const [showDetail, setShowDetail] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    setVisible(true);
-    const timer = setTimeout(() => {
+  function clearTimer() {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+  }
+  function armTimer() {
+    clearTimer();
+    // Errors with a retry action need a decision from the user — don't let
+    // the action silently vanish while they're still reading it.
+    if (onRetry) return;
+    timer.current = setTimeout(() => {
       setVisible(false);
       onClose();
-    }, 8000);
-    return () => clearTimeout(timer);
-  }, [message, onClose]);
+    }, 10000);
+  }
+
+  // New error: reset state and (re)arm auto-dismiss.
+  useEffect(() => {
+    setVisible(true);
+    setShowDetail(false);
+    armTimer();
+    return clearTimer;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [message, onClose, onRetry]);
+
+  // While details are open, don't auto-dismiss; re-arm when collapsed.
+  useEffect(() => {
+    if (showDetail) clearTimer();
+    else armTimer();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showDetail]);
 
   if (!visible) return null;
 
   return (
-    <GlassPanel className="stack" role="alert" tone="tinted" style={{ "--glass-tint-color": "#ef4444" } as React.CSSProperties}>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-        <span style={{ flex: 1 }}><WarningCircle size={16} weight="bold" /> {message}</span>
+    <div className="error-toast" role="alert">
+      <div className="error-toast-main">
+        <WarningCircle size={18} weight="bold" className="error-toast-icon" aria-hidden="true" />
+        <p className="error-toast-text">{friendly.message}</p>
         <button
           type="button"
-          className="action-btn action-btn--neutral"
+          className="error-toast-close"
           aria-label="Закрыть"
-          onClick={() => { setVisible(false); onClose(); }}
-          style={{ flexShrink: 0, minWidth: 28, minHeight: 28 }}
+          onClick={() => {
+            clearTimer();
+            setVisible(false);
+            onClose();
+          }}
         >
           <X size={16} />
         </button>
       </div>
-      {onRetry && (
-        <button type="button" className="glass-button primary" onClick={onRetry} style={{ alignSelf: "flex-start" }}>
-          Повторить
-        </button>
+
+      {(onRetry || (isAdmin && friendly.detail)) && (
+        <div className="error-toast-actions">
+          {onRetry && (
+            <button type="button" className="error-toast-action" onClick={onRetry}>
+              <ArrowsClockwise size={14} weight="bold" /> Повторить
+            </button>
+          )}
+          {isAdmin && friendly.detail && (
+            <button
+              type="button"
+              className="error-toast-action"
+              aria-expanded={showDetail}
+              onClick={() => setShowDetail((v) => !v)}
+            >
+              <CaretDown size={14} weight="bold" className={showDetail ? "error-toast-caret-open" : ""} /> Подробнее
+            </button>
+          )}
+        </div>
       )}
-    </GlassPanel>
+
+      {showDetail && isAdmin && friendly.detail && <pre className="error-toast-detail">{friendly.detail}</pre>}
+    </div>
   );
 }

@@ -17,6 +17,24 @@ const searchTrackSpec: ToolSpec = {
   },
 };
 
+const searchTracksSpec: ToolSpec = {
+  name: "searchTracks",
+  description:
+    "Free-text search returning up to `limit` candidate tracks for a whole phrase " +
+    "(e.g. the user's exact request like \"kyokai no kanata soundtrack\"). " +
+    "Use this FIRST for short, named, or mood-based requests you don't have exact " +
+    "track titles for — it returns real, verified tracks you can finalize directly. " +
+    "Returns an array of {uri,title,artist,album?,durationMs?,artwork?}.",
+  parameters: {
+    type: "object",
+    properties: {
+      query: { type: "string", description: "The full search phrase — often the user's raw request." },
+      limit: { type: "integer", description: "How many candidate tracks to return (default 10).", minimum: 1, maximum: 25 },
+    },
+    required: ["query"],
+  },
+};
+
 const searchArtistSpec: ToolSpec = {
   name: "searchArtist",
   description:
@@ -93,12 +111,43 @@ const finalizePlaylistSpec: ToolSpec = {
   },
 };
 
+const addToPlaylistSpec: ToolSpec = {
+  name: "add_to_playlist",
+  description:
+    "Append tracks to the playlist being extended. Call one or more times while extending an " +
+    "existing playlist; each call queues the given tracks. Do NOT include tracks already in the " +
+    "existing playlist — they are shown in the system prompt. The harness merges these into the " +
+    "final playlist when you call finalize_playlist. `tracks` is an ordered list of new tracks " +
+    "(no more than 2-3 per artist).",
+  parameters: {
+    type: "object",
+    properties: {
+      tracks: {
+        type: "array",
+        description: "New tracks to add to the existing playlist.",
+        items: {
+          type: "object",
+          properties: {
+            artist: { type: "string" },
+            title: { type: "string" },
+          },
+          required: ["artist", "title"],
+        },
+        minItems: 1,
+      },
+    },
+    required: ["tracks"],
+  },
+};
+
 export const MUSIC_AGENT_TOOLS: ToolSpec[] = [
   searchTrackSpec,
+  searchTracksSpec,
   searchArtistSpec,
   getArtistTopTracksSpec,
   clarifySpec,
   finalizePlaylistSpec,
+  addToPlaylistSpec,
 ];
 
 export interface ToolDispatcherDeps {
@@ -135,6 +184,11 @@ export async function dispatchTool(
       const title = String(args.title ?? "");
       return trackToResult(await deps.music.searchTrack(artist, title));
     }
+    case "searchTracks": {
+      const query = String(args.query ?? "");
+      const limit = typeof args.limit === "number" ? args.limit : 10;
+      return (await deps.music.searchTracks(query, limit)).map(trackToResult);
+    }
     case "searchArtist": {
       return deps.music.searchArtist(String(args.name ?? ""));
     }
@@ -160,7 +214,7 @@ export async function dispatchTool(
   }
 }
 
-/** Build the `tools` payload for the OpenAI-compatible Chat Completions API (OpenAI/OpenRouter/Ollama). */
+/** Build the `tools` payload for the OpenAI-compatible Chat Completions API (OpenAI/CheapVibeCode/Ollama). */
 export function toolsForOpenAIChat(specs: ToolSpec[]): unknown[] {
   return specs.map((s) => ({
     type: "function",

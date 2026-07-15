@@ -1,16 +1,15 @@
 import { Bot } from "grammy";
 import type { AppDb } from "../db";
 import type { BotContext } from "./context";
-import { clearSession, getPendingClarify, getPendingGeneratePrompt } from "./session";
+import { clearSession, getPendingClarify } from "./session";
 import { heading } from "./emoji";
 
 export function registerReset(bot: Bot<BotContext>, db: AppDb): void {
   bot.command("reset", async (ctx) => {
     const chatId = ctx.chat.id;
     const hasClarify = getPendingClarify(db, chatId);
-    const hasGeneratePrompt = getPendingGeneratePrompt(db, chatId);
 
-    if (!hasClarify && !hasGeneratePrompt) {
+    if (!hasClarify) {
       await ctx.reply(`${heading("info", "Нет активной сессии для сброса.")}`, { parse_mode: "HTML" });
       return;
     }

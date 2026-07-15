@@ -68,7 +68,7 @@ async function showOffers(ctx: BotContext, db: AppDb): Promise<void> {
         ),
         `admin:offer:toggle:${o.id}`,
       )
-      .text(btnText("Удалить", "package", "danger"), `admin:offer:del:${o.id}`)
+      .text(btnText("Удалить", "trash", "danger"), `admin:offer:del:${o.id}`)
       .row();
   }
   kb.text(btnText("Добавить пакет", "plus"), "admin:addoffer");
@@ -98,7 +98,7 @@ async function showProviderSelection(ctx: BotContext, db: AppDb): Promise<void> 
     const label = id === active ? `✓ ${id}` : id;
     kb.text(btnText(label, "ruler", style), `admin:provider:set:${id}`).row();
   }
-  kb.text(btnText("Назад", "gear"), "admin:menu");
+  kb.text(btnText("Назад", "back"), "admin:menu");
   await ctx.reply(
     `<b>${heading("ruler", "Провайдер")}</b>\nАктивный: ${active}`,
     { reply_markup: kb, parse_mode: "HTML" },
@@ -113,7 +113,7 @@ async function showBackendSelection(ctx: BotContext, db: AppDb): Promise<void> {
     const label = id === active ? `✓ ${id}` : id;
     kb.text(btnText(label, "music", style), `admin:backend:set:${id}`).row();
   }
-  kb.text(btnText("Назад", "gear"), "admin:menu");
+  kb.text(btnText("Назад", "back"), "admin:menu");
   await ctx.reply(
     `<b>${heading("music", "Источник")}</b>\nАктивный: ${active}`,
     { reply_markup: kb, parse_mode: "HTML" },
@@ -138,7 +138,7 @@ async function showUsers(ctx: BotContext, db: AppDb): Promise<void> {
     .text(btnText("Начислить credits", "plus"), "admin:users:grant")
     .text(btnText("Продлить подписку", "plus"), "admin:users:sub").row()
     .text(btnText("Сбросить пробный пакет", "plus"), "admin:users:trial-reset").row()
-    .text(btnText("Назад", "gear"), "admin:menu");
+    .text(btnText("Назад", "back"), "admin:menu");
   await ctx.reply("Действия:", { reply_markup: kb });
 }
 
@@ -146,8 +146,8 @@ async function showIssuanceMenu(ctx: BotContext, db: AppDb): Promise<void> {
   const kb = new InlineKeyboard()
     .text(btnText("Начислить credits", "plus"), "admin:issuance:credits")
     .text(btnText("Продлить подписку", "plus"), "admin:issuance:sub").row()
-    .text(btnText("Отозвать подписку", "package", "danger"), "admin:issuance:revoke").row()
-    .text(btnText("Назад", "gear"), "admin:menu");
+    .text(btnText("Отозвать подписку", "trash", "danger"), "admin:issuance:revoke").row()
+    .text(btnText("Назад", "back"), "admin:menu");
   await ctx.reply(
     `<b>${heading("gear", "Выдача")}</b>\nУправление credits и подписками пользователей.`,
     { reply_markup: kb, parse_mode: "HTML" },
@@ -163,9 +163,9 @@ async function showAccessPanel(ctx: BotContext, db: AppDb): Promise<void> {
   );
   const kb = new InlineKeyboard()
     .text(btnText("Добавить", "plus"), "admin:access:add")
-    .text(btnText("Удалить", "package", "danger"), "admin:access:remove").row()
+    .text(btnText("Удалить", "trash", "danger"), "admin:access:remove").row()
     .text(btnText("Назначить админом", "ruler"), "admin:access:set-role").row()
-    .text(btnText("Назад", "gear"), "admin:menu");
+    .text(btnText("Назад", "back"), "admin:menu");
   await ctx.reply(
     `<b>${heading("gear", "Доступ")}</b>\n\n${lines.length ? lines.join("\n") : "Список пуст."}`,
     { reply_markup: kb, parse_mode: "HTML" },
@@ -191,7 +191,7 @@ async function showProviderConfig(ctx: BotContext, db: AppDb): Promise<void> {
   for (const id of AVAILABLE_PROVIDERS) {
     kb.text(btnText(id, "ruler"), `admin:provider-config:edit:${id}`).row();
   }
-  kb.text(btnText("Назад", "gear"), "admin:menu");
+  kb.text(btnText("Назад", "back"), "admin:menu");
   await ctx.reply(
     `<b>${heading("gear", "Конфигурация провайдеров")}</b>\n\n${lines.join("\n\n")}`,
     { reply_markup: kb, parse_mode: "HTML" },
@@ -205,7 +205,7 @@ async function showPaymentsPanel(ctx: BotContext, db: AppDb): Promise<void> {
   const statusEmoji = paymentsEnabled ? on : off;
   const kb = new InlineKeyboard()
     .text(btnText(paymentsEnabled ? "Выключить" : "Включить", "plus"), "admin:payments:toggle").row()
-    .text(btnText("Назад", "gear"), "admin:menu");
+    .text(btnText("Назад", "back"), "admin:menu");
   await ctx.reply(
     `<b>${heading("gear", "Платежи")}</b>\nСтатус: ${statusEmoji ? statusEmoji + " " : ""}${paymentsEnabled ? "Включены" : "Выключены"}`,
     { reply_markup: kb, parse_mode: "HTML" },
@@ -218,7 +218,7 @@ async function showAllSettings(ctx: BotContext, db: AppDb): Promise<void> {
   const kb = new InlineKeyboard()
     .text(btnText("Добавить", "plus"), "admin:all-settings:add").row()
     .text(btnText("Изменить", "ruler"), "admin:all-settings:edit").row()
-    .text(btnText("Назад", "gear"), "admin:menu");
+    .text(btnText("Назад", "back"), "admin:menu");
   await ctx.reply(
     `<b>${heading("gear", "Все настройки")}</b>\n\n${lines.length ? lines.join("\n") : "Нет настроек."}`,
     { reply_markup: kb, parse_mode: "HTML" },
@@ -247,10 +247,10 @@ async function showChannelGate(ctx: BotContext, db: AppDb): Promise<void> {
     .text(btnText("Добавить канал", "plus"), "admin:channel-gate:add").row();
 
   for (const ch of channels) {
-    kb.text(btnText(`Удалить ${ch.title}`, "package", "danger"), `admin:channel-gate:del:${ch.channelId}`).row();
+    kb.text(btnText(`Удалить ${ch.title}`, "trash", "danger"), `admin:channel-gate:del:${ch.channelId}`).row();
   }
 
-  kb.text(btnText("Назад", "gear"), "admin:menu");
+  kb.text(btnText("Назад", "back"), "admin:menu");
 
   await ctx.reply(
     `<b>${heading("gear", "Шлюз подписок")}</b>\n\n${header}\n\n${lines.join("\n")}`,
@@ -737,7 +737,7 @@ export function registerAdminPanel(bot: Bot<BotContext>, db: AppDb): void {
     const kb = new InlineKeyboard()
       .text(btnText("Model", "ruler"), `admin:provider-config:edit:${id}:model`)
       .text(btnText("Base URL", "ruler"), `admin:provider-config:edit:${id}:baseUrl`).row()
-      .text(btnText("Назад", "gear"), "admin:providers");
+      .text(btnText("Назад", "back"), "admin:providers");
     await ctx.reply(`Редактирование провайдера <b>${id}</b>:`, { reply_markup: kb, parse_mode: "HTML" });
   });
 

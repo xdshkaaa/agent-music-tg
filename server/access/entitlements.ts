@@ -2,6 +2,7 @@ import type { AppDb } from "../db";
 import { env } from "../env";
 import { isAdmin } from "../lib/access-control";
 import { getUser, consumeCredit, consumeTrialCredit, type User } from "./users-store";
+import { countGenerationsSince, oldestGenerationSince } from "./generations-store";
 
 function nowSeconds(): number {
   return Math.floor(Date.now() / 1000);
@@ -34,6 +35,40 @@ export function hasAccess(db: AppDb, chatId: number): boolean {
   if (user.credits > 0) return true;
   if (trialActive(user)) return true;
   return user.subscriptionUntil != null && user.subscriptionUntil > nowSeconds();
+}
+
+const RATE_WINDOW_SECONDS = 3600;
+
+export type RateLimitCheck = { limited: false } | { limited: true; retryAt: number };
+
+/**
+ * Hourly rate limit for subscription-only access. Applies ONLY when the user
+ * would generate via their subscription: no paid credits and no active trial.
+ * Credit/trial users pay per generation, admins and payments-off mode are
+ * never limited. Returns `retryAt` — the unix time when the oldest generation
+ * in the window leaves it and a slot frees up.
+ */
+export function checkSubscriptionRateLimit(db: AppDb, chatId: number): RateLimitCheck {
+  const limit = env.subscriptionHourlyLimit;
+  if (limit <= 0) return { limited: false };
+  if (!env.paymentsEnabled) return { limited: false };
+  if (isAdmin(db, chatId)) return { limited: false };
+
+  const user = getUser(db, chatId);
+  if (!user) return { limited: false };
+  // Access would be consumed from credits or trial — not subscription-metered.
+  if (user.credits > 0 || trialActive(user)) return { limited: false };
+  if (user.subscriptionUntil == null || user.subscriptionUntil <= nowSeconds()) {
+    return { limited: false };
+  }
+
+  const since = nowSeconds() - RATE_WINDOW_SECONDS;
+  const used = countGenerationsSince(db, chatId, since);
+  if (used < limit) return { limited: false };
+
+  const oldest = oldestGenerationSince(db, chatId, since);
+  const retryAt = (oldest ?? nowSeconds()) + RATE_WINDOW_SECONDS;
+  return { limited: true, retryAt };
 }
 
 /**

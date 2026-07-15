@@ -3,6 +3,7 @@ import type { AppDb } from "../db";
 import { env } from "../env";
 import { verifyInitData } from "../lib/telegram-init-data";
 import { getChatRole } from "../lib/access-control";
+import { getOpenAccess } from "../lib/settings";
 import type { AppEnv } from "./context";
 
 /**
@@ -21,7 +22,9 @@ export function requireAuth(db: AppDb): MiddlewareHandler<AppEnv> {
       return c.json({ error: "unauthenticated" }, 401);
     }
     const role = getChatRole(db, verified.chatId);
-    if (!role.isAllowed) {
+    // Admin toggle: open access lets any authenticated Telegram user in;
+    // allowlist stays the source of admin rights either way.
+    if (!role.isAllowed && !getOpenAccess(db)) {
       return c.json({ error: "forbidden" }, 403);
     }
     c.set("chatId", role.chatId);
