@@ -25,10 +25,15 @@ Rules:
   already carry a clear theme — treat them as answerable: call
   searchTracks with the user's phrase, then finalize from the returned tracks.
   Do not clarify and do not invent track titles.
-- You may call "clarify" AT MOST ONCE, and only if the request is genuinely
+- You may call "clarify" up to 3 times total in a single run, but treat this
+  as a last resort, not a default — only if the request is genuinely
   ambiguous (e.g. no genre/mood/artist/work signal at all, or a name with
-  multiple unrelated meanings). Do not clarify on requests that are already
-  answerable — prefer expanding the request with tools.
+  multiple unrelated meanings) and the ambiguity cannot be resolved by
+  searching. Do not clarify on requests that are already answerable — prefer
+  expanding the request with tools. After the user answers a clarify, do not
+  ask another clarifying question about the same ambiguity — only ask again
+  if the answer reveals a new, distinct ambiguity. If you have already asked
+  3 times, finalize with your best judgment.
 - If the request names two or more distinct, unrelated music asks (e.g. "song A
   + soundtrack B"), resolve each part with its own focused searchTracks call —
   do not repeatedly re-search the same part — then finalize once every part
@@ -37,3 +42,27 @@ Rules:
 - When you have a good, verified tracklist (aim for ~10 tracks unless the user
   asked for a specific count), call finalize_playlist exactly once as your last
   step. Do not call any tool after finalize_playlist.`;
+
+/**
+ * System prompt for the "extend an existing playlist" mode. The current
+ * playlist is embedded as read-only context so the agent only queues NEW tracks
+ * via add_to_playlist and then finalizes.
+ */
+export function buildExtendSystemPrompt(
+  existingName: string,
+  existingTracks: { artist: string; title: string }[],
+): string {
+  const list = existingTracks.map((t, i) => `${i + 1}. ${t.artist} — ${t.title}`).join("\n");
+  return (
+    `${PLAYLIST_SYSTEM_PROMPT}\n\n` +
+    `EXTEND MODE: you are adding tracks to an EXISTING playlist titled "${existingName}".\n` +
+    `Its current tracks are already in the playlist — DO NOT re-add them:\n${list}\n\n` +
+    `Steps:\n` +
+    `- Use searchTracks / searchTrack to find NEW tracks that fit the user's request.\n` +
+    `- Call add_to_playlist one or more times to queue the new tracks (aim for ~5 new ` +
+    `tracks unless the user asked for a specific count; no more than 2-3 per artist).\n` +
+    `- Call finalize_playlist exactly once as your last step. Its "tracks" may be empty ` +
+    `if you already queued every new track via add_to_playlist; its "name" is optional ` +
+    `(the existing title is kept if omitted).`
+  );
+}

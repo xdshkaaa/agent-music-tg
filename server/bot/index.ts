@@ -8,12 +8,12 @@ import { AVAILABLE_PROVIDERS, isProviderId } from "../agent/registry";
 import { AVAILABLE_BACKENDS, isMusicBackend } from "../music/registry";
 import { getActiveProviderId, setActiveProviderId, getActiveBackendId, setActiveBackendId, getShopSettings } from "../lib/settings";
 import { upsertUser, setPhotoFileId } from "../access/users-store";
-import { registerShop, sendOffers, purchasePromptText, showProfile } from "./shop";
+import { registerShop, buildProfileView, buildBuyView, type ShopView } from "./shop";
 import { registerAdminPanel, handleAdminText, menuKeyboard } from "./admin-panel";
 import { registerCredits } from "./credits";
 import { registerModel } from "./model";
 import { registerReset } from "./reset";
-import { registerHistory, showHistory } from "./history";
+import { registerHistory, buildHistoryView } from "./history";
 import { btnText, heading } from "./emoji";
 
 export function createBot(db: AppDb): Bot<BotContext> {
@@ -41,6 +41,21 @@ export function createBot(db: AppDb): Bot<BotContext> {
     return kb;
   }
 
+  function buildMenuView(ctx: BotContext): ShopView {
+    const shop = getShopSettings(db);
+    const header = `<b>${heading("info", "AGENT MUSIC")}</b>`;
+    const bullets = ["• Сгенерируй плейлист", "• Купи доступ"].join("\n");
+    const body = `${shop.shopName}\n\n${shop.aboutText}`;
+    return { text: `${header}\n${bullets}\n\n${body}`, keyboard: buildStartKeyboard(ctx) };
+  }
+
+  function buildSupportView(): ShopView {
+    const shop = getShopSettings(db);
+    const text = shop.supportContact ? `Поддержка: ${shop.supportContact}` : "Контакт поддержки не указан.";
+    const kb = new InlineKeyboard().text(btnText("Назад", "back"), "nav:menu");
+    return { text, keyboard: kb };
+  }
+
   bot.command("start", async (ctx) => {
     upsertUser(db, ctx.chat.id, ctx.from?.username ?? null);
     try {
@@ -50,14 +65,8 @@ export function createBot(db: AppDb): Bot<BotContext> {
         setPhotoFileId(db, ctx.chat.id, first[first.length - 1]!.file_id);
       }
     } catch { /* non-critical; profile will show placeholder */ }
-    const shop = getShopSettings(db);
-    const header = `<b>${heading("info", "AGENT MUSIC")}</b>`;
-    const bullets = ["• Сгенерируй плейлист", "• Купи доступ"].join("\n");
-    const body = `${shop.shopName}\n\n${shop.aboutText}`;
-    await ctx.reply(`${header}\n${bullets}\n\n${body}`, {
-      reply_markup: buildStartKeyboard(ctx),
-      parse_mode: "HTML",
-    });
+    const view = buildMenuView(ctx);
+    await ctx.reply(view.text, { reply_markup: view.keyboard, parse_mode: "HTML" });
   });
 
   bot.command("app", async (ctx) => {
@@ -85,23 +94,39 @@ export function createBot(db: AppDb): Bot<BotContext> {
   registerReset(bot, db);
   registerHistory(bot, db);
 
+  async function editOrReply(ctx: BotContext, view: ShopView): Promise<void> {
+    try {
+      await ctx.editMessageText(view.text, { reply_markup: view.keyboard, parse_mode: "HTML" });
+    } catch {
+      await ctx.reply(view.text, { reply_markup: view.keyboard, parse_mode: "HTML" });
+    }
+  }
+
   bot.callbackQuery(/^nav:(\w+)$/, async (ctx) => {
     await ctx.answerCallbackQuery();
+    const chatId = ctx.chat!.id;
     switch (ctx.match[1]) {
-      case "buy":
-        await sendOffers(ctx, db, purchasePromptText());
+      case "menu":
+        await editOrReply(ctx, buildMenuView(ctx));
         break;
-      case "profile":
-        await showProfile(ctx, db);
-        break;
-      case "history":
-        await showHistory(ctx, db);
-        break;
-      case "support": {
-        const shop = getShopSettings(db);
-        await ctx.reply(shop.supportContact ? `Поддержка: ${shop.supportContact}` : "Контакт поддержки не указан.");
+      case "buy": {
+        const view = buildBuyView(db, chatId);
+        if (!view) {
+          await ctx.reply("Пакеты пока не настроены. Загляните позже.");
+          break;
+        }
+        await editOrReply(ctx, view);
         break;
       }
+      case "profile":
+        await editOrReply(ctx, buildProfileView(db, chatId));
+        break;
+      case "history":
+        await editOrReply(ctx, buildHistoryView(db, chatId));
+        break;
+      case "support":
+        await editOrReply(ctx, buildSupportView());
+        break;
       case "admin": {
         if (!ctx.isAdmin) return;
         await ctx.reply("Админ-панель:", { reply_markup: menuKeyboard() });

@@ -9,7 +9,7 @@ import { GlassPanel } from "./components/GlassPanel";
 import { ScreenTransition } from "./components/ScreenTransition";
 import { ErrorBanner } from "./components/ErrorBanner";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { api, type MeResponse, type FinalizedPlaylist, type ShopConfig } from "./lib/api";
+import { api, type MeResponse, type FinalizedPlaylist, type ShopConfig, type HistoryEntry } from "./lib/api";
 import { reduceEvents, type AgentEvent } from "./lib/reasoning";
 import { getTelegramWebApp, getColorScheme } from "./lib/telegram";
 import { PlayerProvider, usePlayer } from "./lib/player";
@@ -25,7 +25,7 @@ const AdminScreen = lazy(() => import("./screens/AdminScreen"));
 type Screen =
   | { kind: "prompt" }
   | { kind: "clarify"; question: string; options: string[] }
-  | { kind: "results"; playlist: FinalizedPlaylist }
+  | { kind: "results"; playlist: FinalizedPlaylist; generationId: number; saved?: boolean }
   | { kind: "buy"; reason?: string }
   | { kind: "profile" }
   | { kind: "admin" };
@@ -86,6 +86,7 @@ function AppInner() {
   const [scheme, setScheme] = useState<"light" | "dark">(() => initialScheme());
   const [lastGenerate, setLastGenerate] = useState<{ prompt: string } | null>(null);
   const [lastClarify, setLastClarify] = useState<{ answer: string } | null>(null);
+  const [lastCreateScreen, setLastCreateScreen] = useState<Screen>({ kind: "prompt" });
 
   const player = usePlayer();
 
@@ -108,6 +109,16 @@ function AppInner() {
     webApp?.expand();
     api.me().then(setMe).catch(() => {});
     api.shopConfig().then(setShopConfig).catch(() => {});
+  }, []);
+
+  // Hot-swap the wallet chip: anything that changes the balance (generation,
+  // extend, purchase, trial claim) dispatches "balance-changed".
+  useEffect(() => {
+    const onBalanceChanged = () => {
+      api.me().then(setMe).catch(() => {});
+    };
+    window.addEventListener("balance-changed", onBalanceChanged);
+    return () => window.removeEventListener("balance-changed", onBalanceChanged);
   }, []);
 
   useEffect(() => {
@@ -203,13 +214,23 @@ function AppInner() {
     }
   }
 
+  function formatRetryTime(retryAt: number): string {
+    const t = new Date(retryAt * 1000);
+    const hh = String(t.getHours()).padStart(2, "0");
+    const mm = String(t.getMinutes()).padStart(2, "0");
+    return `${hh}:${mm}`;
+  }
+
   function applyOutcome(outcome: Awaited<ReturnType<typeof api.generate>>) {
     if (outcome.status === "clarify") {
       navigate({ kind: "clarify", question: outcome.question, options: outcome.options });
     } else if (outcome.status === "ok") {
-      navigate({ kind: "results", playlist: outcome.playlist });
+      window.dispatchEvent(new CustomEvent("balance-changed"));
+      navigate({ kind: "results", playlist: outcome.playlist, generationId: outcome.generationId });
     } else if (outcome.status === "needs_purchase") {
-      navigate({ kind: "buy", reason: "Генерации закончились — выберите пакет, чтобы продолжить." });
+      navigate({ kind: "buy", reason: "Генерации закончились. Выберите пакет, чтобы продолжить." });
+    } else if (outcome.status === "rate_limited") {
+      setError(`Лимит генераций по подписке исчерпан. Снова доступно в ${formatRetryTime(outcome.retryAt)}.`);
     } else {
       setError(outcome.message);
     }
@@ -218,7 +239,7 @@ function AppInner() {
   function renderScreen(): ReactNode | null {
     switch (screen.kind) {
       case "prompt":
-        return <PromptScreen onSubmit={handleSubmit} busy={busy} events={events} />;
+        return <PromptScreen onSubmit={handleSubmit} busy={busy} events={events} isAdmin={isAdmin} />;
       case "clarify":
         return (
           <ClarifyScreen
@@ -227,12 +248,15 @@ function AppInner() {
             onAnswer={handleClarifyAnswer}
             busy={busy}
             events={events}
+            isAdmin={isAdmin}
           />
         );
       case "results":
         return (
           <ResultsScreen
             playlist={screen.playlist}
+            generationId={screen.generationId}
+            initialSaved={screen.saved}
             onNewPrompt={() => navigate({ kind: "prompt" }, "back")}
           />
         );
@@ -243,6 +267,14 @@ function AppInner() {
           <ProfileScreen
             me={me}
             onGoShop={() => navigate({ kind: "buy" })}
+            onOpenHistory={(entry: HistoryEntry) =>
+              navigate({
+                kind: "results",
+                generationId: entry.id,
+                saved: true,
+                playlist: { name: entry.playlistName ?? entry.prompt, tracks: entry.tracks },
+              })
+            }
           />
         );
       case "admin":
@@ -256,6 +288,12 @@ function AppInner() {
 
   const tab = activeTab(screen);
   const isAdmin = me?.isAdmin ?? false;
+
+  // Remember the last screen shown on the "create" tab (prompt/clarify/results)
+  // so switching to another tab and back restores it instead of resetting.
+  useEffect(() => {
+    if (tab === "create") setLastCreateScreen(screen);
+  }, [tab, screen]);
 
   function handleReset() {
     setHistory([{ kind: "prompt" }]);
@@ -278,6 +316,7 @@ function AppInner() {
           >
             <Wallet size={16} weight="bold" className="accent" />
             {me?.credits ?? 0} ген
+            {me?.trial?.active && me.trial.creditsLeft > 0 ? ` · ${me.trial.creditsLeft} беспл.` : ""}
           </button>
           <button
             type="button"
@@ -299,7 +338,7 @@ function AppInner() {
       </ScreenTransition>
 
       <PlayerBar onOpen={() => setShowPlayer(true)} />
-      <BottomNav tab={tab} isAdmin={isAdmin} onTab={(t) => { navigate({ kind: t === "shop" ? "buy" : t === "create" ? "prompt" : t === "profile" ? "profile" : "admin" }); }} />
+      <BottomNav tab={tab} isAdmin={isAdmin} onTab={(t) => { navigate(t === "shop" ? { kind: "buy" } : t === "create" ? lastCreateScreen : t === "profile" ? { kind: "profile" } : { kind: "admin" }); }} />
     </main>
       {showPlayer && <PlayerScreen onClose={() => setShowPlayer(false)} />}
     </ErrorBoundary>

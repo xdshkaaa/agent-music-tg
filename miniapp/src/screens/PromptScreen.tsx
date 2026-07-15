@@ -10,10 +10,12 @@ export function PromptScreen({
   onSubmit,
   busy,
   events,
+  isAdmin,
 }: {
   onSubmit: (prompt: string) => void;
   busy: boolean;
   events: AgentEvent[];
+  isAdmin?: boolean;
 }) {
   const [prompt, setPrompt] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -34,6 +36,12 @@ export function PromptScreen({
 
   return (
     <GlassPanel className="reveal prompt-card">
+      <div className="prompt-hero">
+        <h1>
+          Что <span className="prompt-hero-accent">слушаем</span>?
+        </h1>
+      </div>
+
       <div className="prompt-pill">
         <textarea
           ref={inputRef}
@@ -64,7 +72,7 @@ export function PromptScreen({
         </button>
       </div>
 
-      {events.length > 0 && <ReasoningTranscript events={events} collapsed={!busy} />}
+      {events.length > 0 && <ReasoningTranscript events={events} collapsed={!busy} friendly={!isAdmin} />}
     </GlassPanel>
   );
 }

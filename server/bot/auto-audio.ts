@@ -27,7 +27,7 @@ function summaryText(playlistName: string, sent: number, failed: number, skipped
     parts.push(...lines);
   }
   if (skipped > 0) {
-    parts.push(`• ${skipped} треков недоступны — пропущены`);
+    parts.push(`• ${skipped} треков недоступны, пропущены`);
   }
   if (sent === 0) return [`${cross ? cross + " " : ""}«${playlistName}»: не удалось скачать треки:`, ...parts].join("\n");
   return [`${warning ? warning + " " : ""}«${playlistName}»: отправлено ${sent}, недоступно ${skipped}, ошибок ${failed}.`, ...parts].join("\n");

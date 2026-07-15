@@ -48,6 +48,8 @@ export default function BuyScreen({ reason, isAdmin = false }: { reason?: string
         if (prevCountRef.current !== null && paid.length > prevCountRef.current) {
           setShowSuccess(true);
           window.setTimeout(() => setShowSuccess(false), 2500);
+          // Purchase landed — refresh the header wallet chip without a reload.
+          window.dispatchEvent(new CustomEvent("balance-changed"));
         }
         prevCountRef.current = paid.length;
       })
@@ -119,11 +121,11 @@ export default function BuyScreen({ reason, isAdmin = false }: { reason?: string
       )}
 
       {showSuccess && (
-        <div className="status-card" role="status">
-          <span className="status-icon">
+        <div className="status-card status-card--success" role="status">
+          <span className="status-icon status-icon--success">
             <Check size={20} weight="bold" />
           </span>
-          <span>Платёж получен — доступ активирован.</span>
+          <span>Платёж получен, доступ активирован.</span>
         </div>
       )}
 

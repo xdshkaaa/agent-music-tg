@@ -125,6 +125,8 @@ function migrate(db: AppDb): void {
       prompt TEXT NOT NULL,
       playlist_name TEXT,
       track_count INTEGER,
+      tracks_json TEXT,
+      extend_count INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL DEFAULT (unixepoch())
     );
 
@@ -143,6 +145,18 @@ function migrate(db: AppDb): void {
     );
     CREATE INDEX IF NOT EXISTS idx_downloads_chat ON downloads(chat_id, created_at DESC);
   `);
+
+  // Opt-in playlist history: generation rows keep flowing for extend/resume,
+  // but only surface in history once explicitly saved.
+  try { db.run(`ALTER TABLE generations ADD COLUMN saved INTEGER NOT NULL DEFAULT 0;`); } catch {}
+
+  // generations.tracks_json: full track list for extend/replay. Added to the
+  // CREATE TABLE later, so pre-existing DBs need the column backfilled.
+  try { db.run(`ALTER TABLE generations ADD COLUMN tracks_json TEXT;`); } catch {}
+
+  // generations.extend_count: how many times a playlist was extended — the
+  // first EXTEND_FREE_LIMIT extends are free, later ones cost a credit.
+  try { db.run(`ALTER TABLE generations ADD COLUMN extend_count INTEGER NOT NULL DEFAULT 0;`); } catch {}
 
   // downloads.updated_at: touched on every status/track write so a stale
   // pending/processing row (crash/restart mid-job) can be detected by age.

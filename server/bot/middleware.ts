@@ -1,6 +1,7 @@
 import type { NextFunction } from "grammy";
 import type { AppDb } from "../db";
 import { getChatRole } from "../lib/access-control";
+import { getOpenAccess } from "../lib/settings";
 import type { BotContext } from "./context";
 
 /**
@@ -14,7 +15,8 @@ export function allowlistGate(db: AppDb) {
     const chatId = ctx.chat?.id ?? ctx.from?.id;
     if (chatId === undefined) return;
     const role = getChatRole(db, chatId);
-    if (!role.isAllowed) return;
+    // Open-access mode (admin toggle) admits chats outside the allowlist.
+    if (!role.isAllowed && !getOpenAccess(db)) return;
     ctx.isAdmin = role.isAdmin;
     await next();
   };

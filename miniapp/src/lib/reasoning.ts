@@ -19,6 +19,25 @@ export function reduceEvents(prev: AgentEvent[], e: AgentEvent): AgentEvent[] {
   return [...prev, e];
 }
 
+/**
+ * Human-readable Russian label for a tool call, used in "simple" mode so
+ * regular users see what the agent is doing instead of raw camelCase/
+ * snake_case tool identifiers (searchTrack, add_to_playlist, ...).
+ */
+const FRIENDLY_TOOL_LABELS: Record<string, string> = {
+  searchTrack: "Ищу трек",
+  searchTracks: "Ищу треки",
+  searchArtist: "Ищу артиста",
+  getArtistTopTracks: "Смотрю топ треков артиста",
+  add_to_playlist: "Добавляю треки",
+  finalize_playlist: "Собираю плейлист",
+  clarify: "Уточняю детали",
+};
+
+export function friendlyToolLabel(name: string): string {
+  return FRIENDLY_TOOL_LABELS[name] ?? name;
+}
+
 /** Values-only arg preview: `searchTrack(Burial, Archangel)`. */
 export function argSummary(args: Record<string, unknown>): string {
   const parts: string[] = [];
@@ -66,7 +85,9 @@ export const MAX_LINES = 200;
  * Flatten ordered events into renderable lines. Each tool result is paired
  * with its call by id and rendered inline on the call's line.
  */
-export function toLines(events: AgentEvent[]): TranscriptLine[] {
+export function toLines(events: AgentEvent[], opts?: { friendly?: boolean }): TranscriptLine[] {
+  const friendly = opts?.friendly ?? false;
+  const label = (name: string) => (friendly ? friendlyToolLabel(name) : name);
   const results = new Map<string, Extract<AgentEvent, { kind: "tool_result" }>>();
   for (const e of events) if (e.kind === "tool_result") results.set(e.id, e);
 
@@ -75,7 +96,7 @@ export function toLines(events: AgentEvent[]): TranscriptLine[] {
 
   const callLine = (e: Extract<AgentEvent, { kind: "tool_call" }>, i: number) => {
     const segments: LineSegment[] = [
-      { text: e.name, tone: "call" },
+      { text: label(e.name), tone: "call" },
       { text: `(${argSummary(e.args)})`, tone: "args" },
     ];
     const r = results.get(e.id);
@@ -144,7 +165,7 @@ export function toLines(events: AgentEvent[]): TranscriptLine[] {
           }
         }
         const segments: LineSegment[] = [
-          { text: e.name, tone: "call" },
+          { text: label(e.name), tone: "call" },
           { text: ` ×${rest.length}`, tone: "args" },
         ];
         const done = ok + err;

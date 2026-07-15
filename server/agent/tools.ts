@@ -111,6 +111,35 @@ const finalizePlaylistSpec: ToolSpec = {
   },
 };
 
+const addToPlaylistSpec: ToolSpec = {
+  name: "add_to_playlist",
+  description:
+    "Append tracks to the playlist being extended. Call one or more times while extending an " +
+    "existing playlist; each call queues the given tracks. Do NOT include tracks already in the " +
+    "existing playlist — they are shown in the system prompt. The harness merges these into the " +
+    "final playlist when you call finalize_playlist. `tracks` is an ordered list of new tracks " +
+    "(no more than 2-3 per artist).",
+  parameters: {
+    type: "object",
+    properties: {
+      tracks: {
+        type: "array",
+        description: "New tracks to add to the existing playlist.",
+        items: {
+          type: "object",
+          properties: {
+            artist: { type: "string" },
+            title: { type: "string" },
+          },
+          required: ["artist", "title"],
+        },
+        minItems: 1,
+      },
+    },
+    required: ["tracks"],
+  },
+};
+
 export const MUSIC_AGENT_TOOLS: ToolSpec[] = [
   searchTrackSpec,
   searchTracksSpec,
@@ -118,6 +147,7 @@ export const MUSIC_AGENT_TOOLS: ToolSpec[] = [
   getArtistTopTracksSpec,
   clarifySpec,
   finalizePlaylistSpec,
+  addToPlaylistSpec,
 ];
 
 export interface ToolDispatcherDeps {

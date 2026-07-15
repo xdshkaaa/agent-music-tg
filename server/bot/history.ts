@@ -77,6 +77,14 @@ export async function showHistory(ctx: BotContext, db: AppDb): Promise<void> {
   await ctx.reply(view.text, { parse_mode: "HTML", reply_markup: view.keyboard });
 }
 
+/** History view for in-place navigation: dates view + «Назад» to the /start menu. */
+export function buildHistoryView(db: AppDb, chatId: number): { text: string; keyboard: InlineKeyboard } {
+  const view = buildDatesView(listDownloads(db, chatId));
+  const kb = view.keyboard ?? new InlineKeyboard();
+  kb.row().text(btnText("Назад", "back"), "nav:menu");
+  return { text: view.text, keyboard: kb };
+}
+
 async function resendDownload(ctx: BotContext, db: AppDb, chatId: number, id: number): Promise<void> {
   const record = getDownload(db, chatId, id);
   if (!record) {
@@ -84,7 +92,7 @@ async function resendDownload(ctx: BotContext, db: AppDb, chatId: number, id: nu
     return;
   }
   if (hasActiveDownload(db, chatId)) {
-    await ctx.answerCallbackQuery("Загрузка уже идёт — дождитесь завершения");
+    await ctx.answerCallbackQuery("Загрузка уже идёт, дождитесь завершения");
     return;
   }
 

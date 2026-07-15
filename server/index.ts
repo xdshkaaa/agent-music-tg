@@ -5,7 +5,7 @@ import { bootstrapAllowlist } from "./lib/access-control";
 import { createBot } from "./bot";
 import { loadCustomEmojis, accent } from "./bot/emoji";
 import { createApiRoutes } from "./api/routes";
-import { setVerificationExtractor } from "./core/run-generation";
+import { setVerificationExtractor, setPrewarmStreamCache } from "./core/run-generation";
 import { verifyWebhookSignature, type WebhookUpdate } from "./payments/webhook";
 import { fulfillInvoice, type FulfillResult } from "./payments/fulfillment";
 import { startPoller } from "./payments/poller";
@@ -95,6 +95,8 @@ const audio: AudioDeps = {
     ttlSeconds: env.streamCacheTtlSeconds,
   }),
 };
+// Warm the stream cache right after each generation so first playback is instant.
+setPrewarmStreamCache(audio.streamCache);
 
 app.route("/api", createApiRoutes(db, { send, createStarsInvoiceLink, audio }));
 

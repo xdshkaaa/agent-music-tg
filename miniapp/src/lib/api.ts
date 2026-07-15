@@ -117,9 +117,10 @@ export interface FinalizedPlaylist {
 }
 
 export type GenerateOutcome =
-  | { status: "ok"; playlist: FinalizedPlaylist }
+  | { status: "ok"; playlist: FinalizedPlaylist; generationId: number }
   | { status: "clarify"; question: string; options: string[] }
   | { status: "needs_purchase" }
+  | { status: "rate_limited"; retryAt: number }
   | { status: "error"; message: string };
 
 export interface AdminSettings {
@@ -205,6 +206,15 @@ export interface DownloadRecord {
   createdAt: number;
 }
 
+export interface HistoryEntry {
+  id: number;
+  prompt: string;
+  playlistName: string | null;
+  trackCount: number | null;
+  tracks: Track[];
+  createdAt: number;
+}
+
 /**
  * Streaming URL for <audio src>: audio elements cannot set headers, so the
  * signed initData rides in the query string (accepted by requireAuth).
@@ -274,6 +284,8 @@ export const api = {
     requestSSE<GenerateOutcome>("/api/generate/stream", { prompt }, onEvent),
   generateResumeStream: (answer: string, onEvent: (e: AgentEvent) => void) =>
     requestSSE<GenerateOutcome>("/api/generate/resume/stream", { answer }, onEvent),
+  extendStream: (generationId: number, prompt: string, onEvent: (e: AgentEvent) => void) =>
+    requestSSE<GenerateOutcome>("/api/generate/extend/stream", { generationId, prompt }, onEvent),
   adminSettings: () => request<AdminSettings>("/api/admin/settings"),
   setActiveProvider: (id: string) =>
     request<{ activeProvider: string }>("/api/admin/settings/provider", { method: "POST", body: JSON.stringify({ id }) }),
@@ -292,6 +304,11 @@ export const api = {
     request<InvoiceResult>("/api/invoices", { method: "POST", body: JSON.stringify({ offerId, method }) }),
   purchases: () => request<{ purchases: Invoice[] }>("/api/me/purchases"),
   claimTrial: () => request<{ trial: TrialStatus }>("/api/trial/claim", { method: "POST" }),
+
+  // --- Playlist history ---
+  saveGeneration: (id: number) => request<{ ok: boolean }>(`/api/generations/${id}/save`, { method: "POST" }),
+  unsaveGeneration: (id: number) => request<{ ok: boolean }>(`/api/generations/${id}/save`, { method: "DELETE" }),
+  fetchHistory: () => request<{ history: HistoryEntry[] }>("/api/history"),
 
   // --- Admin: payments management ---
   adminStats: () => request<AdminStats>("/api/admin/stats"),
@@ -343,6 +360,9 @@ export const api = {
     request<{ ok: boolean }>(`/api/admin/all-settings/${encodeURIComponent(key)}`, { method: "POST", body: JSON.stringify({ value }) }),
 
   // --- Admin: payments toggle ---
+  adminAccessConfig: () => request<{ openAccess: boolean }>("/api/admin/access-config"),
+  adminSetAccessConfig: (openAccess: boolean) =>
+    request<{ ok: boolean }>("/api/admin/access-config", { method: "POST", body: JSON.stringify({ openAccess }) }),
   adminPaymentsConfig: () => request<PaymentsConfig>("/api/admin/payments-config"),
   adminSetPaymentsConfig: (paymentsEnabled: boolean | null) =>
     request<{ ok: boolean }>("/api/admin/payments-config", { method: "POST", body: JSON.stringify({ paymentsEnabled }) }),

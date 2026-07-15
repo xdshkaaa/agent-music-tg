@@ -2,8 +2,8 @@ import type { AppDb } from "../db";
 import { createProvider, isProviderId, MissingCredentialError, type ProviderId } from "../agent/registry";
 import { createMusicProvider, isMusicBackend } from "../music/registry";
 import { getActiveProviderId, getActiveBackendId, getProviderOverrides } from "../lib/settings";
-import { hasAccess, consumeAccess } from "../access/entitlements";
-import { insertGeneration } from "../access/generations-store";
+import { hasAccess, consumeAccess, checkSubscriptionRateLimit } from "../access/entitlements";
+import { insertGeneration, getGeneration, appendTracksToGeneration, incrementExtendCount } from "../access/generations-store";
 import {
   ClarifyNeededError,
   MaxIterationsExceededError,
@@ -11,18 +11,34 @@ import {
   generatePlaylist,
   type FinalizedPlaylist,
   type GeneratePlaylistOptions,
+  type GeneratePlaylistResult,
 } from "./generate-playlist";
+import { buildExtendSystemPrompt } from "../agent/prompts";
 import type { AgentEvent, AgentMessage } from "../agent/types";
 import { verifyTracks, verificationStore } from "../audio/track-verification";
 import type { Extractor } from "../audio/extractor";
+import type { StreamCache } from "../audio/stream-cache";
+import { mapWithConcurrency } from "./concurrency";
 
 export type GenerationOutcome =
-  | { status: "ok"; playlist: FinalizedPlaylist }
-  | { status: "clarify"; question: string; options: string[]; messages: AgentMessage[] }
+  | { status: "ok"; playlist: FinalizedPlaylist; generationId: number }
+  | { status: "clarify"; question: string; options: string[]; messages: AgentMessage[]; round: number }
   | { status: "needs_purchase" }
+  | { status: "rate_limited"; retryAt: number }
   | { status: "error"; message: string };
 
+/** Paywall + subscription rate limit, shared by all generation entrypoints. */
+function gateAccess(db: AppDb, chatId: number): GenerationOutcome | null {
+  if (!hasAccess(db, chatId)) return { status: "needs_purchase" };
+  const rate = checkSubscriptionRateLimit(db, chatId);
+  if (rate.limited) return { status: "rate_limited", retryAt: rate.retryAt };
+  return null;
+}
+
 const DEFAULT_PROVIDER: ProviderId = "opencode";
+
+/** Extends of one playlist that are free before each extend costs a credit. */
+export const EXTEND_FREE_LIMIT = 3;
 
 async function buildRunInputs(db: AppDb) {
   // Stored value may be a legacy/removed provider (e.g. "openrouter") — fall
@@ -40,19 +56,21 @@ async function buildRunInputs(db: AppDb) {
   return { provider, music };
 }
 
-async function toOutcome(run: () => ReturnType<typeof generatePlaylist>): Promise<GenerationOutcome> {
+type RunResult = { status: "ok"; playlist: FinalizedPlaylist } | Exclude<GenerationOutcome, { status: "ok" }>;
+
+async function toOutcome(run: () => Promise<GeneratePlaylistResult>): Promise<RunResult> {
   try {
     const { playlist } = await run();
     return { status: "ok", playlist };
   } catch (e) {
     if (e instanceof ClarifyNeededError) {
-      return { status: "clarify", question: e.question, options: e.options, messages: e.messages };
+      return { status: "clarify", question: e.question, options: e.options, messages: e.messages, round: e.round };
     }
     if (e instanceof MaxIterationsExceededError) {
-      return { status: "error", message: "Не удалось подобрать плейлист вовремя — уточните запрос." };
+      return { status: "error", message: "Не удалось подобрать плейлист вовремя. Уточните запрос." };
     }
     if (e instanceof NoTracksResolvedError) {
-      return { status: "error", message: "Музыкальный сервис сейчас недоступен — треки не нашлись. Попробуйте ещё раз чуть позже." };
+      return { status: "error", message: "Музыкальный сервис сейчас недоступен, треки не нашлись. Попробуйте ещё раз чуть позже." };
     }
     if (e instanceof MissingCredentialError) {
       return { status: "error", message: e.message };
@@ -62,8 +80,15 @@ async function toOutcome(run: () => ReturnType<typeof generatePlaylist>): Promis
 }
 
 function fireVerification(playlist: FinalizedPlaylist): void {
-  if (!_extractor) return;
-  verifyTracks(playlist.tracks, _extractor, verificationStore).catch(() => {});
+  if (_extractor) {
+    verifyTracks(playlist.tracks, _extractor, verificationStore).catch(() => {});
+  }
+  // Prewarm the stream cache in the background so the first play of any track
+  // hits a cached file instead of waiting out a live yt-dlp extraction.
+  if (_streamCache) {
+    const cache = _streamCache;
+    void mapWithConcurrency(playlist.tracks, 2, (t) => cache.getFile(t.uri).then(() => {}).catch(() => {}));
+  }
 }
 
 export async function startGeneration(
@@ -72,16 +97,26 @@ export async function startGeneration(
   prompt: string,
   onEvent?: (e: AgentEvent) => void,
 ): Promise<GenerationOutcome> {
-  if (!hasAccess(db, chatId)) return { status: "needs_purchase" };
+  const gated = gateAccess(db, chatId);
+  if (gated) return gated;
+
   const outcome = await toOutcome(async () => {
     const { provider, music } = await buildRunInputs(db);
     const opts: GeneratePlaylistOptions = { provider, music, prompt, onEvent };
     return generatePlaylist(opts);
   });
   if (outcome.status === "ok") {
+    const generationId = insertGeneration(
+      db,
+      chatId,
+      prompt,
+      outcome.playlist.name,
+      outcome.playlist.tracks.length,
+      outcome.playlist.tracks,
+    );
     consumeAccess(db, chatId);
-    insertGeneration(db, chatId, prompt, outcome.playlist.name, outcome.playlist.tracks.length);
     fireVerification(outcome.playlist);
+    return { status: "ok", playlist: outcome.playlist, generationId };
   }
   return outcome;
 }
@@ -92,9 +127,11 @@ export async function resumeGeneration(
   originalPrompt: string,
   resumeMessages: AgentMessage[],
   clarifyAnswer: string,
+  priorRound: number,
   onEvent?: (e: AgentEvent) => void,
 ): Promise<GenerationOutcome> {
-  if (!hasAccess(db, chatId)) return { status: "needs_purchase" };
+  const gated = gateAccess(db, chatId);
+  if (gated) return gated;
   const outcome = await toOutcome(async () => {
     const { provider, music } = await buildRunInputs(db);
     return generatePlaylist({
@@ -103,18 +140,80 @@ export async function resumeGeneration(
       prompt: originalPrompt,
       resumeMessages,
       resumeClarifyAnswer: clarifyAnswer,
+      resumeClarifyRound: priorRound,
       onEvent,
     });
   });
   if (outcome.status === "ok") {
+    const generationId = insertGeneration(
+      db,
+      chatId,
+      originalPrompt,
+      outcome.playlist.name,
+      outcome.playlist.tracks.length,
+      outcome.playlist.tracks,
+    );
     consumeAccess(db, chatId);
-    insertGeneration(db, chatId, originalPrompt, outcome.playlist.name, outcome.playlist.tracks.length);
     fireVerification(outcome.playlist);
+    return { status: "ok", playlist: outcome.playlist, generationId };
+  }
+  return outcome;
+}
+
+/**
+ * Appends tracks to a playlist the user created earlier (identified by its
+ * generation id). Loads the existing tracks as read-only base context, runs the
+ * agent in extend mode, then overwrites the generation's stored track list with
+ * the merged result. Consumes one access credit, like a fresh generation.
+ */
+export async function extendGeneration(
+  db: AppDb,
+  chatId: number,
+  generationId: number,
+  prompt: string,
+  onEvent?: (e: AgentEvent) => void,
+): Promise<GenerationOutcome> {
+  const existing = getGeneration(db, chatId, generationId);
+  if (!existing) return { status: "error", message: "Плейлист не найден или уже недоступен." };
+
+  // The first EXTEND_FREE_LIMIT extends of a playlist are free (no paywall,
+  // no credit) — later ones are gated and charged like a fresh generation.
+  const freeExtend = existing.extendCount < EXTEND_FREE_LIMIT;
+  if (!freeExtend) {
+    const gated = gateAccess(db, chatId);
+    if (gated) return gated;
+  }
+
+  const outcome = await toOutcome(async () => {
+    const { provider, music } = await buildRunInputs(db);
+    const baseTracks = existing.tracks.map((t) => ({ artist: t.artist, title: t.title }));
+    return generatePlaylist({
+      provider,
+      music,
+      prompt,
+      mode: "extend",
+      baseTracks,
+      baseName: existing.playlistName ?? undefined,
+      systemPrompt: buildExtendSystemPrompt(existing.playlistName ?? "Playlist", baseTracks),
+      onEvent,
+    });
+  });
+  if (outcome.status === "ok") {
+    appendTracksToGeneration(db, generationId, outcome.playlist.tracks, outcome.playlist.name);
+    incrementExtendCount(db, generationId);
+    if (!freeExtend) consumeAccess(db, chatId);
+    fireVerification(outcome.playlist);
+    return { status: "ok", playlist: outcome.playlist, generationId };
   }
   return outcome;
 }
 
 let _extractor: Extractor | null = null;
+let _streamCache: StreamCache | null = null;
+
+export function setPrewarmStreamCache(cache: StreamCache): void {
+  _streamCache = cache;
+}
 
 export function setVerificationExtractor(extractor: Extractor): void {
   _extractor = extractor;

@@ -9,6 +9,13 @@ function bool(raw: string | undefined, fallback: boolean): boolean {
   return /^(1|true|yes|on)$/i.test(raw.trim());
 }
 
+function intWithDefault(raw: string | undefined, fallback: number): number {
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const n = Number(raw.trim());
+  if (!Number.isInteger(n) || n < 0) throw new Error(`Invalid integer in env: ${raw}`);
+  return n;
+}
+
 function splitChatIds(raw: string | undefined): number[] {
   if (!raw) return [];
   return raw
@@ -40,6 +47,9 @@ export const env = {
   // CryptoBot Crypto Pay — payments feature. Token is required only when
   // paymentsEnabled is true; validated lazily by the payments client.
   paymentsEnabled: bool(process.env.PAYMENTS_ENABLED, true),
+  // Hourly cap on successful generations for subscription-only access.
+  // 0 disables the limit. Credit/trial users and admins are never limited.
+  subscriptionHourlyLimit: intWithDefault(process.env.SUBSCRIPTION_HOURLY_LIMIT, 25),
   cryptobotToken: process.env.CRYPTOBOT_TOKEN ?? "",
   cryptobotNetwork: (process.env.CRYPTOBOT_NETWORK ?? "mainnet").trim().toLowerCase() === "testnet" ? "testnet" : "mainnet",
   // Unused: server/bot/emoji.ts now resolves Telegram Premium custom-emoji

@@ -165,6 +165,10 @@ export function PlayerScreen({ onClose }: { onClose: () => void }) {
                 className="player-screen-progress-fill"
                 style={{ transform: `scaleX(${progress})` }}
               />
+              <span
+                className="player-screen-progress-thumb"
+                style={{ left: `${progress * 100}%` }}
+              />
             </div>
             {showTime && (
               <span className="player-screen-time player-screen-time-duration">{formatTime(duration)}</span>

@@ -3,9 +3,11 @@ import type { AgentMessage } from "../agent/types";
 
 export interface PendingClarify {
   kind: "awaiting_clarify";
+  originalPrompt: string;
   messages: AgentMessage[];
   question: string;
   options: string[];
+  round: number;
 }
 
 /** Admin multi-step flows keyed off the same per-chat session row. */

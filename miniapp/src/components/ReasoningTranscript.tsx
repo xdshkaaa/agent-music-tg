@@ -8,6 +8,8 @@ interface ReasoningTranscriptProps {
   collapsed?: boolean;
   /** Max pixel height before the transcript scrolls internally. */
   maxHeight?: number;
+  /** Regular users get Russian tool labels instead of raw camelCase/snake_case names. */
+  friendly?: boolean;
 }
 
 const TONE_CLASS: Record<LineSegment["tone"], string> = {
@@ -18,11 +20,11 @@ const TONE_CLASS: Record<LineSegment["tone"], string> = {
   error: "reasoning-tone-error",
 };
 
-export function ReasoningTranscript({ events, collapsed, maxHeight = 160 }: ReasoningTranscriptProps) {
+export function ReasoningTranscript({ events, collapsed, maxHeight = 160, friendly }: ReasoningTranscriptProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
 
-  const lines = collapsed ? [] : toLines(events);
+  const lines = collapsed ? [] : toLines(events, { friendly });
 
   // Stick-to-bottom: only auto-scroll if the user hasn't scrolled up to read
   // history. Re-engages automatically once they scroll back to the tail.

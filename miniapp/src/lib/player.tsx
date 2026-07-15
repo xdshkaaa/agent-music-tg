@@ -38,6 +38,11 @@ interface PlayerApi extends PlayerState {
 const VOLUME_KEY = "player:volume";
 const DEFAULT_VOLUME = 0.7;
 
+/** Max extra play attempts when a track fails to start (total = 1 + MAX_RETRIES). */
+const MAX_RETRIES = 2;
+/** Delay between retry attempts (ms). */
+const RETRY_DELAY_MS = 800;
+
 const FALLBACK_ARTWORK_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">' +
   '<rect width="512" height="512" fill="#1a1a2e"/>' +
@@ -52,6 +57,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const prevVolumeRef = useRef(DEFAULT_VOLUME);
   const apiRef = useRef<PlayerApi>(null!);
+  const retryTimerRef = useRef<number | null>(null);
+  const attemptRef = useRef(0);
+  const failureHandledRef = useRef(false);
+  const onAudioErrorRef = useRef<(() => void) | null>(null);
   const [state, setState] = useState<PlayerState>({
     track: null,
     status: "idle",
@@ -79,6 +88,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (retryTimerRef.current !== null) clearTimeout(retryTimerRef.current);
+    };
+  }, []);
+
   function ensureAudio(): HTMLAudioElement {
     if (audioRef.current) return audioRef.current;
     const audio = new Audio();
@@ -94,7 +109,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         setState((s) => ({ ...s, status: "paused", progress: 0, currentTime: 0 }));
       }
     });
-    audio.addEventListener("error", () => setState((s) => ({ ...s, status: "error" })));
+    audio.addEventListener("error", () => onAudioErrorRef.current?.());
     audio.addEventListener("timeupdate", () => {
       const fraction = audio.duration > 0 ? audio.currentTime / audio.duration : 0;
       setState((s) => ({ ...s, progress: fraction, currentTime: audio.currentTime, duration: audio.duration }));
@@ -107,6 +122,49 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     });
     audioRef.current = audio;
     return audio;
+  }
+
+  function cancelRetry() {
+    if (retryTimerRef.current !== null) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+    failureHandledRef.current = false;
+    onAudioErrorRef.current = null;
+  }
+
+  function handlePlayFailure(track: PlayerTrackInfo, queue: PlayerTrackInfo[] | undefined) {
+    if (failureHandledRef.current) return;
+    failureHandledRef.current = true;
+    if (attemptRef.current < MAX_RETRIES && apiRef.current.track?.uri === track.uri) {
+      const next = attemptRef.current + 1;
+      attemptRef.current = next;
+      retryTimerRef.current = window.setTimeout(() => playTrack(track, queue, next), RETRY_DELAY_MS);
+    } else {
+      setState((s) => ({ ...s, status: "error" }));
+    }
+  }
+
+  function playTrack(track: PlayerTrackInfo, queue?: PlayerTrackInfo[], attempt = 0) {
+    cancelRetry();
+    const audio = ensureAudio();
+    attemptRef.current = attempt;
+    failureHandledRef.current = false;
+    const nextQueue = queue ?? state.queue;
+    const idx = nextQueue.findIndex((t) => t.uri === track.uri);
+    setState((s) => ({
+      ...s,
+      queue: nextQueue,
+      queueIndex: idx >= 0 ? idx : 0,
+      track,
+      status: "loading",
+      progress: 0,
+      currentTime: 0,
+      duration: 0,
+    }));
+    audio.src = streamUrl(track.uri) + (attempt > 0 ? `&_=${attempt}` : "");
+    onAudioErrorRef.current = () => handlePlayFailure(track, queue);
+    void audio.play().catch(() => handlePlayFailure(track, queue));
   }
 
   function setVolume(v: number) {
@@ -140,27 +198,25 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       toggle(track, queue) {
         const audio = ensureAudio();
         if (state.track?.uri === track.uri) {
+          cancelRetry();
           if (queue) {
             const idx = queue.findIndex((t) => t.uri === track.uri);
             setState((s) => ({ ...s, queue, queueIndex: idx >= 0 ? idx : 0 }));
           }
           if (state.status === "playing") {
+            cancelRetry();
             audio.pause();
+          } else if (state.status === "error") {
+            playTrack(track, queue, 0);
           } else {
-            setState((s) => ({ ...s, status: "loading" }));
-            void audio.play().catch(() => setState((s) => ({ ...s, status: "error" })));
+            attemptRef.current = 0;
+            failureHandledRef.current = false;
+            onAudioErrorRef.current = () => handlePlayFailure(track, queue);
+            void audio.play().catch(() => handlePlayFailure(track, queue));
           }
           return;
         }
-        const nextQueue = queue ?? state.queue;
-        const idx = nextQueue.findIndex((t) => t.uri === track.uri);
-        if (idx >= 0) {
-          setState((s) => ({ ...s, queue: nextQueue, queueIndex: idx, track, status: "loading", progress: 0, currentTime: 0, duration: 0 }));
-        } else {
-          setState((s) => ({ ...s, queue: [track], queueIndex: 0, track, status: "loading", progress: 0, currentTime: 0, duration: 0 }));
-        }
-        audio.src = streamUrl(track.uri);
-        void audio.play().catch(() => setState((s) => ({ ...s, status: "error" })));
+        playTrack(track, queue);
       },
       seek(fraction) {
         const audio = audioRef.current;
@@ -173,21 +229,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         if (state.queue.length < 2) return;
         const nextIndex = state.queueIndex + 1;
         if (nextIndex >= state.queue.length) return;
-        const track = state.queue[nextIndex];
-        const audio = ensureAudio();
-        audio.src = streamUrl(track.uri);
-        setState((s) => ({ ...s, track, queueIndex: nextIndex, status: "loading", progress: 0, currentTime: 0, duration: 0 }));
-        void audio.play().catch(() => setState((s) => ({ ...s, status: "error" })));
+        playTrack(state.queue[nextIndex], state.queue);
       },
       previousTrack() {
         if (state.queue.length < 2) return;
         const prevIndex = state.queueIndex - 1;
         if (prevIndex < 0) return;
-        const track = state.queue[prevIndex];
-        const audio = ensureAudio();
-        audio.src = streamUrl(track.uri);
-        setState((s) => ({ ...s, track, queueIndex: prevIndex, status: "loading", progress: 0, currentTime: 0, duration: 0 }));
-        void audio.play().catch(() => setState((s) => ({ ...s, status: "error" })));
+        playTrack(state.queue[prevIndex], state.queue);
       },
       setQueue(tracks) {
         setState((s) => ({ ...s, queue: tracks, queueIndex: 0 }));

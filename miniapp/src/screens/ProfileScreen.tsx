@@ -3,13 +3,13 @@ import {
   Package, Plus, Wallet, Calendar, Receipt, User,
   Play, Pause, CircleNotch, WarningCircle, Gift, Star,
   ArrowsClockwise, CaretDown, CaretUp, DownloadSimple, MusicNotes, Trash,
-  Check, X,
+  Check, X, BookmarkSimple,
 } from "@phosphor-icons/react";
 import { GlassPanel } from "../components/GlassPanel";
 import { Segmented } from "../components/Segmented";
 import { EmptyState } from "../components/EmptyState";
 import { usePlayer } from "../lib/player";
-import { api, type MeResponse, type Invoice, type DownloadRecord, type DownloadStatus } from "../lib/api";
+import { api, type MeResponse, type Invoice, type DownloadRecord, type DownloadStatus, type HistoryEntry } from "../lib/api";
 
 function formatSubscription(until: number | null): string {
   if (!until) return "нет";
@@ -67,7 +67,13 @@ function DownloadEntry({
           </p>
           <p className="text-muted" style={{ fontSize: 12, margin: "2px 0 0" }}>
             {new Date(record.createdAt * 1000).toLocaleDateString("ru-RU")} · {record.tracks.length} тр. ·{" "}
-            {DOWNLOAD_STATUS_LABEL[record.status]}
+            <span
+              className={
+                record.status === "failed" ? "text-danger" : record.status === "done" ? "text-success" : undefined
+              }
+            >
+              {DOWNLOAD_STATUS_LABEL[record.status]}
+            </span>
           </p>
         </button>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -147,7 +153,7 @@ function DownloadEntry({
                   {t.artist} — {t.title}
                 </span>
                   {t.status === "failed" && (
-                    <WarningCircle size={12} weight="bold" className="text-muted" aria-label={`Ошибка: ${t.error}`} />
+                    <WarningCircle size={12} weight="bold" className="text-danger" aria-label={`Ошибка: ${t.error}`} />
                   )}
               </li>
             );
@@ -158,12 +164,52 @@ function DownloadEntry({
   );
 }
 
-function DownloadsSection({ refreshKey }: { refreshKey: number }) {
+type LibraryItem =
+  | { kind: "download"; createdAt: number; record: DownloadRecord }
+  | { kind: "history"; createdAt: number; entry: HistoryEntry };
+
+function HistoryItem({ entry, onOpen }: { entry: HistoryEntry; onOpen: (entry: HistoryEntry) => void }) {
+  return (
+    <li className="download-entry">
+      <button
+        type="button"
+        className="download-entry-inner"
+        style={{ width: "100%", textAlign: "left", background: "none", border: "none", color: "inherit", cursor: "pointer" }}
+        onClick={() => onOpen(entry)}
+      >
+        <BookmarkSimple size={18} weight="bold" />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ fontWeight: 600, margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {entry.playlistName ?? entry.prompt}
+          </p>
+          <p className="text-muted" style={{ fontSize: 12, margin: "2px 0 0" }}>
+            {new Date(entry.createdAt * 1000).toLocaleDateString("ru-RU")} · {entry.trackCount ?? entry.tracks.length} тр.
+          </p>
+        </div>
+      </button>
+    </li>
+  );
+}
+
+function LibrarySection({
+  refreshKey,
+  onOpen,
+}: {
+  refreshKey: number;
+  onOpen: (entry: HistoryEntry) => void;
+}) {
   const [downloads, setDownloads] = useState<DownloadRecord[]>([]);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<{ id: number; kind: "resend" | "delete" } | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+
+  useEffect(() => {
+    api.fetchHistory()
+      .then((r) => setHistory(r.history))
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+  }, [refreshKey]);
 
   useEffect(() => {
     const polling = { active: true };
@@ -228,38 +274,56 @@ function DownloadsSection({ refreshKey }: { refreshKey: number }) {
     }
   }
 
+  const items: LibraryItem[] = [
+    ...downloads.map((record): LibraryItem => ({ kind: "download", createdAt: record.createdAt, record })),
+    ...history.map((entry): LibraryItem => ({ kind: "history", createdAt: entry.createdAt, entry })),
+  ].sort((a, b) => b.createdAt - a.createdAt);
+
   return (
     <>
       {error && <p role="alert" className="icon-row"><WarningCircle size={16} weight="bold" /> {error}</p>}
       {notice && <p role="status" className="icon-row"><DownloadSimple size={16} weight="bold" /> {notice}</p>}
-      {downloads.length === 0 ? (
-        <EmptyState icon={<DownloadSimple size={40} weight="bold" />} label="Загрузок пока нет" />
+      {items.length === 0 ? (
+        <EmptyState icon={<BookmarkSimple size={40} weight="bold" />} label="Пока пусто. Здесь появятся закладки и загрузки" />
       ) : (
         <ul className="plain-list plain-list--col">
-          {downloads.map((d) => (
-            <DownloadEntry
-              key={d.id}
-              record={d}
-              busy={busyId?.id === d.id ? busyId.kind : null}
-              confirming={confirmDeleteId === d.id}
-              onResend={() => handleResend(d)}
-              onDelete={() => handleDelete(d)}
-              onDeleteInitiate={() => setConfirmDeleteId(confirmDeleteId === d.id ? null : d.id)}
-            />
-          ))}
+          {items.map((item) =>
+            item.kind === "download" ? (
+              <DownloadEntry
+                key={`d-${item.record.id}`}
+                record={item.record}
+                busy={busyId?.id === item.record.id ? busyId.kind : null}
+                confirming={confirmDeleteId === item.record.id}
+                onResend={() => handleResend(item.record)}
+                onDelete={() => handleDelete(item.record)}
+                onDeleteInitiate={() => setConfirmDeleteId(confirmDeleteId === item.record.id ? null : item.record.id)}
+              />
+            ) : (
+              <HistoryItem key={`h-${item.entry.id}`} entry={item.entry} onOpen={onOpen} />
+            ),
+          )}
         </ul>
       )}
     </>
   );
 }
 
-type ProfileTab = "Покупки" | "Загрузки";
+type ProfileTab = "Покупки" | "Библиотека";
 
-export default function ProfileScreen({ me, onGoShop }: { me: MeResponse | null; onGoShop: () => void }) {
+export default function ProfileScreen({
+  me,
+  onGoShop,
+  onOpenHistory,
+}: {
+  me: MeResponse | null;
+  onGoShop: () => void;
+  onOpenHistory: (entry: HistoryEntry) => void;
+}) {
   const [purchases, setPurchases] = useState<Invoice[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<ProfileTab>("Покупки");
   const [downloadsRefresh, setDownloadsRefresh] = useState(0);
+  const [historyRefresh, setHistoryRefresh] = useState(0);
 
   useEffect(() => {
     api.purchases()
@@ -322,17 +386,20 @@ export default function ProfileScreen({ me, onGoShop }: { me: MeResponse | null;
       <GlassPanel className="reveal">
         <div style={{ marginBottom: 14 }}>
           <Segmented<ProfileTab>
-            options={["Покупки", "Загрузки"] as const}
+            options={["Покупки", "Библиотека"] as const}
             value={tab}
             onChange={(t) => {
               setTab(t);
-              if (t === "Загрузки") setDownloadsRefresh((n) => n + 1);
+              if (t === "Библиотека") {
+                setDownloadsRefresh((n) => n + 1);
+                setHistoryRefresh((n) => n + 1);
+              }
             }}
-            ariaLabel="История"
+            ariaLabel="Библиотека"
           />
         </div>
-        {tab === "Загрузки" ? (
-          <DownloadsSection refreshKey={downloadsRefresh} />
+        {tab === "Библиотека" ? (
+          <LibrarySection refreshKey={downloadsRefresh + historyRefresh} onOpen={onOpenHistory} />
         ) : (
           <>
         {error && <p role="alert" className="icon-row"><WarningCircle size={16} weight="bold" /> {error}</p>}

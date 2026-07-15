@@ -77,6 +77,13 @@ function searchResult(id: string, artist: string, title: string): AgentResult {
   };
 }
 
+function addToPlaylistResult(id: string, tracks: { artist: string; title: string }[]): AgentResult {
+  return {
+    text: "",
+    toolCalls: [{ id, name: "add_to_playlist", args: { tracks } }],
+  };
+}
+
 describe("generatePlaylist", () => {
   test("onEvent emits structured tool_call/tool_result pairs with matching ids", async () => {
     const events: unknown[] = [];
@@ -143,30 +150,83 @@ describe("generatePlaylist", () => {
     expect(music.searchTrackCalls).toEqual(["A|One"]);
   });
 
-  test("first clarify call surfaces as ClarifyNeededError", async () => {
+  test("first clarify call surfaces as ClarifyNeededError with round 1", async () => {
     const provider = fakeProvider([
       { text: "", toolCalls: [{ id: "c1", name: "clarify", args: { question: "Which mood?", options: ["a", "b", "c"] } }] },
     ]);
     const music = fakeMusic({ remotePlaylists: true });
-    await expect(generatePlaylist({ provider, music, prompt: "something" })).rejects.toThrow(ClarifyNeededError);
+    let caught: unknown;
+    try {
+      await generatePlaylist({ provider, music, prompt: "something" });
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(ClarifyNeededError);
+    expect((caught as ClarifyNeededError).round).toBe(1);
   });
 
-  test("a second clarify attempt after resume is rejected, not asked again", async () => {
+  const resumeMessagesAfterOneClarify: AgentMessage[] = [
+    { role: "user", content: "something" },
+    { role: "assistant", content: "", toolCalls: [{ id: "c1", name: "clarify", args: { question: "Which mood?", options: ["a", "b", "c"] } }] },
+  ];
+
+  test("a second clarify call within the same run throws round 2, not rejected", async () => {
     const provider = fakeProvider([
-      { text: "", toolCalls: [{ id: "c2", name: "clarify", args: { question: "Again?", options: ["a", "b", "c"] } }] },
+      { text: "", toolCalls: [{ id: "c2", name: "clarify", args: { question: "Which genre?", options: ["a", "b", "c"] } }] },
+    ]);
+    const music = fakeMusic({ remotePlaylists: true });
+    let caught: unknown;
+    try {
+      await generatePlaylist({
+        provider,
+        music,
+        prompt: "something",
+        resumeMessages: resumeMessagesAfterOneClarify,
+        resumeClarifyAnswer: "a",
+        resumeClarifyRound: 1,
+      });
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(ClarifyNeededError);
+    expect((caught as ClarifyNeededError).round).toBe(2);
+  });
+
+  test("a third clarify call within the same run throws round 3", async () => {
+    const provider = fakeProvider([
+      { text: "", toolCalls: [{ id: "c3", name: "clarify", args: { question: "Which era?", options: ["a", "b", "c"] } }] },
+    ]);
+    const music = fakeMusic({ remotePlaylists: true });
+    let caught: unknown;
+    try {
+      await generatePlaylist({
+        provider,
+        music,
+        prompt: "something",
+        resumeMessages: resumeMessagesAfterOneClarify,
+        resumeClarifyAnswer: "a",
+        resumeClarifyRound: 2,
+      });
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(ClarifyNeededError);
+    expect((caught as ClarifyNeededError).round).toBe(3);
+  });
+
+  test("a fourth clarify attempt past the cap is rejected, agent must finalize", async () => {
+    const provider = fakeProvider([
+      { text: "", toolCalls: [{ id: "c4", name: "clarify", args: { question: "Again?", options: ["a", "b", "c"] } }] },
       finalizeResult("Vibes", [{ artist: "A", title: "One" }]),
     ]);
     const music = fakeMusic({ remotePlaylists: true });
-    const resumeMessages: AgentMessage[] = [
-      { role: "user", content: "something" },
-      { role: "assistant", content: "", toolCalls: [{ id: "c1", name: "clarify", args: { question: "Which mood?", options: ["a", "b", "c"] } }] },
-    ];
     const { playlist } = await generatePlaylist({
       provider,
       music,
       prompt: "something",
-      resumeMessages,
+      resumeMessages: resumeMessagesAfterOneClarify,
       resumeClarifyAnswer: "a",
+      resumeClarifyRound: 3,
     });
     expect(playlist.name).toBe("Vibes");
   });
@@ -199,6 +259,48 @@ describe("generatePlaylist", () => {
     expect(playlist.name).toBe("OST");
     expect(playlist.tracks).toHaveLength(1);
     expect(playlist.tracks[0]!.title).toBe("kyokai no kanata soundtrack");
+  });
+
+  test("extend mode: add_to_playlist accumulates and finalize merges with the base, deduping base tracks", async () => {
+    const baseTracks = [{ artist: "A", title: "One" }];
+    // Agent tries to re-add a base track (A) and a new track (B); A must be ignored.
+    const provider = fakeProvider([
+      addToPlaylistResult("c1", [
+        { artist: "B", title: "Two" },
+        { artist: "A", title: "One" },
+      ]),
+      finalizeResult("", []),
+    ]);
+    const music = fakeMusic({ remotePlaylists: false });
+    const { playlist } = await generatePlaylist({
+      provider,
+      music,
+      prompt: "add more",
+      mode: "extend",
+      baseTracks,
+      baseName: "Base",
+    });
+    expect(playlist.name).toBe("Base");
+    expect(playlist.tracks.map((t) => `${t.artist}|${t.title}`).sort()).toEqual(["A|One", "B|Two"]);
+  });
+
+  test("extend mode: does not throw when only the base resolves but additions fail", async () => {
+    const baseTracks = [{ artist: "A", title: "One" }];
+    const provider = fakeProvider([
+      addToPlaylistResult("c1", [{ artist: "Ghost", title: "Nowhere" }]),
+      finalizeResult("", []),
+    ]);
+    const music = fakeMusic({ remotePlaylists: false, searchTrack: async (artist) => (artist === "A" ? { uri: "ytm:a", title: "One", artist: "A" } : null) });
+    const { playlist } = await generatePlaylist({
+      provider,
+      music,
+      prompt: "add a missing track",
+      mode: "extend",
+      baseTracks,
+      baseName: "Base",
+    });
+    expect(playlist.tracks).toHaveLength(1);
+    expect(playlist.tracks[0]!.artist).toBe("A");
   });
 });
 
