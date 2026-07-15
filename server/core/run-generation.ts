@@ -25,8 +25,10 @@ export type GenerationOutcome =
 const DEFAULT_PROVIDER: ProviderId = "opencode";
 
 async function buildRunInputs(db: AppDb) {
-  const providerId = getActiveProviderId(db, DEFAULT_PROVIDER);
-  if (!isProviderId(providerId)) throw new Error(`unknown active provider setting: ${providerId}`);
+  // Stored value may be a legacy/removed provider (e.g. "openrouter") — fall
+  // back to the default rather than throwing so existing chats keep working.
+  const storedProvider = getActiveProviderId(db, DEFAULT_PROVIDER);
+  const providerId = isProviderId(storedProvider) ? storedProvider : DEFAULT_PROVIDER;
   const provider = createProvider(providerId, getProviderOverrides(db, providerId));
 
   // Stored value may be a legacy/removed backend (e.g. "spotify") — fall back

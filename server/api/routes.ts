@@ -259,8 +259,11 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
   // renders this screen for the calling chat.
 
   app.get("/admin/settings", requireAdmin, (c) => {
+    // Stored value may be a legacy/removed provider (e.g. "openrouter") — fall
+    // back to the default rather than surfacing an id the dropdown can't render.
+    const storedProvider = getActiveProviderId(db, DEFAULT_PROVIDER);
     return c.json({
-      activeProvider: getActiveProviderId(db, DEFAULT_PROVIDER),
+      activeProvider: isProviderId(storedProvider) ? storedProvider : DEFAULT_PROVIDER,
       activeBackend: getActiveBackendId(db, DEFAULT_BACKEND),
       availableProviders: AVAILABLE_PROVIDERS,
       availableBackends: AVAILABLE_BACKENDS,
