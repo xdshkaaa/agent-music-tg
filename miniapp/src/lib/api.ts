@@ -33,6 +33,7 @@ export interface MeResponse {
   subscriptionUntil: number | null;
   trial: TrialStatus;
   generationsUsed: number;
+  musicBackend: string | null;
 }
 
 export type GrantKind = "credits" | "subscription";
@@ -262,6 +263,11 @@ async function requestSSE<T>(path: string, body: unknown, onEvent: (e: AgentEven
 
 export const api = {
   me: () => request<MeResponse>("/api/me"),
+  setMyMusicBackend: (id: string | null) =>
+    request<{ ok: boolean; musicBackend: string | null }>("/api/me/music-backend", {
+      method: "POST",
+      body: JSON.stringify({ id }),
+    }),
 
   // --- Audio downloads ---
   download: (playlistName: string, tracks: Track[]) =>
@@ -295,6 +301,9 @@ export const api = {
   // --- Shop config (public, no admin rights) ---
   shopConfig: () => request<ShopConfig>("/api/shop-config"),
 
+  search: (query: string, limit = 20) =>
+    request<{ tracks: Track[] }>(`/api/search?q=${encodeURIComponent(query)}&limit=${limit}`),
+
   verifyTracks: (uris: string[]) =>
     request<Record<string, TrackVerificationStatus>>(`/api/tracks/verify?uris=${encodeURIComponent(uris.join(","))}`),
 
@@ -308,6 +317,8 @@ export const api = {
   // --- Playlist history ---
   saveGeneration: (id: number) => request<{ ok: boolean }>(`/api/generations/${id}/save`, { method: "POST" }),
   unsaveGeneration: (id: number) => request<{ ok: boolean }>(`/api/generations/${id}/save`, { method: "DELETE" }),
+  renameGeneration: (id: number, name: string) =>
+    request<{ ok: boolean }>(`/api/generations/${id}`, { method: "PATCH", body: JSON.stringify({ name }) }),
   fetchHistory: () => request<{ history: HistoryEntry[] }>("/api/history"),
 
   // --- Admin: payments management ---

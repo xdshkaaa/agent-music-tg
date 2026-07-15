@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { BookmarkSimple, CheckCircle, CircleNotch, DownloadSimple, Plus, WarningCircle } from "@phosphor-icons/react";
+import { BookmarkSimple, CheckCircle, CircleNotch, DownloadSimple, PencilSimple, Plus, WarningCircle } from "@phosphor-icons/react";
 import { GlassPanel } from "../components/GlassPanel";
 import { TrackPlayButton } from "../components/PlayerBar";
 import { usePlayer } from "../lib/player";
@@ -28,6 +28,9 @@ export function ResultsScreen({
   const downloadedUris = useRef<Set<string>>(new Set());
   const [saved, setSaved] = useState(initialSaved);
   const [saveBusy, setSaveBusy] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState(playlist.name);
+  const [renameBusy, setRenameBusy] = useState(false);
   const [verification, setVerification] = useState<Record<string, TrackVerificationStatus>>({});
   const [toast] = useState<ToastState>(null);
   const polling = useRef(false);
@@ -124,6 +127,25 @@ export function ResultsScreen({
     }
   }
 
+  async function handleRename() {
+    const name = nameDraft.trim();
+    if (name.length === 0 || name === current.name) {
+      setNameDraft(current.name);
+      setEditingName(false);
+      return;
+    }
+    setRenameBusy(true);
+    try {
+      await api.renameGeneration(generationId, name);
+      setCurrent((c) => ({ ...c, name }));
+      setEditingName(false);
+    } catch {
+      setNameDraft(current.name);
+    } finally {
+      setRenameBusy(false);
+    }
+  }
+
   async function handleToggleSave() {
     if (saveBusy) return;
     setSaveBusy(true);
@@ -181,7 +203,44 @@ export function ResultsScreen({
 
   return (
     <GlassPanel className="reveal">
-      <h1>{current.name}</h1>
+      {editingName ? (
+        <input
+          className="playlist-name-input"
+          autoFocus
+          value={nameDraft}
+          disabled={renameBusy}
+          maxLength={200}
+          onChange={(e) => setNameDraft(e.target.value)}
+          onBlur={() => void handleRename()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              void handleRename();
+            } else if (e.key === "Escape") {
+              setNameDraft(current.name);
+              setEditingName(false);
+            }
+          }}
+        />
+      ) : (
+        <h1
+          className="playlist-name-title"
+          role="button"
+          tabIndex={0}
+          aria-label="Переименовать плейлист"
+          onClick={() => { setNameDraft(current.name); setEditingName(true); }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              setNameDraft(current.name);
+              setEditingName(true);
+            }
+          }}
+        >
+          {current.name}
+          <PencilSimple size={16} weight="bold" className="playlist-name-edit-icon" />
+        </h1>
+      )}
       {done.current && visibleTracks.length === 0 ? (
         <p className="text-muted mt-16">Все треки недоступны</p>
       ) : (

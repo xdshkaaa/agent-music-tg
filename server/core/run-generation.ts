@@ -4,6 +4,7 @@ import { createMusicProvider, isMusicBackend } from "../music/registry";
 import { getActiveProviderId, getActiveBackendId, getProviderOverrides } from "../lib/settings";
 import { hasAccess, consumeAccess, checkSubscriptionRateLimit } from "../access/entitlements";
 import { insertGeneration, getGeneration, appendTracksToGeneration, incrementExtendCount } from "../access/generations-store";
+import { getUserMusicBackend } from "../access/users-store";
 import {
   ClarifyNeededError,
   MaxIterationsExceededError,
@@ -40,16 +41,18 @@ const DEFAULT_PROVIDER: ProviderId = "opencode";
 /** Extends of one playlist that are free before each extend costs a credit. */
 export const EXTEND_FREE_LIMIT = 3;
 
-async function buildRunInputs(db: AppDb) {
+async function buildRunInputs(db: AppDb, chatId: number) {
   // Stored value may be a legacy/removed provider (e.g. "openrouter") — fall
   // back to the default rather than throwing so existing chats keep working.
   const storedProvider = getActiveProviderId(db, DEFAULT_PROVIDER);
   const providerId = isProviderId(storedProvider) ? storedProvider : DEFAULT_PROVIDER;
   const provider = createProvider(providerId, getProviderOverrides(db, providerId));
 
+  // Per-user override takes priority; falls back to the admin-wide default.
   // Stored value may be a legacy/removed backend (e.g. "spotify") — fall back
   // to the default rather than throwing so existing chats keep working.
-  const stored = getActiveBackendId(db, "youtube-music");
+  const userBackend = getUserMusicBackend(db, chatId);
+  const stored = userBackend && isMusicBackend(userBackend) ? userBackend : getActiveBackendId(db, "youtube-music");
   const backendId = isMusicBackend(stored) ? stored : "youtube-music";
 
   const music = createMusicProvider(backendId);
@@ -101,7 +104,7 @@ export async function startGeneration(
   if (gated) return gated;
 
   const outcome = await toOutcome(async () => {
-    const { provider, music } = await buildRunInputs(db);
+    const { provider, music } = await buildRunInputs(db, chatId);
     const opts: GeneratePlaylistOptions = { provider, music, prompt, onEvent };
     return generatePlaylist(opts);
   });
@@ -133,7 +136,7 @@ export async function resumeGeneration(
   const gated = gateAccess(db, chatId);
   if (gated) return gated;
   const outcome = await toOutcome(async () => {
-    const { provider, music } = await buildRunInputs(db);
+    const { provider, music } = await buildRunInputs(db, chatId);
     return generatePlaylist({
       provider,
       music,
@@ -185,7 +188,7 @@ export async function extendGeneration(
   }
 
   const outcome = await toOutcome(async () => {
-    const { provider, music } = await buildRunInputs(db);
+    const { provider, music } = await buildRunInputs(db, chatId);
     const baseTracks = existing.tracks.map((t) => ({ artist: t.artist, title: t.title }));
     return generatePlaylist({
       provider,

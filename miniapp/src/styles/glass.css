@@ -951,6 +951,60 @@ h1 {
   color: var(--text-light);
 }
 
+.playlist-name-title {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: color 0.18s ease;
+}
+
+.playlist-name-title:hover,
+.playlist-name-title:focus-visible {
+  color: var(--accent);
+}
+
+.playlist-name-title:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+
+.playlist-name-edit-icon {
+  flex-shrink: 0;
+  opacity: 0.5;
+  transition: opacity 0.18s ease;
+}
+
+.playlist-name-title:hover .playlist-name-edit-icon,
+.playlist-name-title:focus-visible .playlist-name-edit-icon {
+  opacity: 1;
+}
+
+.playlist-name-input {
+  display: block;
+  width: 100%;
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin: 0 0 6px;
+  padding: 2px 0;
+  color: var(--text-dark);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid var(--accent);
+}
+
+:root[data-scheme="light"] .playlist-name-input {
+  color: var(--text-light);
+}
+
+.playlist-name-input:focus {
+  outline: none;
+}
+
 .prompt-hero {
   padding: 6px 4px 2px;
 }
@@ -1035,6 +1089,7 @@ h1 {
   gap: 10px;
   padding: 8px 8px 8px 18px;
   border-radius: 28px;
+  overflow: hidden;
   border: 1px solid var(--lg-v2-chip-border);
   background: var(--lg-v2-input-bg);
   backdrop-filter: blur(12px);
@@ -1078,10 +1133,51 @@ h1 {
 
 .prompt-pill-input::placeholder {
   color: rgba(242, 243, 245, 0.45);
+  white-space: nowrap;
 }
 
 :root[data-scheme="light"] .prompt-pill-input::placeholder {
   color: rgba(13, 13, 16, 0.42);
+}
+
+.prompt-mode-toggle {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--lg-v2-chip-border);
+  background: transparent;
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  position: relative;
+  transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.prompt-mode-toggle.inactive {
+  color: var(--text-muted);
+}
+
+.prompt-mode-toggle .icon-strike {
+  position: absolute;
+  width: 20px;
+  height: 2px;
+  border-radius: 1px;
+  background: currentColor;
+  transform: rotate(-45deg);
+}
+
+@media (hover: hover) {
+  .prompt-mode-toggle:hover {
+    border-color: var(--accent);
+  }
+}
+
+.prompt-mode-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .prompt-submit {
@@ -2117,6 +2213,7 @@ div.player-bar-thumbnail::after {
 }
 
 .player-screen-artwork {
+  position: relative;
   width: 100%;
   aspect-ratio: 1;
   max-width: 380px;
@@ -2131,10 +2228,20 @@ div.player-bar-thumbnail::after {
   box-shadow: 0 20px 40px -24px rgba(0, 0, 0, 0.25);
 }
 
+.player-screen-artwork-backdrop {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  filter: blur(28px) saturate(140%) brightness(0.75);
+  transform: scale(1.15);
+}
+
 .player-screen-artwork-img {
+  position: relative;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .player-screen-artwork-placeholder {
