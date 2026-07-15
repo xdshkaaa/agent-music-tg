@@ -29,8 +29,11 @@ export interface AgentProvider {
   generateMessages(system: string, messages: AgentMessage[], tools: ToolSpec[]): Promise<AgentResult>;
 }
 
-/** A human-readable status emitted while the agent loop runs, for live progress UI. */
-export interface AgentProgressEvent {
-  type: "assistant_text" | "tool_call";
-  text: string;
-}
+/** A structured event emitted while the agent loop runs, for live progress UI. */
+export type AgentEvent =
+  | { kind: "reasoning"; delta: string }
+  | { kind: "tool_call"; id: string; name: string; args: Record<string, unknown> }
+  | { kind: "tool_result"; id: string; ok: boolean; result: unknown };
+
+/** @deprecated use AgentEvent */
+export type AgentProgressEvent = AgentEvent;
