@@ -27,9 +27,16 @@ export function ResultsScreen({
   useEffect(() => {
     polling.current = true;
     let stopped = false;
+    const MAX_POLLS = 45; // ~90s cap so a stuck "pending" track doesn't poll forever
+    let attempts = 0;
 
     async function poll() {
-      while (polling.current && !stopped) {
+      while (polling.current && !stopped && attempts < MAX_POLLS) {
+        if (document.hidden) {
+          await new Promise((r) => setTimeout(r, 2000));
+          continue;
+        }
+        attempts += 1;
         try {
           const result = await api.verifyTracks(uris);
           if (stopped) return;
@@ -61,10 +68,10 @@ export function ResultsScreen({
       setTimeout(() => setToast(null), 3000);
       return;
     }
-    player.setQueue(
-      playlist.tracks.map((t) => ({ uri: t.uri, title: t.title, artist: t.artist, artwork: t.artwork }))
+    player.toggle(
+      { uri: track.uri, title: track.title, artist: track.artist, artwork: track.artwork },
+      playlist.tracks.map((t) => ({ uri: t.uri, title: t.title, artist: t.artist, artwork: t.artwork })),
     );
-    player.toggle({ uri: track.uri, title: track.title, artist: track.artist, artwork: track.artwork });
   }
 
   function verificationIcon(uri: string) {
@@ -72,7 +79,7 @@ export function ResultsScreen({
     if (!s || s === "pending") return null;
     if (s === "checking") return <CircleNotch size={14} className="spin" style={{ color: "var(--text-muted)" }} />;
     if (s === "verified") return <CheckCircle size={14} weight="fill" style={{ color: "var(--accent)" }} />;
-    return <WarningCircle size={14} weight="fill" style={{ color: "var(--danger, #f44336)" }} />;
+    return <WarningCircle size={14} weight="fill" style={{ color: "var(--danger)" }} />;
   }
 
   async function handleDownload() {
@@ -95,7 +102,15 @@ export function ResultsScreen({
             className="track-row"
             key={track.uri}
             style={{ ["--i" as string]: i }}
+            role="button"
+            tabIndex={0}
             onClick={() => handleTrackClick(track)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                handleTrackClick(track);
+              }
+            }}
           >
             {track.artwork ? (
               <img className="track-artwork" src={track.artwork} alt="" />
@@ -113,6 +128,7 @@ export function ResultsScreen({
             {verificationIcon(track.uri)}
             <TrackPlayButton
               track={{ uri: track.uri, title: track.title, artist: track.artist, artwork: track.artwork }}
+              queue={playlist.tracks.map((t) => ({ uri: t.uri, title: t.title, artist: t.artist, artwork: t.artwork }))}
               stopPropagation
               onBeforePlay={() => {
                 if (verification[track.uri] === "unavailable") {
@@ -158,7 +174,7 @@ export function ResultsScreen({
               borderRadius: "var(--radius-card, 16px)",
               border: "1px solid var(--hairline)",
               fontWeight: 700,
-              color: "var(--accent)",
+              color: "var(--text-dark)",
             }}
           >
             <CheckCircle size={18} weight="fill" />

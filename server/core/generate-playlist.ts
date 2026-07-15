@@ -2,8 +2,16 @@ import type { AgentMessage, AgentProvider } from "../agent/types";
 import { MUSIC_AGENT_TOOLS, dispatchTool } from "../agent/tools";
 import { PLAYLIST_SYSTEM_PROMPT } from "../agent/prompts";
 import type { MusicProvider, Track } from "../music/types";
+import { mapWithConcurrency } from "./concurrency";
 
 export const DEFAULT_MAX_ITERATIONS = 8;
+const SEARCH_CONCURRENCY = 5;
+
+export class NoTracksResolvedError extends Error {
+  constructor() {
+    super("none of the finalized tracks could be resolved by the music backend");
+  }
+}
 
 export class MaxIterationsExceededError extends Error {
   constructor(maxIterations: number) {
@@ -79,16 +87,17 @@ async function resolveAndFinalize(
   args: FinalizeArgs,
   cache: Map<string, unknown>,
 ): Promise<FinalizedPlaylist> {
-  const resolved: Track[] = [];
-  for (const t of args.tracks) {
+  const found = await mapWithConcurrency(args.tracks, SEARCH_CONCURRENCY, async (t) => {
     const key = callKey("searchTrack", { artist: t.artist, title: t.title });
     let track = cache.get(key) as Track | null | undefined;
     if (track === undefined) {
       track = await music.searchTrack(t.artist, t.title);
       cache.set(key, track);
     }
-    if (track) resolved.push(track);
-  }
+    return track;
+  });
+  const resolved = found.filter((t): t is Track => t != null);
+  if (resolved.length === 0) throw new NoTracksResolvedError();
 
   if (music.capabilities.remotePlaylists && music.createPlaylist && music.addTracksToPlaylist) {
     const playlist = await music.createPlaylist(args.name);
@@ -129,6 +138,11 @@ export async function generatePlaylist(opts: GeneratePlaylistOptions): Promise<G
 
     const finalizeCall = calls.find((c) => c.name === "finalize_playlist") ?? null;
     const toolMessages: AgentMessage[] = [];
+    const dispatchable: { call: (typeof calls)[number]; key: string; slot: number }[] = [];
+    // Two-phase turn: classify calls first (clarify/finalize/duplicates are
+    // synchronous decisions), then run the real dispatches concurrently while
+    // keeping tool messages in the original call order via slot indices.
+    const slots: (AgentMessage | null)[] = [];
 
     for (const call of calls) {
       if (call.name === "finalize_playlist") continue;
@@ -163,6 +177,11 @@ export async function generatePlaylist(opts: GeneratePlaylistOptions): Promise<G
         });
         continue;
       }
+      slots.push(null);
+      dispatchable.push({ call, key, slot: slots.length - 1 });
+    }
+
+    await mapWithConcurrency(dispatchable, SEARCH_CONCURRENCY, async ({ call, key, slot }) => {
       try {
         const dispatchResult = await dispatchTool(call.name, call.args, {
           music: opts.music,
@@ -171,21 +190,24 @@ export async function generatePlaylist(opts: GeneratePlaylistOptions): Promise<G
           },
         });
         seenCalls.set(key, dispatchResult);
-        toolMessages.push({
+        slots[slot] = {
           role: "tool",
           callId: call.id,
           name: call.name,
           content: JSON.stringify(dispatchResult),
-        });
+        };
       } catch (e) {
-        toolMessages.push({
+        slots[slot] = {
           role: "tool",
           callId: call.id,
           name: call.name,
           content: e instanceof Error ? e.message : String(e),
           isError: true,
-        });
+        };
       }
+    });
+    for (const m of slots) {
+      if (m) toolMessages.push(m);
     }
 
     if (finalizeCall) {
@@ -194,6 +216,9 @@ export async function generatePlaylist(opts: GeneratePlaylistOptions): Promise<G
         const playlist = await resolveAndFinalize(opts.music, args, seenCalls);
         return { playlist, messages };
       } catch (e) {
+        // Backend resolved zero tracks — a retry with a different tracklist
+        // won't help, so fail the run instead of feeding the error back.
+        if (e instanceof NoTracksResolvedError) throw e;
         toolMessages.push({
           role: "tool",
           callId: finalizeCall.id,

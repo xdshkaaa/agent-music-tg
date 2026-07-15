@@ -5,8 +5,10 @@ import {
   ClarifyNeededError,
   DEFAULT_MAX_ITERATIONS,
   MaxIterationsExceededError,
+  NoTracksResolvedError,
   generatePlaylist,
 } from "./generate-playlist";
+import { mapWithConcurrency, withTimeout } from "./concurrency";
 
 function fakeProvider(turns: AgentResult[]): AgentProvider & { calls: number } {
   const state = { calls: 0 };
@@ -33,6 +35,9 @@ function fakeMusic(opts: { remotePlaylists: boolean; searchTrack?: (artist: stri
       if (opts.searchTrack) return opts.searchTrack(artist, title);
       return { uri: `ytm:${artist}-${title}`, title, artist };
     },
+    async searchTracks(query) {
+      return [{ uri: `ytm:q-${query}`, title: query, artist: "Q" }];
+    },
     async searchArtist(name) {
       return { id: `id-${name}`, name };
     },
@@ -55,6 +60,13 @@ function finalizeResult(name: string, tracks: { artist: string; title: string }[
   return {
     text: "",
     toolCalls: [{ id: "call-final", name: "finalize_playlist", args: { name, tracks } }],
+  };
+}
+
+function searchTracksResult(id: string, query: string): AgentResult {
+  return {
+    text: "",
+    toolCalls: [{ id, name: "searchTracks", args: { query } }],
   };
 }
 
@@ -134,5 +146,66 @@ describe("generatePlaylist", () => {
 
   test("default max iterations constant is sane", () => {
     expect(DEFAULT_MAX_ITERATIONS).toBeGreaterThan(0);
+  });
+
+  test("fails the run when the backend resolves zero tracks (no silent empty playlist)", async () => {
+    const provider = fakeProvider([finalizeResult("Vibes", [{ artist: "A", title: "One" }, { artist: "B", title: "Two" }])]);
+    const music = fakeMusic({ remotePlaylists: false, searchTrack: async () => null });
+    await expect(generatePlaylist({ provider, music, prompt: "anything" })).rejects.toThrow(NoTracksResolvedError);
+  });
+
+  test("keeps partial playlist when only some tracks resolve", async () => {
+    const provider = fakeProvider([finalizeResult("Vibes", [{ artist: "A", title: "One" }, { artist: "B", title: "Two" }])]);
+    const music = fakeMusic({
+      remotePlaylists: false,
+      searchTrack: async (artist, title) => (artist === "A" ? { uri: "ytm:a", title, artist } : null),
+    });
+    const { playlist } = await generatePlaylist({ provider, music, prompt: "anything" });
+    expect(playlist.tracks).toHaveLength(1);
+  });
+
+  test("builds a playlist directly from a free-text searchTracks result (short named-work query)", async () => {
+    const track = { artist: "Q", title: "kyokai no kanata soundtrack" };
+    const provider = fakeProvider([searchTracksResult("c1", "kyokai no kanata soundtrack"), finalizeResult("OST", [track])]);
+    const music = fakeMusic({ remotePlaylists: false });
+    const { playlist } = await generatePlaylist({ provider, music, prompt: "kyokai no kanata soundtrack" });
+    expect(playlist.name).toBe("OST");
+    expect(playlist.tracks).toHaveLength(1);
+    expect(playlist.tracks[0]!.title).toBe("kyokai no kanata soundtrack");
+  });
+});
+
+describe("mapWithConcurrency", () => {
+  test("preserves input order and respects the concurrency limit", async () => {
+    let active = 0;
+    let peak = 0;
+    const items = Array.from({ length: 12 }, (_, i) => i);
+    const out = await mapWithConcurrency(items, 3, async (n) => {
+      active++;
+      peak = Math.max(peak, active);
+      await new Promise((r) => setTimeout(r, 5));
+      active--;
+      return n * 2;
+    });
+    expect(out).toEqual(items.map((n) => n * 2));
+    expect(peak).toBeLessThanOrEqual(3);
+    expect(peak).toBeGreaterThan(1);
+  });
+
+  test("propagates errors", async () => {
+    await expect(
+      mapWithConcurrency([1, 2, 3], 2, async (n) => {
+        if (n === 2) throw new Error("boom");
+        return n;
+      }),
+    ).rejects.toThrow("boom");
+  });
+});
+
+describe("withTimeout", () => {
+  test("resolves fallback on timeout, value when fast", async () => {
+    const slow = new Promise<string>((r) => setTimeout(() => r("late"), 100));
+    expect(await withTimeout(slow, 10, "fallback")).toBe("fallback");
+    expect(await withTimeout(Promise.resolve("fast"), 100, "fallback")).toBe("fast");
   });
 });

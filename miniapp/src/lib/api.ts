@@ -31,6 +31,7 @@ export interface MeResponse {
   credits: number;
   subscriptionUntil: number | null;
   trial: TrialStatus;
+  generationsUsed: number;
 }
 
 export type GrantKind = "credits" | "subscription";

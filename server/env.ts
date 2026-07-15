@@ -42,10 +42,10 @@ export const env = {
   paymentsEnabled: bool(process.env.PAYMENTS_ENABLED, true),
   cryptobotToken: process.env.CRYPTOBOT_TOKEN ?? "",
   cryptobotNetwork: (process.env.CRYPTOBOT_NETWORK ?? "mainnet").trim().toLowerCase() === "testnet" ? "testnet" : "mainnet",
-  // Optional Telegram Premium custom-emoji sticker set owned by the bot.
-  // When set, server/bot/emoji.ts fetches it once at startup and resolves
-  // symbolic names → custom_emoji_id for inline-button labels and <tg-emoji>
-  // message decorations. When unset, plain unicode emoji fallbacks are used.
+  // Unused: server/bot/emoji.ts now resolves Telegram Premium custom-emoji
+  // IDs straight from server/bot/emoji-symbols.json via getCustomEmojiStickers
+  // (no bot-owned sticker set required). Kept only so an existing
+  // EMOJI_STICKER_SET in a deployed .env doesn't error; safe to remove.
   emojiStickerSet: process.env.EMOJI_STICKER_SET ?? "",
   // Audio download/streaming: yt-dlp scratch dir (files deleted after upload)
   // and the on-disk stream cache with LRU size cap + TTL.

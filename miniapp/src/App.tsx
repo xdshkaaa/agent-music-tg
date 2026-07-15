@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
-import { Wallet } from "@phosphor-icons/react";
+import { Wallet, Sun, Moon } from "@phosphor-icons/react";
 import { PromptScreen } from "./screens/PromptScreen";
 import { ClarifyScreen } from "./screens/ClarifyScreen";
 import { ResultsScreen } from "./screens/ResultsScreen";
@@ -8,10 +8,9 @@ import ProfileScreen from "./screens/ProfileScreen";
 import { GlassPanel } from "./components/GlassPanel";
 import { ScreenTransition } from "./components/ScreenTransition";
 import { ErrorBanner } from "./components/ErrorBanner";
-import { IconOrEmoji } from "./components/IconOrEmoji";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { api, type MeResponse, type FinalizedPlaylist, type ShopConfig } from "./lib/api";
-import { getTelegramWebApp } from "./lib/telegram";
+import { getTelegramWebApp, getColorScheme } from "./lib/telegram";
 import { PlayerProvider, usePlayer } from "./lib/player";
 import { PlayerBar } from "./components/PlayerBar";
 import { BottomNav } from "./components/BottomNav";
@@ -63,6 +62,16 @@ export function App() {
   );
 }
 
+const SCHEME_STORAGE_KEY = "miniapp-scheme";
+
+function initialScheme(): "light" | "dark" {
+  if (typeof localStorage !== "undefined") {
+    const stored = localStorage.getItem(SCHEME_STORAGE_KEY);
+    if (stored === "light" || stored === "dark") return stored;
+  }
+  return getColorScheme();
+}
+
 function AppInner() {
   const [me, setMe] = useState<MeResponse | null>(null);
   const [shopConfig, setShopConfig] = useState<ShopConfig | null>(null);
@@ -72,8 +81,24 @@ function AppInner() {
   const [showPlayer, setShowPlayer] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [scheme, setScheme] = useState<"light" | "dark">(() => initialScheme());
+  const [lastGenerate, setLastGenerate] = useState<{ prompt: string } | null>(null);
+  const [lastClarify, setLastClarify] = useState<{ answer: string } | null>(null);
 
   const player = usePlayer();
+
+  function toggleScheme() {
+    setScheme((prev) => {
+      const next = prev === "dark" ? "light" : "dark";
+      document.documentElement.setAttribute("data-scheme", next);
+      try {
+        localStorage.setItem(SCHEME_STORAGE_KEY, next);
+      } catch {
+        // ignore storage failures (private mode etc.)
+      }
+      return next;
+    });
+  }
 
   useEffect(() => {
     const webApp = getTelegramWebApp();
@@ -122,6 +147,8 @@ function AppInner() {
   }, [player.track, player.status]);
 
   async function handleSubmit(prompt: string) {
+    setLastGenerate({ prompt });
+    setLastClarify(null);
     setBusy(true);
     setError(null);
     try {
@@ -135,6 +162,7 @@ function AppInner() {
   }
 
   async function handleClarifyAnswer(answer: string) {
+    setLastClarify({ answer });
     setBusy(true);
     setError(null);
     try {
@@ -145,6 +173,11 @@ function AppInner() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function retryLast() {
+    if (lastClarify) void handleClarifyAnswer(lastClarify.answer);
+    else if (lastGenerate) void handleSubmit(lastGenerate.prompt);
   }
 
   function navigate(target: Screen, dir?: "forward" | "back") {
@@ -199,12 +232,11 @@ function AppInner() {
           />
         );
       case "buy":
-        return <BuyScreen reason={screen.reason} />;
+        return <BuyScreen reason={screen.reason} isAdmin={isAdmin} />;
       case "profile":
         return (
           <ProfileScreen
             me={me}
-            shopConfig={shopConfig}
             onGoShop={() => navigate({ kind: "buy" })}
           />
         );
@@ -228,23 +260,33 @@ function AppInner() {
   return (
     <ErrorBoundary onReset={handleReset}>
     <main className="app-shell">
-      <header className="top-bar">
-        <span className="logo-chip">
-          {shopConfig?.headerIcon ? (
-            <IconOrEmoji icon={shopConfig.headerIcon} size={22} />
-          ) : (
-            <span className="ring" aria-hidden="true" />
-          )}
+      <header className="app-top-bar">
+        <span className="app-top-brand">
           {shopConfig?.headerTitle || "agent music"}
         </span>
-        <span className="wallet-pill">
-          <Wallet size={16} weight="bold" className="accent" />
-          {me?.credits ?? 0} ген
+        <span className="app-top-actions">
+          <button
+            type="button"
+            className="app-top-chip wallet-pill"
+            aria-label="Открыть профиль"
+            onClick={() => navigate({ kind: "profile" })}
+          >
+            <Wallet size={16} weight="bold" className="accent" />
+            {me?.credits ?? 0} ген
+          </button>
+          <button
+            type="button"
+            className="theme-toggle"
+            aria-label={scheme === "dark" ? "Включить светлую тему" : "Включить тёмную тему"}
+            onClick={toggleScheme}
+          >
+            {scheme === "dark" ? <Sun size={18} weight="bold" /> : <Moon size={18} weight="bold" />}
+          </button>
         </span>
       </header>
 
       {error && (
-        <ErrorBanner message={error} onClose={() => setError(null)} />
+        <ErrorBanner message={error} onClose={() => setError(null)} onRetry={retryLast} isAdmin={isAdmin} />
       )}
 
       <ScreenTransition kind={screen.kind} direction={transitionDir}>

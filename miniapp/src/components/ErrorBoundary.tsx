@@ -62,22 +62,11 @@ export function DefaultErrorFallback({
   onRetry?: () => void;
 }) {
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 16,
-        padding: 48,
-        textAlign: "center",
-        minHeight: 300,
-      }}
-    >
-      <WarningCircle size={40} weight="bold" style={{ opacity: 0.5 }} />
-      <p style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Что-то пошло не так</p>
+    <div className="error-fallback">
+      <WarningCircle size={40} weight="bold" className="error-fallback-icon" />
+      <p className="error-fallback-title">Что-то пошло не так</p>
       {error && (
-        <p style={{ fontSize: 13, opacity: 0.5, margin: 0, maxWidth: 300, wordBreak: "break-word" }}>
+        <p className="error-fallback-message">
           {error.message}
         </p>
       )}

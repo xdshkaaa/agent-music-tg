@@ -39,7 +39,7 @@ export function offersKeyboard(db: AppDb, chatId: number): InlineKeyboard | null
 
 export function purchasePromptText(): string {
   // Sent with parse_mode: "HTML" by sendOffers below.
-  return `<b>${heading("ruler", "ДОСТУП ────")}</b>\nЧтобы генерировать плейлисты, нужен доступ. Выберите пакет:`;
+  return `<b>${heading("ruler", "ДОСТУП")}</b>\nЧтобы генерировать плейлисты, нужен доступ. Выберите пакет:`;
 }
 
 /** Sends the offer list (used by /buy and by the no-access prompt). */
@@ -68,7 +68,7 @@ export async function showProfile(ctx: BotContext, db: AppDb): Promise<void> {
   const pkg = accent("package");
   const gift = accent("gift");
   const lines = [
-    `<b>${heading("profile", "ПРОФИЛЬ ─")}</b>`,
+    `<b>${heading("profile", "ПРОФИЛЬ")}</b>`,
     `${wallet ? wallet + " " : ""}Генерации: ${user?.credits ?? 0}`,
     ...(trialActive(user)
       ? [`${gift ? gift + " " : ""}Бесплатный пакет: ${user!.trialCredits} ген. до ${new Date(user!.trialUntil! * 1000).toLocaleDateString("ru-RU")}`]
@@ -168,7 +168,7 @@ export function registerShop(bot: Bot<BotContext>, db: AppDb): void {
     const kb = new InlineKeyboard()
       .text(`Криптой — ${offer.amount} ${offer.asset}`, `buyc:${offerId}`)
       .row()
-      .text(btnText(`Stars — ${offer.starsAmount}`, "sparkle"), `buys:${offerId}`);
+      .text(btnText(`Stars — ${offer.starsAmount}`, "star"), `buys:${offerId}`);
     await ctx.reply(`«${offer.title}» — выберите способ оплаты:`, { reply_markup: kb });
   });
 

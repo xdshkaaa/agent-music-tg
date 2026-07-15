@@ -4,16 +4,12 @@ import { env } from "../env";
 import type { BotContext } from "./context";
 import { allowlistGate } from "./middleware";
 import { channelSubscriptionGate } from "./channel-subscription-gate";
-import { getPendingClarify, getPendingGeneratePrompt, setPendingClarify, clearSession } from "./session";
-import { startGeneration, resumeGeneration, formatPlaylistReply } from "../core/run-generation";
-import { deliverAutoAudio } from "./auto-audio";
 import { AVAILABLE_PROVIDERS, isProviderId } from "../agent/registry";
 import { AVAILABLE_BACKENDS, isMusicBackend } from "../music/registry";
 import { getActiveProviderId, setActiveProviderId, getActiveBackendId, setActiveBackendId, getShopSettings } from "../lib/settings";
 import { upsertUser, setPhotoFileId } from "../access/users-store";
 import { registerShop, sendOffers, purchasePromptText, showProfile } from "./shop";
 import { registerAdminPanel, handleAdminText, menuKeyboard } from "./admin-panel";
-import { registerGenerate, showGenerate } from "./generate";
 import { registerCredits } from "./credits";
 import { registerModel } from "./model";
 import { registerReset } from "./reset";
@@ -31,11 +27,10 @@ export function createBot(db: AppDb): Bot<BotContext> {
 
   function buildStartKeyboard(ctx: BotContext): InlineKeyboard {
     const kb = new InlineKeyboard()
-      .webApp(btnText("Открыть приложение", "sparkle"), env.publicOrigin).row()
-      .text(btnText("Купить", "ruler"), "nav:buy")
-      .text(btnText("Генерация", "music"), "nav:generate").row()
+      .webApp(btnText("Открыть приложение", "app"), env.publicOrigin).row()
+      .text(btnText("Купить", "money"), "nav:buy")
       .text(btnText("Профиль", "profile"), "nav:profile")
-      .text(btnText("История", "headphone"), "nav:history").row()
+      .text(btnText("История", "history"), "nav:history").row()
       .text(btnText("Поддержка", "info"), "nav:support").row();
     if (ctx.isAdmin) {
       kb.text(btnText("Админка", "gear"), "nav:admin");
@@ -63,7 +58,7 @@ export function createBot(db: AppDb): Bot<BotContext> {
   });
 
   bot.command("app", async (ctx) => {
-    const keyboard = new InlineKeyboard().webApp(btnText("Открыть приложение", "sparkle"), env.publicOrigin);
+    const keyboard = new InlineKeyboard().webApp(btnText("Открыть приложение", "app"), env.publicOrigin);
     await ctx.reply(`${heading("info", "Откройте мини-приложение:")}`, {
       reply_markup: keyboard,
       parse_mode: "HTML",
@@ -82,7 +77,6 @@ export function createBot(db: AppDb): Bot<BotContext> {
 
   registerShop(bot, db);
   registerAdminPanel(bot, db);
-  registerGenerate(bot, db);
   registerCredits(bot, db);
   registerModel(bot, db);
   registerReset(bot, db);
@@ -93,9 +87,6 @@ export function createBot(db: AppDb): Bot<BotContext> {
     switch (ctx.match[1]) {
       case "buy":
         await sendOffers(ctx, db, purchasePromptText());
-        break;
-      case "generate":
-        await showGenerate(ctx, db);
         break;
       case "profile":
         await showProfile(ctx, db);
@@ -148,9 +139,12 @@ export function createBot(db: AppDb): Bot<BotContext> {
     await ctx.reply(`Активный источник установлен: ${arg}.`);
   });
 
+  bot.api.setChatMenuButton({
+    menu_button: { type: "web_app", text: "Открыть", web_app: { url: env.publicOrigin } },
+  }).catch(() => {});
+
   bot.api.setMyCommands([
     { command: "start", description: "Главное меню" },
-    { command: "generate", description: "Сгенерировать плейлист" },
     { command: "credits", description: "Мои кредиты и подписка" },
     { command: "model", description: "Выбрать AI модель" },
     { command: "history", description: "История генераций" },
@@ -165,75 +159,15 @@ export function createBot(db: AppDb): Bot<BotContext> {
   bot.on("message:text", async (ctx) => {
     const chatId = ctx.chat.id;
     const text = ctx.message.text.trim();
-    if (text.startsWith("/")) return; // unknown commands: ignore rather than forwarding to generation
+    if (text.startsWith("/")) return; // unknown commands: ignore
 
     upsertUser(db, chatId, ctx.from?.username ?? null);
 
     // Admin multi-step flows (add offer / broadcast / settings) consume text first.
     if (await handleAdminText(ctx, db, send)) return;
 
-    // /generate without args expects the next text as the prompt.
-    const pendingGenerate = getPendingGeneratePrompt(db, chatId);
-    if (pendingGenerate) {
-      clearSession(db, chatId);
-      await ctx.replyWithChatAction("typing");
-      const outcome = await startGeneration(db, chatId, text);
-      if (outcome.status === "needs_purchase") {
-        await sendOffers(ctx, db, purchasePromptText());
-        return;
-      }
-      if (outcome.status === "clarify") {
-        setPendingClarify(db, chatId, {
-          kind: "awaiting_clarify",
-          messages: outcome.messages,
-          question: outcome.question,
-          options: outcome.options,
-        });
-        const optionsText = outcome.options.map((o, i) => `${i + 1}. ${o}`).join("\n");
-        await ctx.reply(`${outcome.question}\n\n${optionsText}`);
-        return;
-      }
-      if (outcome.status === "error") {
-        await ctx.reply(`Не удалось собрать плейлист: ${outcome.message}`);
-        return;
-      }
-      await ctx.reply(formatPlaylistReply(outcome.playlist), { parse_mode: "Markdown" });
-      deliverAutoAudio(db, chatId, outcome.playlist.tracks, outcome.playlist.name, ctx.api).catch(() => {});
-      return;
-    }
-
-    const pending = getPendingClarify(db, chatId);
-    await ctx.replyWithChatAction("typing");
-
-    const outcome = pending
-      ? await resumeGeneration(db, chatId, text, pending.messages, text)
-      : await startGeneration(db, chatId, text);
-
-    if (outcome.status === "needs_purchase") {
-      clearSession(db, chatId);
-      await sendOffers(ctx, db, purchasePromptText());
-      return;
-    }
-
-    if (outcome.status === "clarify") {
-      setPendingClarify(db, chatId, {
-        kind: "awaiting_clarify",
-        messages: outcome.messages,
-        question: outcome.question,
-        options: outcome.options,
-      });
-      const optionsText = outcome.options.map((o, i) => `${i + 1}. ${o}`).join("\n");
-      await ctx.reply(`${outcome.question}\n\n${optionsText}`);
-      return;
-    }
-
-    clearSession(db, chatId);
-    if (outcome.status === "error") {
-      await ctx.reply(`Не удалось собрать плейлист: ${outcome.message}`);
-      return;
-    }
-    await ctx.reply(formatPlaylistReply(outcome.playlist), { parse_mode: "Markdown" });
-    deliverAutoAudio(db, chatId, outcome.playlist.tracks, outcome.playlist.name, ctx.api).catch(() => {});
+    // Playlist generation happens only in the Mini App now.
+    await ctx.reply(`${heading("info", "Открой мини-приложение, чтобы сгенерировать плейлист.")}`, { parse_mode: "HTML" });
   });
 
   return bot;

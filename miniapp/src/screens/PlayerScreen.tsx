@@ -3,6 +3,8 @@ import {
   ArrowLeft,
   Pause,
   Play,
+  SkipBack,
+  SkipForward,
   WarningCircle,
   CircleNotch,
 } from "@phosphor-icons/react";
@@ -10,6 +12,19 @@ import { usePlayer } from "../lib/player";
 import { VolumeControl } from "../components/VolumeControl";
 
 const SWIPE_THRESHOLD = 80;
+
+/**
+ * Upgrade known low-res artwork URLs to a size that fills the fullscreen
+ * artwork slot. YouTube Music thumbnails are googleusercontent URLs with an
+ * inline `=wN-hN` size directive; SoundCloud serves `-large.jpg` (100x100)
+ * with a `-t500x500.jpg` variant available.
+ */
+export function hiResArtwork(url: string): string {
+  if (/googleusercontent\.com/.test(url)) {
+    return url.replace(/=w\d+-h\d+/, "=w544-h544");
+  }
+  return url.replace(/-large\.(jpg|png)$/, "-t500x500.$1");
+}
 
 function formatTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
@@ -30,6 +45,9 @@ export function PlayerScreen({ onClose }: { onClose: () => void }) {
   const swiping = useRef(false);
 
   function handlePointerDown(e: PointerEvent) {
+    // Swipe-to-close must not capture pointers aimed at controls: capturing
+    // retargets pointerup to the container and the button click never fires.
+    if ((e.target as HTMLElement).closest("button, [role='slider'], input")) return;
     startY.current = e.clientY;
     currentY.current = e.clientY;
     swiping.current = true;
@@ -102,7 +120,7 @@ export function PlayerScreen({ onClose }: { onClose: () => void }) {
           {track?.artwork && !artworkError ? (
             <img
               className="player-screen-artwork-img"
-              src={track.artwork}
+              src={hiResArtwork(track.artwork)}
               alt=""
               loading="lazy"
               onError={() => setArtworkError(true)}
@@ -145,7 +163,7 @@ export function PlayerScreen({ onClose }: { onClose: () => void }) {
             >
               <span
                 className="player-screen-progress-fill"
-                style={{ width: `${progress * 100}%` }}
+                style={{ transform: `scaleX(${progress})` }}
               />
             </div>
             {showTime && (
@@ -155,14 +173,34 @@ export function PlayerScreen({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="player-screen-controls">
-          <button
-            type="button"
-            className="player-screen-play-btn"
-            aria-label={status === "playing" ? "Пауза" : "Играть"}
-            onClick={() => player.toggle(track!)}
-          >
-            {playIcon}
-          </button>
+          <div className="player-screen-controls-row">
+            <button
+              type="button"
+              className="player-screen-skip-btn"
+              aria-label="Предыдущий трек"
+              disabled={player.queueIndex <= 0}
+              onClick={() => player.previousTrack()}
+            >
+              <SkipBack size={26} weight="fill" />
+            </button>
+            <button
+              type="button"
+              className="player-screen-play-btn"
+              aria-label={status === "playing" ? "Пауза" : "Играть"}
+              onClick={() => player.toggle(track!)}
+            >
+              {playIcon}
+            </button>
+            <button
+              type="button"
+              className="player-screen-skip-btn"
+              aria-label="Следующий трек"
+              disabled={player.queueIndex >= player.queue.length - 1}
+              onClick={() => player.nextTrack()}
+            >
+              <SkipForward size={26} weight="fill" />
+            </button>
+          </div>
           <VolumeControl
             volume={volume}
             muted={muted}

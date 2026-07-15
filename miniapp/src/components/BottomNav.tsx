@@ -31,11 +31,8 @@ export function BottomNav({
     const btn = tabRefs.current[idx];
     const indicator = indicatorRef.current;
     if (!btn || !indicator) return;
-    const parent = btn.parentElement!;
-    const parentRect = parent.getBoundingClientRect();
-    const btnRect = btn.getBoundingClientRect();
-    indicator.style.width = `${btnRect.width}px`;
-    indicator.style.transform = `translateX(${btnRect.left - parentRect.left}px)`;
+    indicator.style.width = `${btn.offsetWidth}px`;
+    indicator.style.transform = `translateX(${btn.offsetLeft}px)`;
   }, [tab, tabs]);
 
   useEffect(() => {
@@ -69,7 +66,7 @@ export function BottomNav({
               aria-current={tab === t.key ? "page" : undefined}
               onClick={() => onTab(t.key)}
             >
-              <Icon size={20} weight="bold" />
+              <Icon size={18} weight="bold" />
               {t.label}
             </button>
           );

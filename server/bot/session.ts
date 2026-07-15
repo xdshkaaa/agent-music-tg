@@ -8,10 +8,6 @@ export interface PendingClarify {
   options: string[];
 }
 
-export interface PendingGeneratePrompt {
-  kind: "awaiting_generate_prompt";
-}
-
 /** Admin multi-step flows keyed off the same per-chat session row. */
 export type AdminFlow =
   | { kind: "admin_add_offer"; step: "title" | "amount" | "asset" | "starsAmount" | "grantKind" | "grantAmount"; draft: Record<string, string> }
@@ -27,7 +23,7 @@ export type AdminFlow =
   | { kind: "admin_add_channel"; step: "input" }
   | { kind: "admin_trial_reset" };
 
-export type SessionState = PendingClarify | PendingGeneratePrompt | AdminFlow;
+export type SessionState = PendingClarify | AdminFlow;
 
 function readState<T extends SessionState>(db: AppDb, chatId: number, kinds: string[]): T | null {
   const row = db.query<{ state: string }, [number]>(`SELECT state FROM sessions WHERE chat_id = ?`).get(chatId);
@@ -53,14 +49,6 @@ export function getPendingClarify(db: AppDb, chatId: number): PendingClarify | n
 
 export function setPendingClarify(db: AppDb, chatId: number, pending: PendingClarify): void {
   writeState(db, chatId, pending);
-}
-
-export function getPendingGeneratePrompt(db: AppDb, chatId: number): PendingGeneratePrompt | null {
-  return readState<PendingGeneratePrompt>(db, chatId, ["awaiting_generate_prompt"]);
-}
-
-export function setPendingGeneratePrompt(db: AppDb, chatId: number): void {
-  writeState(db, chatId, { kind: "awaiting_generate_prompt" });
 }
 
 const ADMIN_FLOW_KINDS = [

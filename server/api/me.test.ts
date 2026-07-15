@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHmac } from "node:crypto";
 
 // Set env BEFORE importing env.ts (it reads process.env at load and caches).
@@ -41,6 +41,30 @@ function freshDb() {
 }
 
 describe("GET /api/me", () => {
+  // /me calls out to api.telegram.org (getUserProfilePhotos / getFile) — stub
+  // fetch so tests never touch the network. Default: Telegram says "no photos".
+  const realFetch = globalThis.fetch;
+  let telegramResponses: Record<string, unknown>;
+
+  beforeEach(() => {
+    telegramResponses = {
+      getUserProfilePhotos: { ok: true, result: { total_count: 0, photos: [] } },
+      getFile: { ok: false },
+    };
+    globalThis.fetch = ((input: string | URL | Request) => {
+      const url = String(input instanceof Request ? input.url : input);
+      const method = Object.keys(telegramResponses).find((m) => url.includes(`/${m}`));
+      if (url.includes("api.telegram.org") && method) {
+        return Promise.resolve(Response.json(telegramResponses[method]));
+      }
+      return realFetch(input as never);
+    }) as typeof fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+  });
+
   test("returns chatId, isAdmin, credits, subscriptionUntil, and username when set", async () => {
     const db = freshDb();
     upsertUser(db, TEST_CHAT, "testuser");
@@ -73,6 +97,73 @@ describe("GET /api/me", () => {
     expect(body.isAdmin).toBe(false);
     expect(body.credits).toBe(SIGNUP_BONUS_CREDITS);
     expect(body.subscriptionUntil).toBeNull();
+  });
+
+  test("fetches and persists photo file_id on demand when none stored", async () => {
+    const db = freshDb();
+    telegramResponses.getUserProfilePhotos = {
+      ok: true,
+      result: { total_count: 1, photos: [[{ file_id: "small-id" }, { file_id: "big-id" }]] },
+    };
+    telegramResponses.getFile = {
+      ok: true,
+      result: { file_path: "photos/file_1.jpg", file_unique_id: "uniq1" },
+    };
+
+    const app = createApiRoutes(db);
+    const res = await app.request("/me", {
+      headers: { "X-Telegram-Init-Data": buildInitData(TEST_CHAT) },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.photoUrl).toContain("photos/file_1.jpg");
+
+    const row = db.query("SELECT photo_file_id FROM users WHERE chat_id = ?").get(TEST_CHAT) as { photo_file_id: string };
+    expect(row.photo_file_id).toBe("big-id");
+  });
+
+  test("photoUrl is null when Telegram has no profile photos", async () => {
+    const db = freshDb();
+    const app = createApiRoutes(db);
+    const res = await app.request("/me", {
+      headers: { "X-Telegram-Init-Data": buildInitData(TEST_CHAT) },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.photoUrl).toBeNull();
+  });
+
+  test("refreshes stale stored file_id via getUserProfilePhotos", async () => {
+    const db = freshDb();
+    upsertUser(db, TEST_CHAT);
+    const { setPhotoFileId } = await import("../access/users-store");
+    setPhotoFileId(db, TEST_CHAT, "stale-id");
+    telegramResponses.getUserProfilePhotos = {
+      ok: true,
+      result: { total_count: 1, photos: [[{ file_id: "fresh-id" }]] },
+    };
+    let getFileCalls = 0;
+    const responsesByCall = [
+      { ok: false }, // stale-id lookup fails
+      { ok: true, result: { file_path: "photos/fresh.jpg", file_unique_id: "uniq2" } },
+    ];
+    const baseFetch = globalThis.fetch;
+    globalThis.fetch = ((input: string | URL | Request) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url.includes("/getFile")) {
+        return Promise.resolve(Response.json(responsesByCall[Math.min(getFileCalls++, 1)]));
+      }
+      return baseFetch(input as never);
+    }) as typeof fetch;
+
+    const app = createApiRoutes(db);
+    const res = await app.request("/me", {
+      headers: { "X-Telegram-Init-Data": buildInitData(TEST_CHAT) },
+    });
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.photoUrl).toContain("photos/fresh.jpg");
+    const row = db.query("SELECT photo_file_id FROM users WHERE chat_id = ?").get(TEST_CHAT) as { photo_file_id: string };
+    expect(row.photo_file_id).toBe("fresh-id");
   });
 
   test("rejects unauthenticated callers", async () => {

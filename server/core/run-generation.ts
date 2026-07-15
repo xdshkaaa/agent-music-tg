@@ -7,6 +7,7 @@ import { insertGeneration } from "../access/generations-store";
 import {
   ClarifyNeededError,
   MaxIterationsExceededError,
+  NoTracksResolvedError,
   generatePlaylist,
   type FinalizedPlaylist,
   type GeneratePlaylistOptions,
@@ -47,6 +48,9 @@ async function toOutcome(run: () => ReturnType<typeof generatePlaylist>): Promis
     }
     if (e instanceof MaxIterationsExceededError) {
       return { status: "error", message: "Не удалось подобрать плейлист вовремя — уточните запрос." };
+    }
+    if (e instanceof NoTracksResolvedError) {
+      return { status: "error", message: "Музыкальный сервис сейчас недоступен — треки не нашлись. Попробуйте ещё раз чуть позже." };
     }
     if (e instanceof MissingCredentialError) {
       return { status: "error", message: e.message };
@@ -89,6 +93,7 @@ export async function resumeGeneration(
   });
   if (outcome.status === "ok") {
     consumeAccess(db, chatId);
+    insertGeneration(db, chatId, originalPrompt, outcome.playlist.name, outcome.playlist.tracks.length);
     fireVerification(outcome.playlist);
   }
   return outcome;

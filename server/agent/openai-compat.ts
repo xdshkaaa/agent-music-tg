@@ -54,6 +54,7 @@ export async function openaiCompatChat(
       messages: toOpenAIMessages(system, messages),
       tools: tools.length > 0 ? toolsForOpenAIChat(tools) : undefined,
     }),
+    signal: AbortSignal.timeout(120_000),
   });
   if (!res.ok) {
     throw new Error(`${config.baseUrl} chat completion failed: ${res.status} ${await res.text()}`);

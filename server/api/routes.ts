@@ -14,7 +14,8 @@ import {
 } from "../lib/settings";
 import { getPendingClarify, setPendingClarify, clearSession } from "../bot/session";
 import { startGeneration, resumeGeneration } from "../core/run-generation";
-import { getUser, upsertUser, listUsers, addCredits, extendSubscription, revokeSubscription, claimTrial, type User } from "../access/users-store";
+import { getUser, upsertUser, listUsers, addCredits, extendSubscription, revokeSubscription, claimTrial, setPhotoFileId, type User } from "../access/users-store";
+import { countGenerations } from "../access/generations-store";
 import { trialActive } from "../access/entitlements";
 import { env } from "../env";
 import {
@@ -108,13 +109,36 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
     await next();
   });
 
+  // Fetch the user's current profile photo file_id from Telegram and persist
+  // it, so avatars work even for users who never sent /start (or changed photo).
+  async function fetchAndStorePhotoFileId(chatId: number): Promise<string | null> {
+    const res = await fetch(`https://api.telegram.org/bot${env.telegramBotToken}/getUserProfilePhotos?user_id=${chatId}&limit=1`);
+    const data = await res.json() as { ok: boolean; result?: { photos: { file_id: string }[][] } };
+    const first = data.ok ? data.result?.photos?.[0] : undefined;
+    const fileId = first && first.length > 0 ? first[first.length - 1]!.file_id : null;
+    if (fileId) setPhotoFileId(db, chatId, fileId);
+    return fileId;
+  }
+
   app.get("/me", async (c) => {
     const user = getUser(db, c.get("chatId"));
     let photoUrl: string | null = null;
-    if (user?.photoFileId) {
-      try {
-        const res = await fetch(`https://api.telegram.org/bot${env.telegramBotToken}/getFile?file_id=${user.photoFileId}`);
-        const data = await res.json() as { ok: boolean; result?: { file_path: string; file_unique_id: string } };
+    try {
+      let fileId = user?.photoFileId ?? null;
+      if (!fileId) {
+        fileId = await fetchAndStorePhotoFileId(c.get("chatId"));
+      }
+      if (fileId) {
+        let res = await fetch(`https://api.telegram.org/bot${env.telegramBotToken}/getFile?file_id=${fileId}`);
+        let data = await res.json() as { ok: boolean; result?: { file_path: string; file_unique_id: string } };
+        if (!data.ok && user?.photoFileId) {
+          // Stored file_id went stale (photo deleted/changed) — refresh it.
+          fileId = await fetchAndStorePhotoFileId(c.get("chatId"));
+          if (fileId) {
+            res = await fetch(`https://api.telegram.org/bot${env.telegramBotToken}/getFile?file_id=${fileId}`);
+            data = await res.json() as { ok: boolean; result?: { file_path: string; file_unique_id: string } };
+          }
+        }
         if (data.ok && data.result?.file_path) {
           const { file_path, file_unique_id } = data.result;
           if (isAnimatedAvatar(file_path) && file_unique_id) {
@@ -133,14 +157,15 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
             photoUrl = `https://api.telegram.org/file/bot${env.telegramBotToken}/${file_path}`;
           }
         }
-      } catch { /* photoUrl stays null */ }
-    }
+      }
+    } catch { /* photoUrl stays null */ }
     return c.json({
       chatId: c.get("chatId"),
       isAdmin: c.get("isAdmin"),
       credits: user?.credits ?? 0,
       subscriptionUntil: user?.subscriptionUntil ?? null,
       trial: trialStatus(user),
+      generationsUsed: countGenerations(db, c.get("chatId")),
       photoUrl,
       // Additive: present only when the bot previously recorded a @username
       // for this chat (via /start). Omitted (not null) when unknown, so the

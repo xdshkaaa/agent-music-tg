@@ -50,6 +50,13 @@ export function listGenerations(db: AppDb, chatId: number, limit = 10): Generati
     .map(toGeneration);
 }
 
+export function countGenerations(db: AppDb, chatId: number): number {
+  const row = db.query<{ n: number }, [number]>(
+    `SELECT COUNT(*) AS n FROM generations WHERE chat_id = ?`
+  ).get(chatId);
+  return row?.n ?? 0;
+}
+
 export function setActiveModel(db: AppDb, chatId: number, model: string): void {
   db.query(`UPDATE users SET active_model = ? WHERE chat_id = ?`).run(model, chatId);
 }

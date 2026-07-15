@@ -31,6 +31,8 @@ export interface MusicProvider {
   readonly capabilities: ProviderCapabilities;
 
   searchTrack(artist: string, title: string): Promise<Track | null>;
+  /** Free-text search returning up to `limit` candidate tracks for a whole phrase. */
+  searchTracks(query: string, limit?: number): Promise<Track[]>;
   searchArtist(name: string): Promise<{ id: string; name: string } | null>;
   getArtistTopTracks(artistId: string, limit?: number): Promise<Track[]>;
 

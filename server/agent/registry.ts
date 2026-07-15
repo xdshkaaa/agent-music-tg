@@ -52,10 +52,10 @@ export function createProvider(id: ProviderId, overrides?: ProviderOverrides): A
       return createAnthropicProvider(env.anthropicApiKey, model ?? undefined);
     case "openai":
       if (!env.openaiApiKey) throw new MissingCredentialError(id, "OPENAI_API_KEY");
-      return createOpenAIProvider(env.openaiApiKey, model ?? undefined);
+      return createOpenAIProvider(env.openaiApiKey, model ?? undefined, baseUrl ?? undefined);
     case "openrouter":
       if (!env.openrouterApiKey) throw new MissingCredentialError(id, "OPENROUTER_API_KEY");
-      return createOpenRouterProvider(env.openrouterApiKey, model ?? undefined);
+      return createOpenRouterProvider(env.openrouterApiKey, model ?? undefined, baseUrl ?? undefined);
     case "opencode":
       if (!env.opencodeApiKey) throw new MissingCredentialError(id, "OPENCODE_API_KEY");
       return createOpencodeProvider(env.opencodeApiKey, baseUrl ?? env.opencodeBaseUrl, model ?? env.opencodeModel);

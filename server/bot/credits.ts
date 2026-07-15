@@ -2,6 +2,7 @@ import { Bot } from "grammy";
 import type { AppDb } from "../db";
 import type { BotContext } from "./context";
 import { getUser } from "../access/users-store";
+import { countGenerations } from "../access/generations-store";
 import { heading, accent } from "./emoji";
 
 export function registerCredits(bot: Bot<BotContext>, db: AppDb): void {
@@ -18,8 +19,10 @@ export function registerCredits(bot: Bot<BotContext>, db: AppDb): void {
 
     const wallet = accent("wallet");
     const ruler = accent("ruler");
-    const lines: string[] = [`<b>${heading("wallet", "КРЕДИТЫ ──")}</b>`];
+    const flame = accent("fire");
+    const lines: string[] = [`<b>${heading("wallet", "КРЕДИТЫ")}</b>`];
     lines.push(`${wallet ? wallet + " " : ""}Генерации: ${user.credits}`);
+    lines.push(`${flame ? flame + " " : ""}Потрачено: ${countGenerations(db, chatId)} ген`);
 
     if (user.subscriptionUntil && user.subscriptionUntil > Math.floor(Date.now() / 1000)) {
       const until = new Date(user.subscriptionUntil * 1000).toLocaleDateString("ru-RU");

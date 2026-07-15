@@ -42,6 +42,14 @@ Recompute on: tab change (existing), `ResizeObserver` on the inner container (ex
 ### D6. StatsPanel: label/value rows
 Markup: `.stat-row` (flex, space-between) with `.text-muted` label and bold `tabular-nums` value. Reuses existing type styles; ~10 lines of CSS.
 
+### D7. Progress bars inside glass cards: never touch the rounded, clipped bottom edge
+Glass containers clip their content: `.glass-surface { border-radius: var(--lg-v2-radius-panel); overflow: hidden }` (`glass.css:241-246`) and `.player-bar` (`:1532`, `overflow: hidden` unless `.liquid-glow`). A progress bar (or any rounded/glowing element) laid flush against the bottom inside such a container gets its lower edge sliced by the corner radius, producing the illusion that the bar sits *under* the card. Rule, to bake into any new card that carries a progress bar (e.g. a redesigned player/queue card):
+
+- **A — keep clipping, add breathing room:** keep `overflow: hidden` on the card; push the bar ≥12px from the bottom so it never enters the radius arc. Use when the bar has no outer glow.
+- **B — don't clip the bar:** place the bar in an inner wrapper that the card does *not* clip (`overflow: visible`), so a glowing/rounded bar can sit near the edge without being sliced. This is the established pattern — `.player-bar.liquid-glow` already does `overflow: visible` (`glass.css:1577`). Use when the bar carries the liquid glow.
+
+Current code is safe: `.player-progress`/`.player-screen-progress` live mid-card (`glass.css:1898-1904`, `player-bar` row after a divider) and `.player-progress` itself only uses `overflow: hidden` to clip its own fill (`glass.css:1946`), which is correct. This decision is a guardrail for future cards, not a fix to existing components.
+
 ## Risks / Trade-offs
 
 - [Mask + backdrop-filter interaction] `mask-image` on `.segmented` could clip its own blur backdrop → apply the mask to a wrapper or to the scrolling content, verify visually in Telegram WebView.

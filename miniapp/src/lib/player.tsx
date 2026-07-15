@@ -25,7 +25,8 @@ interface PlayerState {
 }
 
 interface PlayerApi extends PlayerState {
-  toggle(track: PlayerTrackInfo): void;
+  /** Toggle playback; pass `queue` (the playlist's tracks) so next/prev work within it. */
+  toggle(track: PlayerTrackInfo, queue?: PlayerTrackInfo[]): void;
   seek(fraction: number): void;
   setVolume(v: number): void;
   toggleMute(): void;
@@ -85,7 +86,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     audio.volume = state.volume;
     audio.addEventListener("playing", () => setState((s) => ({ ...s, status: "playing" })));
     audio.addEventListener("pause", () => setState((s) => (s.status === "error" ? s : { ...s, status: "paused" })));
-    audio.addEventListener("ended", () => setState((s) => ({ ...s, status: "paused", progress: 0, currentTime: 0 })));
+    audio.addEventListener("ended", () => {
+      const { queue, queueIndex } = apiRef.current;
+      if (queueIndex >= 0 && queueIndex < queue.length - 1) {
+        apiRef.current.nextTrack();
+      } else {
+        setState((s) => ({ ...s, status: "paused", progress: 0, currentTime: 0 }));
+      }
+    });
     audio.addEventListener("error", () => setState((s) => ({ ...s, status: "error" })));
     audio.addEventListener("timeupdate", () => {
       const fraction = audio.duration > 0 ? audio.currentTime / audio.duration : 0;
@@ -129,9 +137,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const api = useMemo<PlayerApi>(() => {
     return {
       ...state,
-      toggle(track) {
+      toggle(track, queue) {
         const audio = ensureAudio();
         if (state.track?.uri === track.uri) {
+          if (queue) {
+            const idx = queue.findIndex((t) => t.uri === track.uri);
+            setState((s) => ({ ...s, queue, queueIndex: idx >= 0 ? idx : 0 }));
+          }
           if (state.status === "playing") {
             audio.pause();
           } else {
@@ -140,9 +152,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           }
           return;
         }
-        const idx = state.queue.findIndex((t) => t.uri === track.uri);
+        const nextQueue = queue ?? state.queue;
+        const idx = nextQueue.findIndex((t) => t.uri === track.uri);
         if (idx >= 0) {
-          setState((s) => ({ ...s, queueIndex: idx, track, status: "loading", progress: 0, currentTime: 0, duration: 0 }));
+          setState((s) => ({ ...s, queue: nextQueue, queueIndex: idx, track, status: "loading", progress: 0, currentTime: 0, duration: 0 }));
         } else {
           setState((s) => ({ ...s, queue: [track], queueIndex: 0, track, status: "loading", progress: 0, currentTime: 0, duration: 0 }));
         }

@@ -17,6 +17,24 @@ const searchTrackSpec: ToolSpec = {
   },
 };
 
+const searchTracksSpec: ToolSpec = {
+  name: "searchTracks",
+  description:
+    "Free-text search returning up to `limit` candidate tracks for a whole phrase " +
+    "(e.g. the user's exact request like \"kyokai no kanata soundtrack\"). " +
+    "Use this FIRST for short, named, or mood-based requests you don't have exact " +
+    "track titles for — it returns real, verified tracks you can finalize directly. " +
+    "Returns an array of {uri,title,artist,album?,durationMs?,artwork?}.",
+  parameters: {
+    type: "object",
+    properties: {
+      query: { type: "string", description: "The full search phrase — often the user's raw request." },
+      limit: { type: "integer", description: "How many candidate tracks to return (default 10).", minimum: 1, maximum: 25 },
+    },
+    required: ["query"],
+  },
+};
+
 const searchArtistSpec: ToolSpec = {
   name: "searchArtist",
   description:
@@ -95,6 +113,7 @@ const finalizePlaylistSpec: ToolSpec = {
 
 export const MUSIC_AGENT_TOOLS: ToolSpec[] = [
   searchTrackSpec,
+  searchTracksSpec,
   searchArtistSpec,
   getArtistTopTracksSpec,
   clarifySpec,
@@ -134,6 +153,11 @@ export async function dispatchTool(
       const artist = String(args.artist ?? "");
       const title = String(args.title ?? "");
       return trackToResult(await deps.music.searchTrack(artist, title));
+    }
+    case "searchTracks": {
+      const query = String(args.query ?? "");
+      const limit = typeof args.limit === "number" ? args.limit : 10;
+      return (await deps.music.searchTracks(query, limit)).map(trackToResult);
     }
     case "searchArtist": {
       return deps.music.searchArtist(String(args.name ?? ""));

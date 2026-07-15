@@ -142,7 +142,16 @@ function migrate(db: AppDb): void {
       created_at INTEGER NOT NULL DEFAULT (unixepoch())
     );
     CREATE INDEX IF NOT EXISTS idx_downloads_chat ON downloads(chat_id, created_at DESC);
+  `);
 
+  // downloads.updated_at: touched on every status/track write so a stale
+  // pending/processing row (crash/restart mid-job) can be detected by age.
+  try {
+    db.run(`ALTER TABLE downloads ADD COLUMN updated_at INTEGER NOT NULL DEFAULT (unixepoch());`);
+    db.run(`UPDATE downloads SET updated_at = created_at WHERE updated_at IS NULL;`);
+  } catch {}
+
+  db.run(`
     -- Telegram file_id cache: audio uploaded once, re-sent by file_id after.
     -- Keyed by track uri (ytm:<id> / sc:<id>); shared across users.
     CREATE TABLE IF NOT EXISTS audio_cache (

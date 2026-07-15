@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:ital,wght@0,500;0,600;0,700;0,800&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/bold/style.css">
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css">
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<style>
+@property --angle { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+html, body { height: 100%; margin: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased; line-height: 1.5; overflow-x: hidden;
+  --bg: #050508;
+  --text: #f2f3f5;
+  --muted: rgba(242,243,245,0.62);
+  --panel: rgba(26,28,36,0.44);
+  --panel-border: rgba(255,255,255,0.14);
+  --specular: inset 0 1px 0 rgba(255,255,255,0.22), inset 0 -1px 0 rgba(0,0,0,0.18);
+  --shadow-md: inset 0 1px 0 rgba(255,255,255,0.22), inset 0 -1px 0 rgba(0,0,0,0.18), 0 8px 32px rgba(0,0,0,0.45), 0 1px 3px rgba(0,0,0,0.2);
+  --shadow-float: inset 0 1px 0 rgba(255,255,255,0.25), inset 0 -1px 0 rgba(0,0,0,0.2), 0 16px 48px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.3);
+  --chip: rgba(255,255,255,0.08);
+  --chip-hover: rgba(255,255,255,0.15);
+  --chip-border: rgba(255,255,255,0.14);
+  --input-bg: rgba(255,255,255,0.06);
+  --hairline: rgba(255,255,255,0.1);
+  --track: rgba(255,255,255,0.12);
+  --lens: radial-gradient(120% 90% at 15% 0%, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.04) 35%, transparent 60%);
+  --aurora-opacity: 0.75;
+  background: var(--bg); color: var(--text);
+  transition: background 0.4s ease, color 0.4s ease;
+}
+body[data-scheme="light"] {
+  --bg: #EEEEF3;
+  --text: #0d0d10;
+  --muted: rgba(13,13,16,0.55);
+  --panel: rgba(255,255,255,0.5);
+  --panel-border: rgba(255,255,255,0.75);
+  --specular: inset 0 1px 0 rgba(255,255,255,0.85), inset 0 -1px 0 rgba(20,30,60,0.06);
+  --shadow-md: inset 0 1px 0 rgba(255,255,255,0.85), inset 0 -1px 0 rgba(20,30,60,0.06), 0 8px 32px rgba(30,20,70,0.14), 0 1px 3px rgba(30,20,70,0.08);
+  --shadow-float: inset 0 1px 0 rgba(255,255,255,0.9), inset 0 -1px 0 rgba(20,30,60,0.06), 0 16px 48px rgba(30,20,70,0.2), 0 2px 8px rgba(30,20,70,0.1);
+  --chip: rgba(255,255,255,0.55);
+  --chip-hover: rgba(255,255,255,0.8);
+  --chip-border: rgba(255,255,255,0.8);
+  --input-bg: rgba(255,255,255,0.65);
+  --hairline: rgba(13,13,16,0.08);
+  --track: rgba(13,13,16,0.1);
+  --lens: radial-gradient(120% 90% at 15% 0%, rgba(255,255,255,0.7) 0%, rgba(255,255,255,0.2) 35%, transparent 60%);
+  --aurora-opacity: 0.55;
+}
+a { color: #a855f7; text-decoration: none; }
+a:hover { color: #c084fc; }
+* { box-sizing: border-box; }
+textarea, input, button { font-family: inherit; }
+input::placeholder, textarea::placeholder { color: var(--muted); }
+@keyframes reveal { from { opacity: 0; transform: translateY(14px) scale(0.98); } to { opacity: 1; transform: none; } }
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@keyframes liquid-rotate { from { --angle: 0deg; } to { --angle: 360deg; } }
+@keyframes liquid-pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+@keyframes overlay-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@keyframes aurora-a { 0%,100% { transform: translate(-12%, -8%) scale(1); } 50% { transform: translate(10%, 6%) scale(1.25); } }
+@keyframes aurora-b { 0%,100% { transform: translate(14%, 10%) scale(1.15); } 50% { transform: translate(-10%, -6%) scale(0.9); } }
+@keyframes aurora-c { 0%,100% { transform: translate(0%, 12%) scale(1); } 50% { transform: translate(6%, -10%) scale(1.3); } }
+@keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+</style>
+</helmet>
+<div style="position:relative;min-height:100dvh;overflow-x:hidden">
+  <div aria-hidden="true" style="position:fixed;inset:0;overflow:hidden;pointer-events:none;opacity:var(--aurora-opacity);transition:opacity 0.4s ease">
+    <div style="position:absolute;top:-25%;left:-15%;width:70%;height:60%;border-radius:50%;background:radial-gradient(circle, rgba(168,85,247,0.5) 0%, transparent 65%);filter:blur(70px);animation:aurora-a 16s ease-in-out infinite"></div>
+    <div style="position:absolute;top:5%;right:-20%;width:65%;height:55%;border-radius:50%;background:radial-gradient(circle, rgba(59,130,246,0.35) 0%, transparent 65%);filter:blur(80px);animation:aurora-b 21s ease-in-out infinite"></div>
+    <div style="position:absolute;bottom:-20%;left:15%;width:70%;height:55%;border-radius:50%;background:radial-gradient(circle, rgba(217,70,239,0.3) 0%, transparent 65%);filter:blur(90px);animation:aurora-c 26s ease-in-out infinite"></div>
+  </div>
+
+  
+<div style="position:relative;min-height:100dvh;padding:16px 16px 190px;display:flex;flex-direction:column;gap:14px">
+
+  <header data-screen-label="Top bar" style="position:sticky;top:12px;z-index:10;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 8px 8px 16px;width:100%;max-width:480px;margin:0 auto;border-radius:999px;background:var(--panel);border:1px solid var(--panel-border);backdrop-filter:blur(28px) saturate(180%);-webkit-backdrop-filter:blur(28px) saturate(180%);box-shadow:var(--shadow-md);overflow:hidden" style-before="content:'';position:absolute;inset:0;background:var(--lens);pointer-events:none;border-radius:999px">
+    <span style="position:relative;display:inline-flex;align-items:center;gap:8px;font-family:'Inter Tight',sans-serif;font-weight:800;font-size:15px;letter-spacing:-0.01em;color:var(--text)">
+      <span aria-hidden="true" style="width:22px;height:22px;border-radius:50%;border:2px solid #a855f7;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 0 12px rgba(168,85,247,0.5)" style-after="content:'';width:6px;height:6px;border-radius:50%;background:#a855f7"></span>
+      agent music
+    </span>
+    <span style="position:relative;display:inline-flex;align-items:center;gap:8px">
+      <span style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:999px;background:var(--chip);border:1px solid var(--chip-border);font-size:13px;font-weight:600;color:var(--text);box-shadow:var(--specular)">
+        <i class="ph-bold ph-wallet" style="color:#a855f7;font-size:16px"></i>
+        {{ credits }} ген
+      </span>
+      <button onClick="{{ toggleScheme }}" aria-label="Сменить тему" style="appearance:none;width:38px;height:38px;border-radius:50%;border:1px solid var(--chip-border);background:var(--chip);color:var(--text);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:var(--specular);transition:all 0.18s ease" style-hover="background:var(--chip-hover)" style-active="transform:scale(0.92)">
+        <i class="{{ schemeIcon }}" style="font-size:17px"></i>
+      </button>
+    </span>
+  </header>
+
+  <sc-if value="{{ isPrompt }}" hint-placeholder-val="{{ true }}">
+  <section data-screen-label="Prompt" style="position: relative; width: 484px; max-width: 480px; margin: 0 auto; border-radius: 28px; padding: 26px; background: var(--panel); border: 1px solid var(--panel-border); backdrop-filter: blur(30px) saturate(180%); -webkit-backdrop-filter: blur(30px) saturate(180%); box-shadow: var(--shadow-md); overflow: hidden; animation: reveal 0.5s cubic-bezier(0.16,1,0.3,1) both; height: 242px" style-before="content:'';position:absolute;inset:0;background:var(--lens);pointer-events:none">
+    <div style="position:relative;margin-bottom:20px">
+      
+      
+    </div>
+    <h1 style="font-family: Inter Tight; font-size: clamp(22px,7vw,27px); font-weight: 900; line-height: 1.12; letter-spacing: 0.05em; margin: 0 0 6px; text-transform: uppercase; color: var(--text); text-align: center">ЧТО СЕГОДНЯ НА УМЕ?<br></h1><div style="position:relative;display:flex;flex-direction:column;gap:12px">
+      <textarea rows="3" placeholder="ночная поездка, синтвейв" value="{{ prompt }}" onChange="{{ onPromptChange }}" disabled="{{ busy }}" style="width: 426px; border-radius: 20px; border: 1px solid var(--chip-border); background: var(--input-bg); color: var(--text); padding: 15px 18px; font-size: 15px; line-height: 1.5; outline: none; backdrop-filter: blur(12px); resize: none; box-shadow: var(--specular); transition: border-color 0.18s ease, box-shadow 0.18s ease; height: 57px" style-focus="border-color:#a855f7;box-shadow:var(--specular), 0 0 0 4px rgba(168,85,247,0.18), 0 0 24px rgba(168,85,247,0.15)"></textarea>
+      <button onClick="{{ onSubmit }}" disabled="{{ submitDisabled }}" style="appearance:none;border:1px solid rgba(255,255,255,0.25);background:linear-gradient(135deg,#a855f7,#7C3AED);color:#FFFFFF;padding:15px 22px;border-radius:999px;font-size:15px;font-weight:700;box-shadow:inset 0 1px 0 rgba(255,255,255,0.35), inset 0 -1px 0 rgba(0,0,0,0.2), 0 8px 24px rgba(124,58,237,0.45);text-align:center;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:all 0.18s ease;opacity:{{ submitOpacity }}" style-hover="box-shadow:inset 0 1px 0 rgba(255,255,255,0.35), inset 0 -1px 0 rgba(0,0,0,0.2), 0 8px 32px rgba(124,58,237,0.65)" style-active="transform:scale(0.97)">
+        <i class="ph-fill ph-sparkle" style="font-size:18px"></i>
+        {{ submitLabel }}
+      </button>
+      <sc-if value="{{ busy }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:12px;margin-top:10px" aria-hidden="true">
+          <sc-for list="{{ skeletonRows }}" as="row" hint-placeholder-count="3">
+            <div style="display:flex;align-items:center;gap:12px;padding:8px 0">
+              <div style="width:44px;height:44px;border-radius:14px;background:linear-gradient(100deg, var(--chip) 30%, var(--chip-hover) 50%, var(--chip) 70%);background-size:200% 100%;animation:shimmer 1.4s ease-in-out infinite"></div>
+              <div style="display:flex;flex-direction:column;gap:8px;flex:1">
+                <div style="border-radius:8px;height:12px;background:linear-gradient(100deg, var(--chip) 30%, var(--chip-hover) 50%, var(--chip) 70%);background-size:200% 100%;animation:shimmer 1.4s ease-in-out infinite;width:{{ row.w1 }}"></div>
+                <div style="border-radius:8px;height:10px;background:linear-gradient(100deg, var(--chip) 30%, var(--chip-hover) 50%, var(--chip) 70%);background-size:200% 100%;animation:shimmer 1.4s ease-in-out infinite;width:{{ row.w2 }}"></div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+    </div><div style="position:relative;display:flex;flex-direction:column;gap:10px;margin-bottom:20px">
+      <div style="display:flex;align-items:center;gap:12px"></div>
+      <div style="display:flex;align-items:center;gap:12px"></div>
+      
+    </div>
+    
+  </section>
+  </sc-if>
+
+  
+
+  <sc-if value="{{ isResults }}" hint-placeholder-val="{{ false }}">
+  <section data-screen-label="Results" style="position:relative;width:100%;max-width:480px;margin:0 auto;border-radius:28px;padding:26px;background:var(--panel);border:1px solid var(--panel-border);backdrop-filter:blur(30px) saturate(180%);-webkit-backdrop-filter:blur(30px) saturate(180%);box-shadow:var(--shadow-md);overflow:hidden;animation:reveal 0.5s cubic-bezier(0.16,1,0.3,1) both" style-before="content:'';position:absolute;inset:0;background:var(--lens);pointer-events:none">
+    <div style="position:relative;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:4px">
+      <h1 style="font-family:'Inter Tight',sans-serif;font-size:24px;font-weight:800;line-height:1.15;letter-spacing:-0.02em;margin:0;color:var(--text)">Ночная поездка: синтвейв</h1>
+      <span style="flex-shrink:0;font-size:12px;font-weight:600;color:var(--muted);padding:6px 12px;border-radius:999px;background:var(--chip);border:1px solid var(--chip-border);box-shadow:var(--specular)">6 треков</span>
+    </div>
+    <div style="position:relative;display:flex;flex-direction:column;margin-top:14px">
+      <sc-for list="{{ tracks }}" as="track" hint-placeholder-count="6">
+        <div onClick="{{ track.play }}" style="display:flex;align-items:center;gap:12px;padding:10px;border-radius:18px;cursor:pointer;transition:background 0.15s ease;margin:0 -10px;background:{{ track.rowBg }};animation:reveal 0.5s cubic-bezier(0.16,1,0.3,1) both;animation-delay:{{ track.delay }}" style-hover="background:var(--chip)">
+          <div style="width:46px;height:46px;border-radius:14px;flex-shrink:0;background:{{ track.art }};box-shadow:inset 0 1px 0 rgba(255,255,255,0.3), 0 2px 8px rgba(0,0,0,0.25)"></div>
+          <div style="flex:1;min-width:0">
+            <p style="margin:0;font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)">{{ track.title }}</p>
+            <p style="margin:0;font-size:13px;color:var(--muted)">{{ track.artist }}</p>
+          </div>
+          <i class="ph-fill ph-check-circle" style="font-size:15px;color:#a855f7"></i>
+          <button onClick="{{ track.playBtn }}" aria-label="Слушать" style="width:38px;height:38px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--chip-border);border-radius:50%;background:var(--chip);cursor:pointer;color:{{ track.btnColor }};box-shadow:var(--specular);transition:all 0.18s ease" style-active="transform:scale(0.9)">
+            <i class="{{ track.playIcon }}" style="font-size:16px"></i>
+          </button>
+        </div>
+      </sc-for>
+    </div>
+    <div style="position:relative;display:flex;gap:10px;margin-top:18px;flex-wrap:wrap">
+      <button onClick="{{ onNewPrompt }}" style="appearance:none;border:1px solid var(--chip-border);background:var(--chip);color:var(--text);padding:14px 20px;border-radius:999px;font-size:14px;font-weight:600;backdrop-filter:blur(12px);box-shadow:var(--specular), 0 4px 16px rgba(0,0,0,0.15);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:all 0.18s ease" style-hover="background:var(--chip-hover)" style-active="transform:scale(0.97)">
+        <i class="ph ph-plus" style="font-size:17px"></i>
+        Новый плейлист
+      </button>
+      <sc-if value="{{ downloadSent }}" hint-placeholder-val="{{ false }}">
+        <p role="status" style="display:inline-flex;align-items:center;gap:8px;padding:12px 18px;border-radius:999px;border:1px solid rgba(168,85,247,0.4);background:rgba(168,85,247,0.12);font-weight:700;font-size:14px;color:#a855f7;margin:0;box-shadow:0 0 20px rgba(168,85,247,0.2)">
+          <i class="ph-fill ph-check-circle" style="font-size:17px"></i>
+          Отправлено в чат
+        </p>
+      </sc-if>
+      <sc-if value="{{ downloadIdle }}" hint-placeholder-val="{{ true }}">
+        <button onClick="{{ onDownload }}" disabled="{{ downloadSending }}" style="appearance:none;border:1px solid rgba(255,255,255,0.25);background:linear-gradient(135deg,#a855f7,#7C3AED);color:#FFFFFF;padding:14px 20px;border-radius:999px;font-size:14px;font-weight:700;box-shadow:inset 0 1px 0 rgba(255,255,255,0.35), 0 8px 24px rgba(124,58,237,0.45);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:all 0.18s ease" style-active="transform:scale(0.97)">
+          <i class="{{ downloadIcon }}" style="font-size:17px;{{ downloadSpin }}"></i>
+          {{ downloadLabel }}
+        </button>
+      </sc-if>
+    </div>
+  </section>
+  </sc-if>
+
+  <sc-if value="{{ isBuy }}" hint-placeholder-val="{{ false }}">
+  <div data-screen-label="Shop" style="display:flex;flex-direction:column;gap:12px;width:100%;max-width:480px;margin:0 auto">
+    <section style="position:relative;border-radius:28px;padding:22px 24px;background:var(--panel);border:1px solid rgba(168,85,247,0.55);backdrop-filter:blur(30px) saturate(180%);-webkit-backdrop-filter:blur(30px) saturate(180%);box-shadow:var(--shadow-md), 0 0 28px rgba(168,85,247,0.25);overflow:hidden;animation:reveal 0.5s cubic-bezier(0.16,1,0.3,1) both" style-before="content:'';position:absolute;inset:0;background:var(--lens);pointer-events:none" style-after="content:'';position:absolute;inset:0;background:rgba(168,85,247,0.12);pointer-events:none">
+      <div style="position:relative;display:flex;align-items:center;margin:0 0 12px;font-family:'Inter Tight',sans-serif;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.16em;color:#a855f7" style-after="content:'';flex:1;height:1px;background:rgba(168,85,247,0.3);margin-left:10px">Бесплатно</div>
+      <div style="position:relative;display:flex;align-items:center;gap:12px;justify-content:space-between">
+        <span style="display:flex;flex-direction:column;min-width:0;text-align:left">
+          <span style="font-weight:700;font-size:15px;color:var(--text);display:inline-flex;align-items:center;gap:8px"><i class="ph-bold ph-gift" style="font-size:18px;color:#a855f7"></i> Бесплатный пакет</span>
+          <span style="font-size:12px;color:var(--muted)">10 генераций на 3 дня</span>
+        </span>
+        <button style="appearance:none;border:1px solid rgba(255,255,255,0.25);background:linear-gradient(135deg,#a855f7,#7C3AED);color:#FFFFFF;padding:11px 16px;border-radius:999px;font-weight:700;font-size:13px;flex-shrink:0;box-shadow:inset 0 1px 0 rgba(255,255,255,0.35), 0 6px 20px rgba(124,58,237,0.45);cursor:pointer;transition:all 0.18s ease" style-active="transform:scale(0.97)">Забрать</button>
+      </div>
+    </section>
+    <section style="position:relative;border-radius:28px;padding:22px 24px;background:var(--panel);border:1px solid var(--panel-border);backdrop-filter:blur(30px) saturate(180%);-webkit-backdrop-filter:blur(30px) saturate(180%);box-shadow:var(--shadow-md);overflow:hidden;animation:reveal 0.5s cubic-bezier(0.16,1,0.3,1) both" style-before="content:'';position:absolute;inset:0;background:var(--lens);pointer-events:none">
+      <div style="position:relative;margin-bottom:12px">
+        <i class="ph-bold ph-magnifying-glass" style="position:absolute;left:16px;top:15px;pointer-events:none;color:var(--muted);font-size:17px;z-index:1"></i>
+        <input placeholder="Поиск по пакетам…" style="width:100%;border-radius:999px;border:1px solid var(--chip-border);background:var(--input-bg);color:var(--text);padding:13px 18px 13px 44px;font-size:15px;outline:none;backdrop-filter:blur(12px);box-shadow:var(--specular);transition:border-color 0.18s ease, box-shadow 0.18s ease" style-focus="border-color:#a855f7;box-shadow:var(--specular), 0 0 0 4px rgba(168,85,247,0.18)">
+      </div>
+      <div style="position:relative;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none">
+        <sc-for list="{{ categories }}" as="cat" hint-placeholder-count="3">
+          <button onClick="{{ cat.pick }}" style="appearance:none;border:1px solid {{ cat.border }};background:{{ cat.bg }};color:{{ cat.color }};padding:9px 16px;border-radius:999px;font-size:13px;font-weight:{{ cat.weight }};flex:0 0 auto;backdrop-filter:blur(12px);box-shadow:var(--specular);cursor:pointer;transition:all 0.18s ease" style-active="transform:scale(0.95)">{{ cat.label }}</button>
+        </sc-for>
+      </div>
+      <div style="position:relative;display:flex;align-items:center;margin:20px 0 4px;font-family:'Inter Tight',sans-serif;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.16em;color:var(--muted)" style-after="content:'';flex:1;height:1px;background:var(--hairline);margin-left:10px">Пакеты</div>
+      <div style="position:relative;display:flex;flex-direction:column">
+        <sc-for list="{{ offers }}" as="offer" hint-placeholder-count="4">
+          <div style="display:flex;align-items:center;gap:12px;padding:13px 0;width:100%;justify-content:space-between;border-bottom:1px solid {{ offer.divider }}">
+            <span style="display:inline-flex;align-items:center;gap:12px;min-width:0;flex:1">
+              <span aria-hidden="true" style="width:40px;height:40px;border-radius:14px;background:var(--chip);border:1px solid var(--chip-border);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;font-size:20px;box-shadow:var(--specular)">{{ offer.icon }}</span>
+              <span style="display:flex;flex-direction:column;min-width:0;text-align:left">
+                <span style="font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)">{{ offer.title }}</span>
+                <span style="font-size:12px;color:var(--muted)">{{ offer.grant }}</span>
+              </span>
+            </span>
+            <span style="display:inline-flex;align-items:center;gap:6px;flex-shrink:0">
+              <button style="appearance:none;height:38px;padding:0 14px;font-weight:700;font-size:13px;display:inline-flex;align-items:center;gap:6px;border:1px solid var(--chip-border);background:var(--chip);color:var(--text);border-radius:999px;backdrop-filter:blur(12px);box-shadow:var(--specular);cursor:pointer;transition:all 0.18s ease" style-hover="background:var(--chip-hover)" style-active="transform:scale(0.95)">{{ offer.price }}</button>
+              <button style="appearance:none;height:38px;padding:0 14px;font-weight:700;font-size:13px;display:inline-flex;align-items:center;gap:4px;border:1px solid rgba(255,255,255,0.25);background:linear-gradient(135deg,#a855f7,#7C3AED);color:#FFFFFF;border-radius:999px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.35), 0 6px 18px rgba(124,58,237,0.4);cursor:pointer;transition:all 0.18s ease" style-active="transform:scale(0.95)">{{ offer.stars }} <i class="ph-fill ph-star" style="font-size:13px"></i></button>
+            </span>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+    <section style="position:relative;border-radius:28px;padding:22px 24px;background:var(--panel);border:1px solid var(--panel-border);backdrop-filter:blur(30px) saturate(180%);-webkit-backdrop-filter:blur(30px) saturate(180%);box-shadow:var(--shadow-md);overflow:hidden;animation:reveal 0.5s cubic-bezier(0.16,1,0.3,1) both" style-before="content:'';position:absolute;inset:0;background:var(--lens);pointer-events:none">
+      <div style="position:relative;display:flex;align-items:center;margin:0 0 12px;font-family:'Inter Tight',sans-serif;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.16em;color:var(--muted)" style-after="content:'';flex:1;height:1px;background:var(--hairline);margin-left:10px">История</div>
+      <ul style="position:relative;list-style:none;padding:0;margin:0;font-size:14px">
+        <li style="padding:8px 0;border-bottom:1px solid var(--hairline)">#241: 4.5 USDT</li>
+        <li style="padding:8px 0;display:flex;align-items:center;gap:4px">#198: 250 <i class="ph-fill ph-star" style="font-size:13px;color:#f59e0b"></i></li>
+      </ul>
+    </section>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ isProfile }}" hint-placeholder-val="{{ false }}">
+  <div data-screen-label="Profile" style="display:flex;flex-direction:column;gap:12px;width:100%;max-width:480px;margin:0 auto">
+    <section style="position:relative;border-radius:28px;padding:26px;background:var(--panel);border:1px solid var(--panel-border);backdrop-filter:blur(30px) saturate(180%);-webkit-backdrop-filter:blur(30px) saturate(180%);box-shadow:var(--shadow-md);overflow:hidden;animation:reveal 0.5s cubic-bezier(0.16,1,0.3,1) both" style-before="content:'';position:absolute;inset:0;background:var(--lens);pointer-events:none">
+      <div style="position:relative;display:flex;align-items:center;gap:14px;margin-bottom:20px">
+        <span aria-hidden="true" style="width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,#a855f7,#7C3AED);border:2px solid var(--panel-border);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 0 20px rgba(168,85,247,0.35)"><i class="ph-bold ph-user" style="font-size:22px;color:#fff"></i></span>
+        <div>
+          <p style="font-weight:700;font-size:18px;margin:0;color:var(--text)">@xdshka</p>
+          <p style="font-size:13px;margin:2px 0 0;color:var(--muted)">◉ agent music</p>
+        </div>
+      </div>
+      <div style="position:relative;display:flex;align-items:center;margin:0 0 12px;font-family:'Inter Tight',sans-serif;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.16em;color:var(--muted)" style-after="content:'';flex:1;height:1px;background:var(--hairline);margin-left:10px">Аккаунт</div>
+      <div style="position:relative;display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)"><i class="ph-bold ph-wallet" style="font-size:15px"></i> Баланс</span>
+          <span style="font-size:34px;font-weight:800;font-family:'Inter Tight',sans-serif;line-height:1.1;color:var(--text)">{{ credits }} ген</span>
+          <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)"><i class="ph-bold ph-calendar" style="font-size:13px"></i> Подписка: 14.08.2026</span>
+        </div>
+        <button onClick="{{ goShop }}" style="appearance:none;align-self:center;flex-shrink:0;font-size:14px;padding:14px 18px;border:1px solid rgba(255,255,255,0.25);background:linear-gradient(135deg,#a855f7,#7C3AED);color:#FFFFFF;border-radius:999px;font-weight:700;box-shadow:inset 0 1px 0 rgba(255,255,255,0.35), 0 8px 24px rgba(124,58,237,0.45);cursor:pointer;display:inline-flex;align-items:center;gap:8px;transition:all 0.18s ease" style-active="transform:scale(0.97)">
+          <i class="ph-bold ph-plus" style="font-size:17px"></i>
+          Пополнить
+        </button>
+      </div>
+    </section>
+    <section style="position:relative;border-radius:28px;padding:26px;background:var(--panel);border:1px solid var(--panel-border);backdrop-filter:blur(30px) saturate(180%);-webkit-backdrop-filter:blur(30px) saturate(180%);box-shadow:var(--shadow-md);overflow:hidden;animation:reveal 0.5s cubic-bezier(0.16,1,0.3,1) both" style-before="content:'';position:absolute;inset:0;background:var(--lens);pointer-events:none">
+      <div style="position:relative;display:flex;align-items:center;margin:0 0 12px;font-family:'Inter Tight',sans-serif;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.16em;color:var(--muted)" style-after="content:'';flex:1;height:1px;background:var(--hairline);margin-left:10px">История</div>
+      <div style="position:relative;display:flex;gap:4px;padding:4px;border-radius:999px;background:var(--input-bg);backdrop-filter:blur(12px);border:1px solid var(--chip-border);margin:12px 0 16px;box-shadow:var(--specular)">
+        <span aria-hidden="true" style="position:absolute;top:4px;bottom:4px;border-radius:999px;background:rgba(168,85,247,0.18);border:1px solid rgba(168,85,247,0.45);box-shadow:inset 0 1px 0 rgba(255,255,255,0.2), 0 0 14px rgba(168,85,247,0.3);pointer-events:none;transition:transform 0.35s cubic-bezier(0.34,1.56,0.64,1);width:calc(50% - 6px);transform:{{ profileSegX }}"></span>
+        <button onClick="{{ pickPurchases }}" style="position:relative;z-index:1;appearance:none;border:none;background:none;color:var(--text);white-space:nowrap;flex:1;padding:9px 16px;border-radius:999px;font-size:14px;font-weight:600;cursor:pointer;opacity:{{ purchasesOpacity }};transition:opacity 0.18s ease">Покупки</button>
+        <button onClick="{{ pickDownloads }}" style="position:relative;z-index:1;appearance:none;border:none;background:none;color:var(--text);white-space:nowrap;flex:1;padding:9px 16px;border-radius:999px;font-size:14px;font-weight:600;cursor:pointer;opacity:{{ downloadsOpacity }};transition:opacity 0.18s ease">Загрузки</button>
+      </div>
+      <sc-if value="{{ profileTabPurchases }}" hint-placeholder-val="{{ true }}">
+        <ul style="position:relative;list-style:none;padding:0;margin:0;display:flex;flex-direction:column">
+          <li style="display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--hairline)">
+            <span style="width:34px;height:34px;border-radius:12px;background:var(--chip);border:1px solid var(--chip-border);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:var(--specular)"><i class="ph-bold ph-receipt" style="font-size:16px"></i></span>
+            <span style="flex:1;font-size:14px">#241 · 4.5 USDT</span>
+            <span style="font-size:12px;color:var(--muted)">02.07.2026</span>
+          </li>
+          <li style="display:flex;align-items:center;gap:10px;padding:11px 0">
+            <span style="width:34px;height:34px;border-radius:12px;background:var(--chip);border:1px solid var(--chip-border);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:var(--specular)"><i class="ph-bold ph-receipt" style="font-size:16px"></i></span>
+            <span style="flex:1;font-size:14px;display:inline-flex;align-items:center;gap:4px">#198 · 250 <i class="ph-fill ph-star" style="font-size:12px;color:#f59e0b"></i></span>
+            <span style="font-size:12px;color:var(--muted)">18.06.2026</span>
+          </li>
+        </ul>
+      </sc-if>
+      <sc-if value="{{ profileTabDownloads }}" hint-placeholder-val="{{ false }}">
+        <ul style="position:relative;list-style:none;padding:0;margin:0;display:flex;flex-direction:column">
+          <sc-for list="{{ downloadEntries }}" as="dl" hint-placeholder-count="2">
+            <li style="padding:11px 0;border-bottom:1px solid {{ dl.divider }}">
+              <div style="display:flex;align-items:center;gap:10px">
+                <span style="width:34px;height:34px;border-radius:12px;background:var(--chip);border:1px solid var(--chip-border);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:var(--specular)"><i class="ph-bold ph-music-notes" style="font-size:16px;color:#a855f7"></i></span>
+                <div style="flex:1;min-width:0">
+                  <p style="font-weight:600;font-size:14px;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)">{{ dl.name }}</p>
+                  <p style="font-size:12px;margin:2px 0 0;color:var(--muted)">{{ dl.meta }}</p>
+                </div>
+                <button aria-label="Скачать ещё раз" style="width:36px;height:36px;border-radius:50%;border:1px solid var(--chip-border);background:var(--chip);color:var(--text);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer;box-shadow:var(--specular);transition:all 0.18s ease" style-hover="background:var(--chip-hover)"><i class="ph ph-arrows-clockwise" style="font-size:16px"></i></button>
+                <button aria-label="Удалить из истории" style="width:36px;height:36px;border-radius:50%;border:1px solid var(--chip-border);background:var(--chip);color:var(--text);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer;box-shadow:var(--specular);transition:all 0.18s ease" style-hover="color:#ef4444;background:rgba(239,68,68,0.15);border-color:transparent"><i class="ph ph-trash" style="font-size:16px"></i></button>
+              </div>
+            </li>
+          </sc-for>
+        </ul>
+      </sc-if>
+    </section>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ isAdmin }}" hint-placeholder-val="{{ false }}">
+  <div data-screen-label="Admin" style="display:flex;flex-direction:column;gap:12px;width:100%;max-width:480px;margin:0 auto">
+    <section style="position:relative;display:flex;flex-wrap:wrap;gap:12px;padding:16px 18px;border-radius:28px;background:var(--panel);border:1px solid var(--panel-border);backdrop-filter:blur(30px) saturate(180%);box-shadow:var(--shadow-md);overflow:hidden" style-before="content:'';position:absolute;inset:0;background:var(--lens);pointer-events:none">
+      <div style="position:relative;display:flex;flex-direction:column;gap:6px;flex:1;min-width:160px">
+        <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted)">Провайдер</span>
+        <div style="display:flex;gap:4px;padding:4px;border-radius:999px;background:var(--input-bg);border:1px solid var(--chip-border);box-shadow:var(--specular)">
+          <button style="appearance:none;border:1px solid rgba(168,85,247,0.45);background:rgba(168,85,247,0.18);color:var(--text);flex:0 0 auto;padding:8px 15px;border-radius:999px;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 0 12px rgba(168,85,247,0.25)">openai</button>
+          <button style="appearance:none;border:none;background:none;color:var(--text);flex:0 0 auto;padding:8px 15px;border-radius:999px;font-size:13px;font-weight:600;cursor:pointer;opacity:0.6">ollama</button>
+        </div>
+      </div>
+      <div style="position:relative;display:flex;flex-direction:column;gap:6px;flex:1;min-width:160px">
+        <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted)">Бэкенд</span>
+        <div style="display:flex;gap:4px;padding:4px;border-radius:999px;background:var(--input-bg);border:1px solid var(--chip-border);overflow-x:auto;scrollbar-width:none;box-shadow:var(--specular)">
+          <button style="appearance:none;border:1px solid rgba(168,85,247,0.45);background:rgba(168,85,247,0.18);color:var(--text);flex:0 0 auto;padding:8px 15px;border-radius:999px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;box-shadow:0 0 12px rgba(168,85,247,0.25)">youtube-music</button>
+          <button style="appearance:none;border:none;background:none;color:var(--text);flex:0 0 auto;padding:8px 15px;border-radius:999px;font-size:13px;font-weight:600;cursor:pointer;opacity:0.6;white-space:nowrap">soundcloud</button>
+        </div>
+      </div>
+    </section>
+    <nav aria-label="Секции админки" style="display:flex;gap:6px;overflow-x:auto;padding:4px;scrollbar-width:none;-webkit-mask-image:linear-gradient(to left, transparent, #000 24px)">
+      <sc-for list="{{ adminTabs }}" as="atab" hint-placeholder-count="5">
+        <button onClick="{{ atab.pick }}" style="flex-shrink:0;appearance:none;background:{{ atab.bg }};border:1px solid {{ atab.border }};border-radius:999px;padding:8px 16px;font-size:13px;font-weight:600;color:{{ atab.color }};cursor:pointer;transition:all 0.18s ease;backdrop-filter:blur(12px);box-shadow:{{ atab.shadow }}">{{ atab.label }}</button>
+      </sc-for>
+    </nav>
+    <sc-if value="{{ adminStats }}" hint-placeholder-val="{{ true }}">
+      <section style="position:relative;border-radius:28px;padding:26px;background:var(--panel);border:1px solid var(--panel-border);backdrop-filter:blur(30px) saturate(180%);box-shadow:var(--shadow-md);overflow:hidden;animation:reveal 0.5s cubic-bezier(0.16,1,0.3,1) both" style-before="content:'';position:absolute;inset:0;background:var(--lens);pointer-events:none">
+        <h2 style="position:relative;font-family:'Inter Tight',sans-serif;font-size:15px;font-weight:700;letter-spacing:-0.01em;margin:0 0 12px;color:var(--text)">Статистика</h2>
+        <div style="position:relative;display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--hairline)"><span style="font-size:14px;color:var(--muted)">Пользователи</span><span style="font-weight:700;font-size:15px;font-variant-numeric:tabular-nums;color:var(--text)">128</span></div>
+        <div style="position:relative;display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--hairline)"><span style="font-size:14px;color:var(--muted)">Оплаченные покупки</span><span style="font-weight:700;font-size:15px;font-variant-numeric:tabular-nums;color:var(--text)">42</span></div>
+        <div style="position:relative;display:flex;align-items:center;justify-content:space-between;padding:9px 0"><span style="font-size:14px;color:var(--muted)">Выручка</span><span style="font-weight:700;font-size:15px;font-variant-numeric:tabular-nums;color:var(--text)">310 USDT, 2450 XTR</span></div>
+      </section>
+    </sc-if>
+    <sc-if value="{{ adminOffers }}" hint-placeholder-val="{{ false }}">
+      <section style="position:relative;border-radius:28px;padding:26px;background:var(--panel);border:1px solid var(--panel-border);backdrop-filter:blur(30px) saturate(180%);box-shadow:var(--shadow-md);overflow:hidden;animation:reveal 0.5s cubic-bezier(0.16,1,0.3,1) both" style-before="content:'';position:absolute;inset:0;background:var(--lens);pointer-events:none">
+        <h2 style="position:relative;font-family:'Inter Tight',sans-serif;font-size:15px;font-weight:700;letter-spacing:-0.01em;margin:0 0 12px;color:var(--text)">Пакеты</h2>
+        <div style="position:relative;display:flex;flex-direction:column;gap:14px">
+          <sc-for list="{{ adminOfferRows }}" as="ao" hint-placeholder-count="3">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+              <span style="display:inline-flex;align-items:center;gap:6px;font-size:14px;color:var(--text);flex-basis:100%"><i class="ph-fill ph-circle" style="font-size:11px;color:#10b981"></i> {{ ao.line }}</span>
+              <button style="appearance:none;border:1px solid var(--chip-border);background:var(--chip);color:var(--text);padding:7px 14px;border-radius:999px;font-size:13px;font-weight:600;cursor:pointer;box-shadow:var(--specular)" style-hover="background:var(--chip-hover)">Изменить</button>
+              <button style="appearance:none;border:1px solid var(--chip-border);background:var(--chip);color:var(--text);padding:7px 14px;border-radius:999px;font-size:13px;font-weight:600;cursor:pointer;box-shadow:var(--specular)" style-hover="background:var(--chip-hover)">Скрыть</button>
+              <button style="appearance:none;border:1px solid var(--chip-border);background:var(--chip);color:var(--text);padding:7px 14px;border-radius:999px;font-size:13px;font-weight:600;cursor:pointer;box-shadow:var(--specular)" style-hover="color:#ef4444;background:rgba(239,68,68,0.12)">Удалить</button>
+            </div>
+          </sc-for>
+          <button style="appearance:none;border:1px dashed var(--chip-border);background:transparent;color:var(--muted);padding:13px 20px;border-radius:999px;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.18s ease" style-hover="background:var(--chip);color:var(--text)">＋ Новый пакет</button>
+        </div>
+      </section>
+    </sc-if>
+    <sc-if value="{{ adminBroadcast }}" hint-placeholder-val="{{ false }}">
+      <section style="position:relative;border-radius:28px;padding:26px;background:var(--panel);border:1px solid var(--panel-border);backdrop-filter:blur(30px) saturate(180%);box-shadow:var(--shadow-md);overflow:hidden;animation:reveal 0.5s cubic-bezier(0.16,1,0.3,1) both" style-before="content:'';position:absolute;inset:0;background:var(--lens);pointer-events:none">
+        <h2 style="position:relative;font-family:'Inter Tight',sans-serif;font-size:15px;font-weight:700;letter-spacing:-0.01em;margin:0 0 12px;color:var(--text)">Рассылка</h2>
+        <div style="position:relative;display:flex;flex-direction:column;gap:12px">
+          <textarea rows="4" placeholder="Текст сообщения" style="width:100%;border-radius:20px;border:1px solid var(--chip-border);background:var(--input-bg);color:var(--text);padding:15px 18px;font-size:15px;line-height:1.5;outline:none;backdrop-filter:blur(12px);resize:none;box-shadow:var(--specular)" style-focus="border-color:#a855f7;box-shadow:var(--specular), 0 0 0 4px rgba(168,85,247,0.18)"></textarea>
+          <button style="appearance:none;border:1px solid rgba(255,255,255,0.25);background:linear-gradient(135deg,#a855f7,#7C3AED);color:#FFFFFF;padding:14px 20px;border-radius:999px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,255,255,0.35), 0 8px 24px rgba(124,58,237,0.45)" style-active="transform:scale(0.97)">Отправить всем</button>
+        </div>
+      </section>
+    </sc-if>
+    <sc-if value="{{ adminPayments }}" hint-placeholder-val="{{ false }}">
+      <section style="position:relative;border-radius:28px;padding:26px;background:var(--panel);border:1px solid var(--panel-border);backdrop-filter:blur(30px) saturate(180%);box-shadow:var(--shadow-md);overflow:hidden;animation:reveal 0.5s cubic-bezier(0.16,1,0.3,1) both" style-before="content:'';position:absolute;inset:0;background:var(--lens);pointer-events:none">
+        <h2 style="position:relative;font-family:'Inter Tight',sans-serif;font-size:15px;font-weight:700;letter-spacing:-0.01em;margin:0 0 12px;color:var(--text)">Платежи</h2>
+        <p style="position:relative;display:inline-flex;align-items:center;gap:6px;margin:0;font-size:14px;color:var(--text)">Статус: <i class="ph-fill ph-circle" style="font-size:11px;color:#10b981"></i> Включены (env)</p>
+        <div style="position:relative;display:flex;gap:10px;margin-top:14px">
+          <button style="appearance:none;border:1px solid rgba(255,255,255,0.25);background:linear-gradient(135deg,#a855f7,#7C3AED);color:#FFFFFF;padding:13px 20px;border-radius:999px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,255,255,0.35), 0 8px 24px rgba(124,58,237,0.45)" style-active="transform:scale(0.97)">Выключить</button>
+        </div>
+      </section>
+    </sc-if>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ hasTrack }}" hint-placeholder-val="{{ false }}">
+  <div data-screen-label="Player capsule" onClick="{{ openPlayer }}" role="button" tabindex="0" style="position:fixed;bottom:96px;left:50%;transform:translateX(-50%);z-index:99;display:flex;flex-direction:column;padding:8px 14px 10px 8px;max-width:420px;border-radius:999px;background:var(--panel);border:1px solid var(--panel-border);backdrop-filter:blur(30px) saturate(180%);-webkit-backdrop-filter:blur(30px) saturate(180%);box-shadow:{{ playerBarShadow }};width:calc(100% - 40px);cursor:pointer;overflow:visible" style-before="{{ playerGlowBefore }}">
+    
+    
+  <div style="display:flex;align-items:center;gap:10px">
+      
+      <div style="width:42px;height:42px;border-radius:50%;flex-shrink:0;background:{{ currentArt }};box-shadow:inset 0 1px 0 rgba(255,255,255,0.3), 0 2px 8px rgba(0,0,0,0.3);animation:{{ artSpin }}"></div><div style="flex:1;min-width:0">
+        <p style="margin:0;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)">{{ currentTitle }}</p>
+        <p style="margin:0;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)">{{ currentArtist }}</p>
+      </div>
+      <button onClick="{{ toggleMute }}" aria-label="Звук" style="width:36px;height:36px;padding:0;border:none;background:none;cursor:pointer;color:var(--muted);flex-shrink:0"></button>
+      <i class="{{ volIcon }}" style="font-size:17px"></i><button onClick="{{ togglePlay }}" aria-label="Пауза" style="width:44px;height:44px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.25);border-radius:50%;background:linear-gradient(135deg,#a855f7,#7C3AED);cursor:pointer;color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,0.35), 0 4px 16px rgba(124,58,237,0.5);transition:all 0.18s ease" style-active="transform:scale(0.9)">
+        <i class="{{ barPlayIcon }}" style="font-size:18px"></i>
+      </button>
+    </div></div>
+  </sc-if>
+
+  <sc-if value="{{ isClarify }}" hint-placeholder-val="{{ false }}" style="top: 656.220093px">
+  <section data-screen-label="Clarify" style="position:relative;width:100%;max-width:480px;margin:0 auto;border-radius:28px;padding:26px;background:var(--panel);border:1px solid var(--panel-border);backdrop-filter:blur(30px) saturate(180%);-webkit-backdrop-filter:blur(30px) saturate(180%);box-shadow:var(--shadow-md);overflow:hidden;animation:reveal 0.5s cubic-bezier(0.16,1,0.3,1) both" style-before="content:'';position:absolute;inset:0;background:var(--lens);pointer-events:none">
+    <h1 style="position:relative;font-family:'Inter Tight',sans-serif;font-size:26px;font-weight:800;line-height:1.1;letter-spacing:-0.02em;margin:0 0 6px;color:var(--text)">Уточним детали</h1>
+    <p style="position:relative;margin:0 0 18px;line-height:1.5;color:var(--muted)">Какой темп ближе к вашей ночной поездке?</p>
+    <div style="position:relative;display:flex;flex-direction:column;gap:10px">
+      <sc-for list="{{ clarifyOptions }}" as="opt" hint-placeholder-count="3">
+        <button onClick="{{ opt.pick }}" disabled="{{ busy }}" style="appearance:none;border:1px solid var(--chip-border);background:var(--chip);color:var(--text);padding:15px 20px;border-radius:999px;font-size:15px;font-weight:600;backdrop-filter:blur(12px);box-shadow:var(--specular), 0 4px 16px rgba(0,0,0,0.15);cursor:pointer;display:flex;align-items:center;justify-content:space-between;width:100%;transition:all 0.18s ease" style-hover="background:var(--chip-hover);transform:scale(1.015)" style-active="transform:scale(0.97)">
+          <span>{{ opt.label }}</span>
+          <i class="ph-bold ph-caret-right" style="font-size:18px;color:var(--muted)"></i>
+        </button>
+      </sc-for>
+    </div>
+  </section>
+  </sc-if><nav aria-label="Главное меню" style="position:fixed;bottom:calc(16px + env(safe-area-inset-bottom, 0px));left:50%;transform:translateX(-50%);z-index:100;display:flex;gap:2px;padding:6px;border-radius:999px;background:var(--panel);border:1px solid var(--panel-border);backdrop-filter:blur(30px) saturate(180%);-webkit-backdrop-filter:blur(30px) saturate(180%);box-shadow:var(--shadow-float);overflow:hidden" style-before="content:'';position:absolute;inset:0;background:var(--lens);pointer-events:none;border-radius:999px">
+    <span aria-hidden="true" style="position:absolute;top:6px;bottom:6px;border-radius:999px;background:rgba(168,85,247,0.2);border:1px solid rgba(168,85,247,0.5);box-shadow:inset 0 1px 0 rgba(255,255,255,0.25), 0 0 16px rgba(168,85,247,0.4);pointer-events:none;z-index:0;transition:left 0.35s cubic-bezier(0.34,1.56,0.64,1), width 0.35s cubic-bezier(0.34,1.56,0.64,1);width:{{ dockW }};left:{{ dockLeft }}"></span>
+    <sc-for list="{{ dockTabs }}" as="dt" hint-placeholder-count="4">
+      <button onClick="{{ dt.pick }}" aria-current="{{ dt.current }}" style="appearance:none;border:none;background:transparent;color:{{ dt.color }};display:inline-flex;flex-direction:column;align-items:center;gap:2px;padding:9px 18px;border-radius:999px;font-size:10px;font-weight:600;cursor:pointer;transition:color 0.18s ease;position:relative;z-index:1;min-width:64px">
+        <i class="{{ dt.icon }}" style="font-size:21px"></i>
+        {{ dt.label }}
+      </button>
+    </sc-for>
+  </nav>
+
+  <sc-if value="{{ showPlayer }}" hint-placeholder-val="{{ false }}">
+  <div data-screen-label="Player screen" style="position:fixed;inset:0;z-index:200;display:flex;align-items:flex-end;background:rgba(0,0,0,0.45);backdrop-filter:blur(6px);animation:overlay-in 0.3s cubic-bezier(0.16,1,0.3,1) both">
+    <div style="position:relative;width:100%;max-width:480px;margin:0 auto;border-radius:32px 32px 0 0;background:var(--panel);border:1px solid var(--panel-border);border-bottom:none;backdrop-filter:blur(36px) saturate(180%);-webkit-backdrop-filter:blur(36px) saturate(180%);padding:12px 24px 36px;display:flex;flex-direction:column;align-items:center;animation:slide-up 0.35s cubic-bezier(0.16,1,0.3,1) both;overflow-y:auto;max-height:95dvh;box-shadow:var(--shadow-float)" style-before="content:'';position:absolute;inset:0;background:var(--lens);pointer-events:none">
+      <span aria-hidden="true" onClick="{{ closePlayer }}" style="position:relative;width:44px;height:5px;border-radius:999px;background:var(--track);margin:4px 0 10px;cursor:pointer"></span>
+      <div style="position:relative;display:flex;align-items:center;justify-content:space-between;width:100%;margin-bottom:10px">
+        <button onClick="{{ closePlayer }}" aria-label="Закрыть плеер" style="width:38px;height:38px;padding:0;border-radius:50%;border:1px solid var(--chip-border);background:var(--chip);color:var(--text);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:var(--specular)" style-hover="background:var(--chip-hover)"><i class="ph ph-caret-down" style="font-size:19px"></i></button>
+        <span style="font-family:'Inter Tight',sans-serif;font-size:13px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted)">Сейчас играет</span>
+        <span style="width:38px"></span>
+      </div>
+      <div style="position:relative;width:100%;aspect-ratio:1;max-width:300px;border-radius:28px;overflow:hidden;margin-bottom:16px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.3), 0 20px 48px rgba(0,0,0,0.45), 0 0 40px rgba(168,85,247,0.25)">
+        <div style="width:100%;height:100%;background:{{ currentArt }}"></div>
+      </div>
+      <div style="position:relative;text-align:center;width:100%;margin-bottom:12px">
+        <p style="font-family:'Inter Tight',sans-serif;font-size:22px;font-weight:700;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)">{{ currentTitle }}</p>
+        <p style="font-size:15px;margin:4px 0 0;color:var(--muted)">{{ currentArtist }}</p>
+      </div>
+      <div style="position:relative;width:100%;display:flex;flex-direction:column;gap:6px;margin-bottom:18px">
+        <div style="display:flex;align-items:center;gap:10px;width:100%">
+          <span style="font-size:12px;font-weight:500;font-variant-numeric:tabular-nums;color:var(--muted);flex-shrink:0;min-width:36px;text-align:right">{{ currentTime }}</span>
+          <div onClick="{{ seekBar }}" role="slider" aria-label="Прогресс" tabindex="0" style="flex:1;height:6px;border-radius:999px;background:var(--track);cursor:pointer;overflow:hidden">
+            <span style="display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#a855f7,#c084fc);box-shadow:0 0 10px rgba(168,85,247,0.6);transition:width 0.2s ease;width:{{ progressPct }}"></span>
+          </div>
+          <span style="font-size:12px;font-weight:500;font-variant-numeric:tabular-nums;color:var(--muted);flex-shrink:0;min-width:36px">{{ durationLabel }}</span>
+        </div>
+      </div>
+      <div style="position:relative;display:flex;align-items:center;gap:14px;padding:10px 18px;border-radius:999px;background:var(--chip);border:1px solid var(--chip-border);backdrop-filter:blur(20px);box-shadow:var(--specular), 0 8px 24px rgba(0,0,0,0.25)">
+        <button onClick="{{ toggleMute }}" aria-label="Звук" style="width:40px;height:40px;padding:0;border:none;background:none;cursor:pointer;color:var(--muted)"><i class="{{ volIcon }}" style="font-size:19px"></i></button>
+        <button onClick="{{ togglePlay }}" aria-label="Пауза" style="appearance:none;border:1px solid rgba(255,255,255,0.3);background:linear-gradient(135deg,#a855f7,#7C3AED);color:#fff;cursor:pointer;width:62px;height:62px;display:flex;align-items:center;justify-content:center;border-radius:50%;box-shadow:inset 0 1px 0 rgba(255,255,255,0.4), 0 8px 28px rgba(124,58,237,0.55);transition:all 0.18s ease" style-active="transform:scale(0.93)">
+          <i class="{{ bigPlayIcon }}" style="font-size:28px"></i>
+        </button>
+        <input type="range" min="0" max="1" step="0.05" value="{{ volume }}" onChange="{{ setVolume }}" aria-label="Громкость" style="width:88px;height:32px;accent-color:#a855f7;cursor:pointer">
+      </div>
+    </div>
+  </div>
+  </sc-if>
+  </div></div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:420,&quot;height&quot;:900},&quot;scheme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dark&quot;,&quot;light&quot;],&quot;default&quot;:&quot;dark&quot;,&quot;tsType&quot;:&quot;\&quot;dark\&quot; | \&quot;light\&quot;&quot;,&quot;section&quot;:&quot;Тема&quot;}}">
+class Component extends DCLogic {
+  state = {
+    scheme: "dark",
+    tab: "create", screen: "prompt", prompt: "",
+    busy: false, downloadState: "idle", buyCategory: "all",
+    profileTab: "purchases", adminTab: "stats",
+    trackUri: "t1", playing: false, progress: 0.32, volume: 0.8, muted: false,
+    showPlayer: false,
+  };
+
+  componentDidMount() {
+    document.body.dataset.scheme = this.state.scheme;
+    this.timer = setInterval(() => {
+      if (this.state.playing) {
+        this.setState(s => ({ progress: s.progress >= 1 ? 0 : s.progress + 1 / 224 }));
+      }
+    }, 1000);
+  }
+  componentWillUnmount() { clearInterval(this.timer); }
+
+  nav(tab, screen) { this.setState({ tab, screen }); }
+
+  renderVals() {
+    const s = this.state;
+    const scheme = this.props.scheme ?? s.scheme;
+    if (typeof document !== "undefined") document.body.dataset.scheme = scheme;
+    const ARTS = {
+      t1: "linear-gradient(135deg,#7C3AED,#312e81)",
+      t2: "linear-gradient(135deg,#0ea5e9,#1e3a8a)",
+      t3: "linear-gradient(135deg,#f43f5e,#7c2d12)",
+      t4: "linear-gradient(135deg,#10b981,#064e3b)",
+      t5: "linear-gradient(135deg,#f59e0b,#78350f)",
+      t6: "linear-gradient(135deg,#a855f7,#1e1b4b)",
+    };
+    const TRACKS = [
+      { uri: "t1", title: "Nightcall", artist: "Kavinsky" },
+      { uri: "t2", title: "A Real Hero", artist: "College, Electric Youth" },
+      { uri: "t3", title: "Turbo Killer", artist: "Carpenter Brut" },
+      { uri: "t4", title: "Sunset", artist: "The Midnight" },
+      { uri: "t5", title: "Tech Noir", artist: "Gunship" },
+      { uri: "t6", title: "Resonance", artist: "HOME" },
+    ];
+    const cur = TRACKS.find(t => t.uri === s.trackUri) || null;
+    const playTrack = (uri) => this.setState(st => ({
+      trackUri: uri,
+      playing: st.trackUri === uri ? !st.playing : true,
+      progress: st.trackUri === uri ? st.progress : 0.02,
+    }));
+    const dockDefs = [
+      { key: "create", icon: "ph-bold ph-sparkle", label: "Создать", screen: "prompt" },
+      { key: "shop", icon: "ph-bold ph-storefront", label: "Магазин", screen: "buy" },
+      { key: "profile", icon: "ph-bold ph-user", label: "Профиль", screen: "profile" },
+      { key: "admin", icon: "ph-bold ph-shield", label: "Админ", screen: "admin" },
+    ];
+    const dockIdx = Math.max(0, dockDefs.findIndex(d => d.key === s.tab));
+    const ADMIN_TABS = [
+      ["stats", "Статистика"], ["offers", "Пакеты"], ["shop", "Магазин"], ["users", "Пользователи"],
+      ["issuance", "Выдача"], ["access", "Доступ"], ["providers", "Провайдеры"], ["settings", "Настройки"],
+      ["payments", "Платежи"], ["broadcast", "Рассылка"],
+    ];
+    const totalSec = 224, curSec = Math.round(s.progress * totalSec);
+    const fmt = (n) => `${Math.floor(n / 60)}:${String(Math.floor(n % 60)).padStart(2, "0")}`;
+    return {
+      credits: 12,
+      schemeIcon: scheme === "dark" ? "ph-bold ph-sun" : "ph-bold ph-moon",
+      toggleScheme: () => this.setState({ scheme: scheme === "dark" ? "light" : "dark" }),
+      isPrompt: s.screen === "prompt", isClarify: s.screen === "clarify", isResults: s.screen === "results",
+      isBuy: s.screen === "buy", isProfile: s.screen === "profile", isAdmin: s.screen === "admin",
+      prompt: s.prompt, busy: s.busy,
+      submitDisabled: s.busy || s.prompt.trim().length === 0,
+      submitOpacity: (s.busy || s.prompt.trim().length === 0) ? "0.55" : "1",
+      submitLabel: s.busy ? "Собираем плейлист…" : "Собрать плейлист",
+      onPromptChange: (e) => this.setState({ prompt: e.target.value }),
+      onSubmit: () => {
+        this.setState({ busy: true });
+        setTimeout(() => this.setState({ busy: false, screen: "clarify" }), 1400);
+      },
+      skeletonRows: [{ w1: "70%", w2: "45%" }, { w1: "64%", w2: "41%" }, { w1: "58%", w2: "37%" }, { w1: "52%", w2: "33%" }, { w1: "46%", w2: "29%" }],
+      clarifyOptions: ["Медленный и атмосферный", "Средний темп, ретро-драйв", "Быстрый и энергичный"].map(label => ({
+        label,
+        pick: () => {
+          this.setState({ busy: true });
+          setTimeout(() => this.setState({ busy: false, screen: "results", downloadState: "idle" }), 1200);
+        },
+      })),
+      tracks: TRACKS.map((t, i) => ({
+        ...t,
+        art: ARTS[t.uri],
+        delay: `${Math.min(i, 8) * 45}ms`,
+        rowBg: s.trackUri === t.uri ? "rgba(168,85,247,0.1)" : "transparent",
+        btnColor: s.trackUri === t.uri ? "#a855f7" : "var(--text)",
+        playIcon: s.trackUri === t.uri && s.playing ? "ph-fill ph-pause" : "ph-fill ph-play",
+        play: () => playTrack(t.uri),
+        playBtn: (e) => { e.stopPropagation(); playTrack(t.uri); },
+      })),
+      onNewPrompt: () => this.setState({ screen: "prompt", prompt: "" }),
+      downloadIdle: s.downloadState !== "sent",
+      downloadSent: s.downloadState === "sent",
+      downloadSending: s.downloadState === "sending",
+      downloadIcon: s.downloadState === "sending" ? "ph ph-circle-notch" : "ph ph-download-simple",
+      downloadSpin: s.downloadState === "sending" ? "animation:spin 0.9s linear infinite" : "",
+      downloadLabel: s.downloadState === "sending" ? "Отправляю в чат…" : "Скачать",
+      onDownload: () => {
+        this.setState({ downloadState: "sending" });
+        setTimeout(() => this.setState({ downloadState: "sent" }), 1500);
+      },
+      categories: [["all", "Все"], ["credits", "Генерации"], ["subscription", "Подписка"]].map(([id, label]) => ({
+        label,
+        pick: () => this.setState({ buyCategory: id }),
+        bg: s.buyCategory === id ? "linear-gradient(135deg,#a855f7,#7C3AED)" : "var(--chip)",
+        border: s.buyCategory === id ? "rgba(255,255,255,0.25)" : "var(--chip-border)",
+        color: s.buyCategory === id ? "#FFFFFF" : "var(--text)",
+        weight: s.buyCategory === id ? "700" : "600",
+      })),
+      offers: [
+        { icon: "⚡", title: "Стартовый", grant: "10 генераций", price: "1.5 USDT", stars: "120", divider: "var(--hairline)" },
+        { icon: "🎧", title: "Меломан", grant: "40 генераций", price: "4.5 USDT", stars: "250", divider: "var(--hairline)" },
+        { icon: "🚀", title: "Безлимит на месяц", grant: "30 дн. подписки", price: "9 USDT", stars: "520", divider: "var(--hairline)" },
+        { icon: "👑", title: "Безлимит на год", grant: "365 дн. подписки", price: "49 USDT", stars: "2900", divider: "transparent" },
+      ],
+      goShop: () => this.nav("shop", "buy"),
+      profileTabPurchases: s.profileTab === "purchases",
+      profileTabDownloads: s.profileTab === "downloads",
+      profileSegX: s.profileTab === "purchases" ? "translateX(0)" : "translateX(calc(100% + 8px))",
+      purchasesOpacity: s.profileTab === "purchases" ? "1" : "0.6",
+      downloadsOpacity: s.profileTab === "downloads" ? "1" : "0.6",
+      pickPurchases: () => this.setState({ profileTab: "purchases" }),
+      pickDownloads: () => this.setState({ profileTab: "downloads" }),
+      downloadEntries: [
+        { name: "Ночная поездка: синтвейв", meta: "12.07.2026 · 6 тр. · готово", divider: "var(--hairline)" },
+        { name: "Утренний lo-fi", meta: "08.07.2026 · 8 тр. · готово", divider: "transparent" },
+      ],
+      adminTabs: ADMIN_TABS.map(([id, label]) => ({
+        label,
+        pick: () => this.setState({ adminTab: id }),
+        bg: s.adminTab === id ? "rgba(168,85,247,0.18)" : "var(--chip)",
+        border: s.adminTab === id ? "rgba(168,85,247,0.5)" : "var(--chip-border)",
+        color: s.adminTab === id ? "#a855f7" : "var(--muted)",
+        shadow: s.adminTab === id ? "0 0 14px rgba(168,85,247,0.3)" : "var(--specular)",
+      })),
+      adminStats: s.adminTab === "stats",
+      adminOffers: s.adminTab === "offers",
+      adminBroadcast: s.adminTab === "broadcast",
+      adminPayments: !["stats", "offers", "broadcast"].includes(s.adminTab),
+      adminOfferRows: [
+        { line: "⚡ Стартовый — 1.5 USDT / 120 ⭐ (10 ген.)" },
+        { line: "🎧 Меломан — 4.5 USDT / 250 ⭐ (40 ген.)" },
+        { line: "🚀 Безлимит на месяц — 9 USDT / 520 ⭐ (30 дн.)" },
+      ],
+      hasTrack: !!cur, showPlayer: s.showPlayer && !!cur,
+      currentTitle: cur ? cur.title : "", currentArtist: cur ? cur.artist : "",
+      currentArt: cur ? ARTS[cur.uri] : "",
+      artSpin: s.playing ? "spin 8s linear infinite" : "none",
+      barPlayIcon: s.playing ? "ph-fill ph-pause" : "ph-fill ph-play",
+      bigPlayIcon: s.playing ? "ph-fill ph-pause" : "ph-fill ph-play",
+      playerBarShadow: s.playing
+        ? "var(--shadow-float), 0 0 28px rgba(168,85,247,0.4), 0 0 56px rgba(168,85,247,0.15)"
+        : "var(--shadow-float)",
+      playerGlowBefore: s.playing
+        ? "content:'';position:absolute;inset:-2px;z-index:-1;border-radius:999px;background:conic-gradient(from var(--angle,0deg),#a855f7 0%,#7C3AED 25%,#c084fc 50%,#7C3AED 75%,#a855f7 100%);-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);mask-composite:exclude;padding:2px;animation:liquid-rotate 4s linear infinite, liquid-pulse 3s ease-in-out infinite;pointer-events:none"
+        : "content:'';display:none",
+      progressPct: `${Math.round(s.progress * 100)}%`,
+      currentTime: fmt(curSec), durationLabel: fmt(totalSec),
+      volume: s.muted ? 0 : s.volume,
+      volIcon: s.muted ? "ph ph-speaker-x" : s.volume > 0.5 ? "ph ph-speaker-high" : "ph ph-speaker-low",
+      togglePlay: (e) => { e.stopPropagation(); this.setState(st => ({ playing: !st.playing })); },
+      toggleMute: (e) => { e.stopPropagation(); this.setState(st => ({ muted: !st.muted })); },
+      setVolume: (e) => this.setState({ volume: parseFloat(e.target.value), muted: false }),
+      seekBar: (e) => {
+        e.stopPropagation();
+        const rect = e.currentTarget.getBoundingClientRect();
+        this.setState({ progress: Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width)) });
+      },
+      openPlayer: () => this.setState({ showPlayer: true }),
+      closePlayer: () => this.setState({ showPlayer: false }),
+      dockW: "calc(25% - 4.5px)",
+      dockLeft: `calc(6px + ${dockIdx} * (25% - 3px))`,
+      dockTabs: dockDefs.map(d => ({
+        icon: d.icon, label: d.label,
+        color: s.tab === d.key ? "#a855f7" : "var(--muted)",
+        current: s.tab === d.key ? "page" : undefined,
+        pick: () => this.nav(d.key, d.screen),
+      })),
+    };
+  }
+}
+</script>
+</body>
+</html>

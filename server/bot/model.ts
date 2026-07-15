@@ -15,7 +15,7 @@ export function registerModel(bot: Bot<BotContext>, db: AppDb): void {
     if (!arg) {
       const current = getActiveModel(db, chatId) ?? getActiveProviderId(db, "opencode");
       const models = AVAILABLE_MODELS.join(", ");
-      await ctx.reply(`${heading("gear", "МОДЕЛЬ ──")}\n\nТекущая: ${current}\n\nДоступны: /model <имя>\n${models}`, {
+      await ctx.reply(`${heading("gear", "МОДЕЛЬ")}\n\nТекущая: ${current}\n\nДоступны: /model <имя>\n${models}`, {
         parse_mode: "HTML",
       });
       return;

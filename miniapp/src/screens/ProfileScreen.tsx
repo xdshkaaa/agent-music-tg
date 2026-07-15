@@ -3,12 +3,13 @@ import {
   Package, Plus, Wallet, Calendar, Receipt, User,
   Play, Pause, CircleNotch, WarningCircle, Gift, Star,
   ArrowsClockwise, CaretDown, CaretUp, DownloadSimple, MusicNotes, Trash,
+  Check, X,
 } from "@phosphor-icons/react";
 import { GlassPanel } from "../components/GlassPanel";
 import { Segmented } from "../components/Segmented";
 import { EmptyState } from "../components/EmptyState";
 import { usePlayer } from "../lib/player";
-import { api, type MeResponse, type ShopConfig, type Invoice, type DownloadRecord, type DownloadStatus } from "../lib/api";
+import { api, type MeResponse, type Invoice, type DownloadRecord, type DownloadStatus } from "../lib/api";
 
 function formatSubscription(until: number | null): string {
   if (!until) return "нет";
@@ -82,11 +83,11 @@ function DownloadEntry({
           </button>
           {confirming ? (
             <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-              <button type="button" className="action-btn action-btn--destructive" onClick={onDelete} disabled={busy !== null}>
-                {busy === "delete" ? <CircleNotch size={18} className="spin" /> : <>✓</>}
+              <button type="button" className="action-btn action-btn--destructive" aria-label="Подтвердить удаление" onClick={onDelete} disabled={busy !== null}>
+                {busy === "delete" ? <CircleNotch size={18} className="spin" /> : <Check size={18} weight="bold" />}
               </button>
-              <button type="button" className="action-btn" onClick={onDeleteInitiate}>
-                ✕
+              <button type="button" className="action-btn" aria-label="Отменить удаление" onClick={onDeleteInitiate}>
+                <X size={18} weight="bold" />
               </button>
             </div>
           ) : (
@@ -117,12 +118,26 @@ function DownloadEntry({
             const isActive = player.track?.uri === t.uri;
             const status = isActive ? player.status : "idle";
             return (
-              <li key={t.uri} className="download-track" onClick={() => {
-                player.setQueue(
-                  record.tracks.map((rt) => ({ uri: rt.uri, title: rt.title, artist: rt.artist }))
-                );
-                player.toggle({ uri: t.uri, title: t.title, artist: t.artist });
-              }}>
+              <li
+                key={t.uri}
+                className="download-track"
+                role="button"
+                tabIndex={0}
+                onClick={() => {
+                  player.toggle(
+                    { uri: t.uri, title: t.title, artist: t.artist },
+                    record.tracks.map((rt) => ({ uri: rt.uri, title: rt.title, artist: rt.artist })),
+                  );
+                }}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter" && e.key !== " ") return;
+                  e.preventDefault();
+                  player.toggle(
+                    { uri: t.uri, title: t.title, artist: t.artist },
+                    record.tracks.map((rt) => ({ uri: rt.uri, title: rt.title, artist: rt.artist })),
+                  );
+                }}
+              >
                 {status === "playing" ? (
                   <Pause size={14} weight="fill" style={{ flexShrink: 0, color: "var(--accent)" }} />
                 ) : (
@@ -215,12 +230,12 @@ function DownloadsSection({ refreshKey }: { refreshKey: number }) {
 
   return (
     <>
-      {error && <p role="alert" style={{ display: "flex", alignItems: "center", gap: 6 }}><WarningCircle size={16} weight="bold" /> {error}</p>}
-      {notice && <p role="status" style={{ display: "flex", alignItems: "center", gap: 6 }}><DownloadSimple size={16} weight="bold" /> {notice}</p>}
+      {error && <p role="alert" className="icon-row"><WarningCircle size={16} weight="bold" /> {error}</p>}
+      {notice && <p role="status" className="icon-row"><DownloadSimple size={16} weight="bold" /> {notice}</p>}
       {downloads.length === 0 ? (
         <EmptyState icon={<DownloadSimple size={40} weight="bold" />} label="Загрузок пока нет" />
       ) : (
-        <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column" }}>
+        <ul className="plain-list plain-list--col">
           {downloads.map((d) => (
             <DownloadEntry
               key={d.id}
@@ -240,7 +255,7 @@ function DownloadsSection({ refreshKey }: { refreshKey: number }) {
 
 type ProfileTab = "Покупки" | "Загрузки";
 
-export default function ProfileScreen({ me, shopConfig, onGoShop }: { me: MeResponse | null; shopConfig: ShopConfig | null; onGoShop: () => void }) {
+export default function ProfileScreen({ me, onGoShop }: { me: MeResponse | null; onGoShop: () => void }) {
   const [purchases, setPurchases] = useState<Invoice[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<ProfileTab>("Покупки");
@@ -268,24 +283,20 @@ export default function ProfileScreen({ me, shopConfig, onGoShop }: { me: MeResp
             <img src={me.photoUrl} alt="" className="profile-avatar" />
           ) : (
             <span className="profile-avatar-placeholder" aria-hidden="true">
-              <User size={20} weight="bold" style={{ color: "var(--text-secondary)" }} />
+              <User size={20} weight="bold" style={{ color: "var(--text-muted-dark)" }} />
             </span>
           )}
           <div>
             <p style={{ fontWeight: 700, fontSize: 18, margin: 0 }}>{displayName(me)}</p>
-            <p className="text-muted" style={{ fontSize: 13, margin: "2px 0 0" }}>
-              ◉ {shopConfig?.headerTitle || "agent music"}
-            </p>
           </div>
         </div>
 
-        <div className="section-label">АККАУНТ</div>
         <div className="profile-stats">
           <div className="stack" style={{ gap: 4 }}>
-            <span className="text-muted" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+            <span className="text-muted icon-row" style={{ fontSize: 13 }}>
               <Wallet size={15} weight="bold" /> Баланс
             </span>
-            <span style={{ fontSize: 32, fontWeight: 800, fontFamily: "var(--font-display)", lineHeight: 1.1 }}>
+            <span style={{ fontSize: 24, fontWeight: 700, fontFamily: "var(--font-display)", lineHeight: 1.1 }}>
               {me?.credits ?? 0} ген
             </span>
             {me?.trial.active && (
@@ -294,7 +305,10 @@ export default function ProfileScreen({ me, shopConfig, onGoShop }: { me: MeResp
                 {new Date((me.trial.until ?? 0) * 1000).toLocaleDateString("ru-RU")}
               </span>
             )}
-            <span className="text-muted" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+            <span className="text-muted" style={{ fontSize: 12, display: "inline-flex", alignItems: "center", gap: 4 }}>
+              Потрачено: {me?.generationsUsed ?? 0} ген
+            </span>
+            <span className="text-muted icon-row" style={{ fontSize: 12 }}>
               <Calendar size={13} weight="bold" /> Подписка: {formatSubscription(me?.subscriptionUntil ?? null)}
             </span>
           </div>
@@ -306,8 +320,7 @@ export default function ProfileScreen({ me, shopConfig, onGoShop }: { me: MeResp
       </GlassPanel>
 
       <GlassPanel className="reveal">
-        <div className="section-label">ИСТОРИЯ</div>
-        <div className="mt-12" style={{ marginBottom: 14 }}>
+        <div style={{ marginBottom: 14 }}>
           <Segmented<ProfileTab>
             options={["Покупки", "Загрузки"] as const}
             value={tab}
@@ -322,7 +335,7 @@ export default function ProfileScreen({ me, shopConfig, onGoShop }: { me: MeResp
           <DownloadsSection refreshKey={downloadsRefresh} />
         ) : (
           <>
-        {error && <p role="alert" style={{ display: "flex", alignItems: "center", gap: 6 }}><WarningCircle size={16} weight="bold" /> {error}</p>}
+        {error && <p role="alert" className="icon-row"><WarningCircle size={16} weight="bold" /> {error}</p>}
         {purchases.length === 0 ? (
           <EmptyState
             icon={<Package size={40} weight="bold" />}
@@ -330,7 +343,7 @@ export default function ProfileScreen({ me, shopConfig, onGoShop }: { me: MeResp
             action={{ label: "В магазин", onClick: onGoShop }}
           />
         ) : (
-          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ul className="plain-list plain-list--col-gap">
             {purchases.map((p) => (
               <li key={p.id} className="purchase-item">
                 <Receipt size={18} weight="bold" />

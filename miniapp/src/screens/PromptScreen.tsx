@@ -1,13 +1,8 @@
-import { useState } from "react";
-import { Sparkle, Waveform, Lightning, Headset } from "@phosphor-icons/react";
+import { useRef, useState } from "react";
+import { ArrowUp, CircleNotch } from "@phosphor-icons/react";
 import { GlassPanel } from "../components/GlassPanel";
-import { TrackSkeleton } from "../components/TrackSkeleton";
 
-const BENEFITS = [
-  { icon: Waveform, label: "Опишите настроение" },
-  { icon: Lightning, label: "Моментальная генерация" },
-  { icon: Headset, label: "Поддержка 24/7" },
-];
+const MAX_INPUT_HEIGHT = 132;
 
 export function PromptScreen({
   onSubmit,
@@ -17,48 +12,54 @@ export function PromptScreen({
   busy: boolean;
 }) {
   const [prompt, setPrompt] = useState("");
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  const canSubmit = !busy && prompt.trim().length > 0;
+
+  function autoGrow() {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, MAX_INPUT_HEIGHT)}px`;
+  }
+
+  function submit() {
+    if (!canSubmit) return;
+    onSubmit(prompt.trim());
+  }
 
   return (
-    <GlassPanel className="reveal">
-      <div className="prompt-hero" style={{ marginBottom: 18 }}>
-        <h1 style={{ textTransform: "uppercase", letterSpacing: "0.06em" }}>Создать плейлист</h1>
-        <p className="text-muted" style={{ fontSize: 12, letterSpacing: "0.12em", textTransform: "uppercase", margin: "4px 0 0" }}>
-          ◉ agent music
-        </p>
-      </div>
-
-      <div className="stack" style={{ gap: 8, marginBottom: 18 }}>
-        {BENEFITS.map(({ icon: Icon, label }) => (
-          <div key={label} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <Icon size={18} weight="bold" />
-            <span style={{ fontSize: 14 }}>{label}</span>
-          </div>
-        ))}
-      </div>
-
-      <div className="stack">
+    <GlassPanel className="reveal prompt-card">
+      <div className="prompt-pill">
         <textarea
-          className="glass-input"
-          rows={3}
-          placeholder="ночная поездка, синтвейв"
+          ref={inputRef}
+          className="prompt-pill-input"
+          rows={1}
+          placeholder="Опишите что-нибудь…"
           value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
+          onChange={(e) => {
+            setPrompt(e.target.value);
+            autoGrow();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              submit();
+            }
+          }}
           disabled={busy}
         />
         <button
-          className="glass-button primary"
-          disabled={busy || prompt.trim().length === 0}
-          onClick={() => onSubmit(prompt.trim())}
+          type="button"
+          className="prompt-submit"
+          aria-label="Собрать плейлист"
+          disabled={!canSubmit}
+          onClick={submit}
         >
-          <Sparkle size={18} weight="fill" />
-          {busy ? "Собираем плейлист…" : "Собрать плейлист"}
+          {busy ? <CircleNotch size={20} weight="bold" className="spin" /> : <ArrowUp size={20} weight="bold" />}
         </button>
-        {busy && (
-          <div className="mt-12">
-            <TrackSkeleton />
-          </div>
-        )}
       </div>
+
     </GlassPanel>
   );
 }

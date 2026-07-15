@@ -1,5 +1,6 @@
 import type { Track } from "../music/types";
 import type { Extractor, ProbeResult } from "./extractor";
+import { mapWithConcurrency } from "../core/concurrency";
 
 export type TrackVerificationStatus = "pending" | "checking" | "verified" | "unavailable";
 
@@ -72,11 +73,5 @@ export async function verifyTracks(
   extractor: Extractor,
   store: TrackVerificationStore,
 ): Promise<void> {
-  const chunks: Track[][] = [];
-  for (let i = 0; i < tracks.length; i += 3) {
-    chunks.push(tracks.slice(i, i + 3));
-  }
-  for (const chunk of chunks) {
-    await Promise.allSettled(chunk.map((t) => checkTrack(t.uri, extractor, store)));
-  }
+  await mapWithConcurrency(tracks, 8, (t) => checkTrack(t.uri, extractor, store).catch(() => {}));
 }
