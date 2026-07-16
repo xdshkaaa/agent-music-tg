@@ -71,10 +71,25 @@ export interface InvoiceResult {
   method: PaymentMethod;
 }
 
+export type StatsPeriod = "today" | "week" | "month" | "all";
+
 export interface AdminStats {
+  period: StatsPeriod;
   totalUsers: number;
+  newUsers: number;
+  activeSubscriptions: number;
   paidPurchases: number;
   revenue: { asset: string; total: number }[];
+  revenueAllTime: { asset: string; total: number }[];
+  conversionRate: number | null;
+  topOffers: { title: string; count: number }[];
+  topActiveUsers: { chatId: number; username: string | null; generations: number }[];
+  segments: {
+    activeSubscription: number;
+    trialActive: number;
+    payingNoSubscription: number;
+    freeNoActivity: number;
+  };
 }
 
 export interface ShopSettings {
@@ -322,7 +337,7 @@ export const api = {
   fetchHistory: () => request<{ history: HistoryEntry[] }>("/api/history"),
 
   // --- Admin: payments management ---
-  adminStats: () => request<AdminStats>("/api/admin/stats"),
+  adminStats: (period: StatsPeriod = "all") => request<AdminStats>(`/api/admin/stats?period=${period}`),
   adminOffers: () => request<{ offers: Offer[] }>("/api/admin/offers"),
   adminCreateOffer: (input: OfferInput) =>
     request<{ offer: Offer }>("/api/admin/offers", { method: "POST", body: JSON.stringify(input) }),

@@ -14,12 +14,14 @@ export function Segmented<T extends string>({
   onChange,
   ariaLabel,
   tinted,
+  labels,
 }: {
   options: readonly T[];
   value: T;
   onChange: (value: T) => void;
   ariaLabel?: string;
   tinted?: boolean;
+  labels?: Partial<Record<T, string>>;
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const btnRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -55,7 +57,7 @@ export function Segmented<T extends string>({
           className={`segmented-option${id === value ? " active" : ""}`}
           onClick={() => onChange(id)}
         >
-          {id}
+          {labels?.[id] ?? id}
         </button>
       ))}
     </div>
