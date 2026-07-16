@@ -1,7 +1,7 @@
 import { Bot, InlineKeyboard } from "grammy";
 import type { AppDb } from "../db";
 import type { BotContext } from "./context";
-import { getAdminStats } from "../admin/stats";
+import { getAdminStats, type StatsPeriod } from "../admin/stats";
 import { broadcast, type SendFn } from "../admin/broadcast";
 import { listOffers, createOffer, setOfferActive, deleteOffer, type GrantKind } from "../payments/offers-store";
 import {
@@ -46,13 +46,63 @@ export function menuKeyboard(): InlineKeyboard {
     .text(btnText("Все настройки", "gear"), "admin:all-settings");
 }
 
-async function showStats(ctx: BotContext, db: AppDb): Promise<void> {
-  const s = getAdminStats(db);
+const STATS_PERIOD_LABELS: Record<StatsPeriod, string> = {
+  today: "Сегодня",
+  week: "Неделя",
+  month: "Месяц",
+  all: "Всё время",
+};
+
+function statsKeyboard(active: StatsPeriod): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  for (const p of ["today", "week", "month", "all"] as StatsPeriod[]) {
+    const label = p === active ? `✓ ${STATS_PERIOD_LABELS[p]}` : STATS_PERIOD_LABELS[p];
+    kb.text(label, `admin:stats:${p}`);
+  }
+  return kb;
+}
+
+function statsText(s: ReturnType<typeof getAdminStats>): string {
   const rev = s.revenue.length > 0 ? s.revenue.map((r) => `${r.total} ${r.asset}`).join(", ") : "0";
-  await ctx.reply(
-    `<b>${heading("stats", "Статистика")}</b>\nПользователей: ${s.totalUsers}\nОплаченных покупок: ${s.paidPurchases}\nВыручка: ${rev}`,
-    { parse_mode: "HTML" },
+  const revAllTime =
+    s.revenueAllTime.length > 0 ? s.revenueAllTime.map((r) => `${r.total} ${r.asset}`).join(", ") : "0";
+  const conv = s.conversionRate === null ? "—" : `${(s.conversionRate * 100).toFixed(1)}%`;
+  const top = s.topOffers.length > 0 ? s.topOffers.map((o) => `${o.title} (${o.count})`).join(", ") : "—";
+  const topUsers =
+    s.topActiveUsers.length > 0
+      ? s.topActiveUsers
+          .map((u, i) => `${i + 1}. ${u.username ? "@" + u.username : u.chatId} — ${u.generations}`)
+          .join("\n")
+      : "—";
+  const seg = s.segments;
+  return (
+    `<b>${heading("stats", "Статистика")}</b> · ${STATS_PERIOD_LABELS[s.period]}\n` +
+    `Всего пользователей: ${s.totalUsers}\n` +
+    `Новых за период: ${s.newUsers}\n` +
+    `Активных подписок: ${s.activeSubscriptions}\n` +
+    `Оплаченных покупок: ${s.paidPurchases}\n` +
+    `Выручка за период: ${rev}\n` +
+    `Выручка всего: ${revAllTime}\n` +
+    `Конверсия: ${conv}\n` +
+    `Топ пакеты: ${top}\n\n` +
+    `<b>Сегменты пользователей</b>\n` +
+    `С подпиской: ${seg.activeSubscription}\n` +
+    `На трайле: ${seg.trialActive}\n` +
+    `Покупали, без подписки: ${seg.payingNoSubscription}\n` +
+    `Бесплатные, без покупок: ${seg.freeNoActivity}\n\n` +
+    `<b>Топ по активности</b> (генераций)\n${topUsers}`
   );
+}
+
+async function showStats(ctx: BotContext, db: AppDb, period: StatsPeriod, edit: boolean): Promise<void> {
+  const s = getAdminStats(db, period);
+  const text = statsText(s);
+  const reply_markup = statsKeyboard(period);
+  if (edit) {
+    await ctx.editMessageText(text, { parse_mode: "HTML", reply_markup });
+  } else {
+    await ctx.reply(text, { parse_mode: "HTML", reply_markup });
+  }
 }
 
 async function showOffers(ctx: BotContext, db: AppDb): Promise<void> {
@@ -573,7 +623,14 @@ export function registerAdminPanel(bot: Bot<BotContext>, db: AppDb): void {
   bot.callbackQuery("admin:stats", async (ctx) => {
     if (!ctx.isAdmin) return ctx.answerCallbackQuery();
     await ctx.answerCallbackQuery();
-    await showStats(ctx, db);
+    await showStats(ctx, db, "all", false);
+  });
+
+  bot.callbackQuery(/^admin:stats:(today|week|month|all)$/, async (ctx) => {
+    if (!ctx.isAdmin) return ctx.answerCallbackQuery();
+    const period = ctx.match[1] as StatsPeriod;
+    await ctx.answerCallbackQuery();
+    await showStats(ctx, db, period, true);
   });
 
   bot.callbackQuery("admin:offers", async (ctx) => {

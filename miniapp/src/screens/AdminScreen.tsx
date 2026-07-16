@@ -18,6 +18,7 @@ import type {
   ProviderConfigEntry,
   SettingEntry,
   PaymentsConfig,
+  StatsPeriod,
 } from "../lib/api";
 import { api } from "../lib/api";
 import { useScrollFade } from "../lib/useScrollFade";
@@ -45,36 +46,137 @@ const CRYPTO_ASSETS = ["USDT", "TON", "BTC", "ETH", "LTC", "BNB", "TRX", "USDC"]
 
 // --- Existing panels (unchanged) ---
 
+const STATS_PERIODS: StatsPeriod[] = ["today", "week", "month", "all"];
+const STATS_PERIOD_LABELS: Record<StatsPeriod, string> = {
+  today: "Сегодня",
+  week: "Неделя",
+  month: "Месяц",
+  all: "Всё время",
+};
+
 function StatsPanel() {
+  const [period, setPeriod] = useState<StatsPeriod>("all");
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.adminStats().then(setStats).catch((e) => setError(e.message));
-  }, []);
-
-  if (error) return <GlassPanel role="alert"><WarningCircle size={18} weight="bold" /> {error}</GlassPanel>;
-  if (!stats) return <GlassPanel>Загрузка…</GlassPanel>;
+    setStats(null);
+    api.adminStats(period).then(setStats).catch((e) => setError(e.message));
+  }, [period]);
 
   return (
+    <>
+      <GlassPanel className="reveal">
+        <h2>Статистика</h2>
+        <Segmented
+          options={STATS_PERIODS}
+          value={period}
+          onChange={setPeriod}
+          ariaLabel="Период статистики"
+          labels={STATS_PERIOD_LABELS}
+        />
+        {error && (
+          <div className="stat-row" role="alert">
+            <WarningCircle size={18} weight="bold" /> {error}
+          </div>
+        )}
+        {!error && !stats && <div className="stat-row-label">Загрузка…</div>}
+        {stats && (
+          <>
+            <div className="stat-row">
+              <span className="stat-row-label">Всего пользователей</span>
+              <span className="stat-row-value">{stats.totalUsers}</span>
+            </div>
+            <div className="stat-row">
+              <span className="stat-row-label">Новых за период</span>
+              <span className="stat-row-value">{stats.newUsers}</span>
+            </div>
+            <div className="stat-row">
+              <span className="stat-row-label">Активных подписок</span>
+              <span className="stat-row-value">{stats.activeSubscriptions}</span>
+            </div>
+            <div className="stat-row">
+              <span className="stat-row-label">Оплаченные покупки</span>
+              <span className="stat-row-value">{stats.paidPurchases}</span>
+            </div>
+            <div className="stat-row">
+              <span className="stat-row-label">Выручка за период</span>
+              <span className="stat-row-value">
+                {stats.revenue.length === 0 ? "0" : stats.revenue.map((r) => `${r.total} ${r.asset}`).join(", ")}
+              </span>
+            </div>
+            <div className="stat-row">
+              <span className="stat-row-label">Выручка всего</span>
+              <span className="stat-row-value">
+                {stats.revenueAllTime.length === 0
+                  ? "0"
+                  : stats.revenueAllTime.map((r) => `${r.total} ${r.asset}`).join(", ")}
+              </span>
+            </div>
+            <div className="stat-row">
+              <span className="stat-row-label">Конверсия</span>
+              <span className="stat-row-value">
+                {stats.conversionRate === null ? "—" : `${(stats.conversionRate * 100).toFixed(1)}%`}
+              </span>
+            </div>
+            <div className="stat-row">
+              <span className="stat-row-label">Топ пакеты</span>
+              <span className="stat-row-value">
+                {stats.topOffers.length === 0
+                  ? "—"
+                  : stats.topOffers.map((o) => `${o.title} (${o.count})`).join(", ")}
+              </span>
+            </div>
+          </>
+        )}
+      </GlassPanel>
+      {stats && <UserSegmentsPanel stats={stats} />}
+      {stats && <TopActiveUsersPanel stats={stats} />}
+    </>
+  );
+}
+
+function UserSegmentsPanel({ stats }: { stats: AdminStats }) {
+  const seg = stats.segments;
+  return (
     <GlassPanel className="reveal">
-      <h2>Статистика</h2>
+      <h2>Сегменты пользователей</h2>
       <div className="stat-row">
-        <span className="stat-row-label">Пользователи</span>
-        <span className="stat-row-value">{stats.totalUsers}</span>
+        <span className="stat-row-label">С подпиской</span>
+        <span className="stat-row-value">{seg.activeSubscription}</span>
       </div>
       <div className="stat-row">
-        <span className="stat-row-label">Оплаченные покупки</span>
-        <span className="stat-row-value">{stats.paidPurchases}</span>
+        <span className="stat-row-label">На трайле</span>
+        <span className="stat-row-value">{seg.trialActive}</span>
       </div>
       <div className="stat-row">
-        <span className="stat-row-label">Выручка</span>
-        <span className="stat-row-value">
-          {stats.revenue.length === 0
-            ? "0"
-            : stats.revenue.map((r) => `${r.total} ${r.asset}`).join(", ")}
-        </span>
+        <span className="stat-row-label">Покупали, без подписки</span>
+        <span className="stat-row-value">{seg.payingNoSubscription}</span>
       </div>
+      <div className="stat-row">
+        <span className="stat-row-label">Бесплатные, без покупок</span>
+        <span className="stat-row-value">{seg.freeNoActivity}</span>
+      </div>
+    </GlassPanel>
+  );
+}
+
+function TopActiveUsersPanel({ stats }: { stats: AdminStats }) {
+  return (
+    <GlassPanel className="reveal">
+      <h2>Топ по активности</h2>
+      {stats.topActiveUsers.length === 0 ? (
+        <div className="stat-row-label">Нет данных</div>
+      ) : (
+        stats.topActiveUsers.map((u, i) => (
+          <div className="stat-row" key={u.chatId}>
+            <span className="stat-row-label">
+              {i + 1}. {u.username ? `@${u.username}` : u.chatId}
+            </span>
+            <span className="stat-row-value">{u.generations}</span>
+          </div>
+        ))
+      )}
     </GlassPanel>
   );
 }

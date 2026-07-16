@@ -3,12 +3,13 @@ import {
   Package, Plus, Wallet, Calendar, Receipt, User,
   Play, Pause, CircleNotch, WarningCircle, Gift, Star,
   ArrowsClockwise, CaretDown, CaretUp, DownloadSimple, MusicNotes, Trash,
-  Check, X, BookmarkSimple,
+  Check, X, BookmarkSimple, ChartBar,
 } from "@phosphor-icons/react";
 import { GlassPanel } from "../components/GlassPanel";
 import { Segmented } from "../components/Segmented";
 import { EmptyState } from "../components/EmptyState";
 import { usePlayer } from "../lib/player";
+import { getTelegramUserFirstName } from "../lib/telegram";
 import { api, type MeResponse, type Invoice, type DownloadRecord, type DownloadStatus, type HistoryEntry } from "../lib/api";
 
 function formatSubscription(until: number | null): string {
@@ -318,6 +319,7 @@ function MusicBackendPicker({ me }: { me: MeResponse | null }) {
     (me?.musicBackend as MusicBackendId | null) ?? "youtube-music",
   );
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(false);
 
   useEffect(() => {
     if (me?.musicBackend) setBackend(me.musicBackend as MusicBackendId);
@@ -327,10 +329,12 @@ function MusicBackendPicker({ me }: { me: MeResponse | null }) {
     const previous = backend;
     setBackend(id);
     setSaving(true);
+    setSaveError(false);
     try {
       await api.setMyMusicBackend(id);
     } catch {
       setBackend(previous);
+      setSaveError(true);
     } finally {
       setSaving(false);
     }
@@ -343,11 +347,24 @@ function MusicBackendPicker({ me }: { me: MeResponse | null }) {
       </span>
       <Segmented<MusicBackendId>
         ariaLabel="Источник музыки"
+        role="radiogroup"
+        fill
         options={MUSIC_BACKENDS}
         value={backend}
         onChange={handleChange}
       />
-      {saving && <CircleNotch size={14} className="spin" style={{ marginLeft: 8 }} />}
+      <span
+        role="status"
+        aria-label={saving ? "Сохранение" : undefined}
+        style={{ display: "inline-flex", width: 14, height: 14, marginLeft: 8, flexShrink: 0 }}
+      >
+        {saving && <CircleNotch size={14} className="spin" />}
+      </span>
+      {saveError && (
+        <p role="alert" className="text-muted" style={{ fontSize: 12, margin: "6px 0 0", width: "100%" }}>
+          Не удалось сохранить, попробуйте ещё раз
+        </p>
+      )}
     </div>
   );
 }
@@ -361,6 +378,7 @@ export default function ProfileScreen({
   onGoShop: () => void;
   onOpenHistory: (entry: HistoryEntry) => void;
 }) {
+  const firstName = getTelegramUserFirstName();
   const [purchases, setPurchases] = useState<Invoice[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<ProfileTab>("Покупки");
@@ -393,7 +411,12 @@ export default function ProfileScreen({
             </span>
           )}
           <div>
-            <p style={{ fontWeight: 800, fontSize: 20, letterSpacing: "-0.01em", margin: 0 }}>{displayName(me)}</p>
+            <p style={{ fontWeight: 800, fontSize: 20, letterSpacing: "-0.01em", margin: 0 }}>
+              {firstName ?? displayName(me)}
+            </p>
+            {firstName && me?.username && (
+              <p className="text-muted" style={{ fontSize: 14, margin: "2px 0 0" }}>@{me.username}</p>
+            )}
           </div>
         </div>
 
@@ -411,8 +434,8 @@ export default function ProfileScreen({
                 {new Date((me.trial.until ?? 0) * 1000).toLocaleDateString("ru-RU")}
               </span>
             )}
-            <span className="text-muted" style={{ fontSize: 12, display: "inline-flex", alignItems: "center", gap: 4 }}>
-              Потрачено: {me?.generationsUsed ?? 0} ген
+            <span className="text-muted icon-row" style={{ fontSize: 12 }}>
+              <ChartBar size={13} weight="bold" /> Потрачено: {me?.generationsUsed ?? 0} ген
             </span>
             <span className="text-muted icon-row" style={{ fontSize: 12 }}>
               <Calendar size={13} weight="bold" /> Подписка: {formatSubscription(me?.subscriptionUntil ?? null)}
@@ -442,6 +465,7 @@ export default function ProfileScreen({
               }
             }}
             ariaLabel="Библиотека"
+            fill
           />
         </div>
         {tab === "Библиотека" ? (
@@ -463,9 +487,13 @@ export default function ProfileScreen({
                 <span style={{ flex: 1 }}>
                   #{p.id} · {p.amount} {p.asset === "XTR" ? <Star size={12} weight="fill" /> : p.asset}
                 </span>
-                <span className="text-muted" style={{ fontSize: 12 }}>
+                <time
+                  dateTime={new Date(p.createdAt * 1000).toISOString()}
+                  className="text-muted"
+                  style={{ fontSize: 12 }}
+                >
                   {new Date(p.createdAt * 1000).toLocaleDateString("ru-RU")}
-                </span>
+                </time>
               </li>
             ))}
           </ul>

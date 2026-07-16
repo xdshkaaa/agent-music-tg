@@ -11,7 +11,7 @@ export function EmptyState({
 }) {
   return (
     <div className="empty-state">
-      <span className="chevron">{icon}</span>
+      <span className="chevron" aria-hidden="true">{icon}</span>
       <p className="text-muted">{label}</p>
       {action && (
         <button type="button" className="glass-button" onClick={action.onClick}>
