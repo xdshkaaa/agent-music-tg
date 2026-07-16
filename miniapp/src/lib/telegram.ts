@@ -37,6 +37,18 @@ export function getInitData(): string {
   return getTelegramWebApp()?.initData ?? "";
 }
 
+/** First name from signed initData's `user` payload; null outside Telegram or on parse failure. */
+export function getTelegramUserFirstName(): string | null {
+  try {
+    const raw = new URLSearchParams(getInitData()).get("user");
+    if (!raw) return null;
+    const user = JSON.parse(raw) as { first_name?: string };
+    return user.first_name?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 export function getColorScheme(): "light" | "dark" {
   return getTelegramWebApp()?.colorScheme ?? "dark";
 }

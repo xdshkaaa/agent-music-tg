@@ -397,7 +397,9 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
   // --- Admin: stats, offers, broadcast, shop settings ------------------
 
   app.get("/admin/stats", requireAdmin, (c) => {
-    return c.json(getAdminStats(db));
+    const period = c.req.query("period");
+    const valid = period === "today" || period === "week" || period === "month" || period === "all" ? period : "all";
+    return c.json(getAdminStats(db, valid));
   });
 
   app.get("/admin/offers", requireAdmin, (c) => {
