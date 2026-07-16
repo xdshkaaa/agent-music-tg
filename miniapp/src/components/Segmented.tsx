@@ -15,6 +15,8 @@ export function Segmented<T extends string>({
   ariaLabel,
   tinted,
   labels,
+  fill,
+  role = "tablist",
 }: {
   options: readonly T[];
   value: T;
@@ -22,6 +24,10 @@ export function Segmented<T extends string>({
   ariaLabel?: string;
   tinted?: boolean;
   labels?: Partial<Record<T, string>>;
+  /** Options split the track equally instead of sizing to content. */
+  fill?: boolean;
+  /** "radiogroup" for settings pickers without tab panels. */
+  role?: "tablist" | "radiogroup";
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const btnRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -39,7 +45,12 @@ export function Segmented<T extends string>({
   useScrollFade(trackRef);
 
   return (
-    <div className="segmented glass" role="tablist" aria-label={ariaLabel} ref={trackRef}>
+    <div
+      className={`segmented glass${fill ? " segmented--fill" : ""}`}
+      role={role}
+      aria-label={ariaLabel}
+      ref={trackRef}
+    >
       <span
         className={`segmented-indicator${tinted ? " segmented-indicator-tinted" : ""} glass-indicator`}
         aria-hidden="true"
@@ -52,8 +63,10 @@ export function Segmented<T extends string>({
             btnRefs.current[i] = el;
           }}
           type="button"
-          role="tab"
-          aria-selected={id === value}
+          role={role === "radiogroup" ? "radio" : "tab"}
+          {...(role === "radiogroup"
+            ? { "aria-checked": id === value }
+            : { "aria-selected": id === value })}
           className={`segmented-option${id === value ? " active" : ""}`}
           onClick={() => onChange(id)}
         >

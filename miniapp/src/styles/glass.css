@@ -708,6 +708,15 @@ textarea.glass-input {
   display: none;
 }
 
+.segmented--fill {
+  overflow-x: visible;
+}
+
+.segmented--fill .segmented-option {
+  flex: 1 1 0;
+  text-align: center;
+}
+
 .segmented[data-fade-left] {
   mask-image: linear-gradient(to right, transparent, #000 24px);
   -webkit-mask-image: linear-gradient(to right, transparent, #000 24px);
@@ -1011,12 +1020,25 @@ h1 {
 
 .prompt-hero h1 {
   font-family: var(--font-display);
-  font-size: clamp(26px, 8vw, 34px);
+  font-size: clamp(20px, 7.2vw, 34px);
   font-weight: 800;
   line-height: 1.08;
   letter-spacing: -0.02em;
   text-align: left;
   margin: 0;
+  min-height: 1.08em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: clip;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  font-variant-numeric: tabular-nums;
+  transition: opacity 0.15s ease;
+}
+
+.prompt-hero h1:active {
+  opacity: 0.8;
 }
 
 .prompt-hero-accent {
@@ -2612,22 +2634,17 @@ div.player-bar-thumbnail::after {
 .profile-avatar {
   width: 58px;
   height: 58px;
-  border-radius: 50%;
+  border-radius: 16px;
   object-fit: cover;
   flex-shrink: 0;
-  border: 2px solid var(--accent);
-}
-
-:root[data-scheme="light"] .profile-avatar {
-  border-color: var(--accent);
 }
 
 .profile-avatar-placeholder {
   width: 58px;
   height: 58px;
-  border-radius: 50%;
+  border-radius: 16px;
   background: var(--lg-v2-chip);
-  border: 2px solid var(--accent);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2636,7 +2653,7 @@ div.player-bar-thumbnail::after {
 
 :root[data-scheme="light"] .profile-avatar-placeholder {
   background: rgba(255, 255, 255, 0.5);
-  border-color: var(--accent);
+  border-color: rgba(0, 0, 0, 0.08);
 }
 
 .profile-stats {

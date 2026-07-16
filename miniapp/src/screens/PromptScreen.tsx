@@ -12,11 +12,22 @@ import { ReasoningTranscript } from "../components/ReasoningTranscript";
 import { TrackPlayButton } from "../components/PlayerBar";
 import { api, type Track } from "../lib/api";
 import type { AgentEvent } from "../lib/reasoning";
+import { useTextScramble } from "../lib/useTextScramble";
 
 const MAX_INPUT_HEIGHT = 132;
 
 type DownloadState = { kind: "idle" } | { kind: "sending" } | { kind: "sent" } | { kind: "error"; message: string };
 type Mode = "ai" | "search";
+
+type HeroPhrase = { before: string; accent: string; after: string };
+
+const HERO_PHRASES: HeroPhrase[] = [
+  { before: "Что ", accent: "слушаем", after: "?" },
+  { before: "Какой ", accent: "вайб", after: "?" },
+  { before: "Чего хочет ", accent: "душа", after: "?" },
+  { before: "Врубаем ", accent: "музыку", after: "?" },
+  { before: "Какое ", accent: "настроение", after: "?" },
+];
 
 export function PromptScreen({
   onSubmit,
@@ -40,6 +51,28 @@ export function PromptScreen({
   const requestId = useRef(0);
 
   const canSubmit = mode === "ai" && !busy && prompt.trim().length > 0;
+
+  const [heroIndex, setHeroIndex] = useState(0);
+  const [heroTrigger, setHeroTrigger] = useState(0);
+  const heroPhrase = HERO_PHRASES[heroIndex];
+  const heroFull = `${heroPhrase.before}${heroPhrase.accent}${heroPhrase.after}`;
+  const { displayText: heroDisplay, isComplete: heroComplete } = useTextScramble(heroFull, heroTrigger, 500);
+
+  useEffect(() => {
+    const t = setTimeout(() => setHeroTrigger(1), 50);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function handleHeroClick() {
+    if (!heroComplete) return;
+    let next = heroIndex;
+    if (HERO_PHRASES.length > 1) {
+      while (next === heroIndex) next = Math.floor(Math.random() * HERO_PHRASES.length);
+    }
+    setHeroIndex(next);
+    setHeroTrigger((n) => n + 1);
+  }
 
   useEffect(() => {
     if (mode !== "search") return;
@@ -105,8 +138,12 @@ export function PromptScreen({
   return (
     <GlassPanel className="reveal prompt-card">
       <div className="prompt-hero">
-        <h1>
-          Что <span className="prompt-hero-accent">слушаем</span>?
+        <h1 onClick={handleHeroClick} role="button" tabIndex={0}>
+          {heroDisplay.slice(0, heroPhrase.before.length)}
+          <span className="prompt-hero-accent">
+            {heroDisplay.slice(heroPhrase.before.length, heroPhrase.before.length + heroPhrase.accent.length)}
+          </span>
+          {heroDisplay.slice(heroPhrase.before.length + heroPhrase.accent.length)}
         </h1>
       </div>
 
