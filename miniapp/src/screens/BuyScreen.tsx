@@ -1,22 +1,36 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CaretRight, CircleNotch, MagnifyingGlass, Check, CreditCard, Gift, Star } from "@phosphor-icons/react";
+import { CircleNotch, MagnifyingGlass, Check, CreditCard, Gift, Star } from "@phosphor-icons/react";
 import { GlassPanel } from "../components/GlassPanel";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { IconOrEmoji } from "../components/IconOrEmoji";
 import { TrackSkeleton } from "../components/TrackSkeleton";
+import { Segmented } from "../components/Segmented";
 import { api, type Offer, type Invoice, type PaymentMethod, type TrialStatus } from "../lib/api";
 import { openPayUrl, openStarsInvoice } from "../lib/telegram";
 
 type CategoryFilter = "all" | "credits" | "subscription";
-const CATEGORIES: { id: CategoryFilter; label: string }[] = [
-  { id: "all", label: "Все" },
-  { id: "credits", label: "Генерации" },
-  { id: "subscription", label: "Подписка" },
-];
+const CATEGORY_LABELS: Record<CategoryFilter, string> = {
+  all: "Все",
+  credits: "Генерации",
+  subscription: "Подписка",
+};
+const CATEGORY_OPTIONS: CategoryFilter[] = ["all", "credits", "subscription"];
+
+// Russian plural forms: 1 генерация / 2 генерации / 5 генераций.
+function pluralRu(n: number, [one, few, many]: [string, string, string]): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return one;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return few;
+  return many;
+}
 
 function grantLabel(o: Offer): string {
-  return o.grantKind === "subscription" ? `${o.grantAmount} дн. подписки` : `${o.grantAmount} генераций`;
+  const n = o.grantAmount;
+  return o.grantKind === "subscription"
+    ? `${n} ${pluralRu(n, ["день", "дня", "дней"])} подписки`
+    : `${n} ${pluralRu(n, ["генерация", "генерации", "генераций"])}`;
 }
 
 function formatPrice(amount: string, asset: string): string {
@@ -134,57 +148,47 @@ export default function BuyScreen({ reason, isAdmin = false }: { reason?: string
       )}
 
       {trial && !trial.claimed && (
-        <GlassPanel className="reveal" tone="tinted">
+        <GlassPanel className="reveal trial-card" tone="tinted">
           <div className="trial-card-row">
             <span className="trial-card-info">
-              <span className="trial-card-title" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Gift size={18} weight="bold" /> Бесплатный пакет</span>
-              <span className="trial-card-label">
-                10 генераций на 3 дня
-              </span>
+              <span className="trial-card-title"><Gift size={16} weight="bold" /> Бесплатный пакет</span>
+              <span className="trial-card-label">10 генераций на 3 дня</span>
             </span>
             <button
               type="button"
-              className="glass-button primary"
+              className="glass-button primary trial-card-btn"
               disabled={trialBusy}
               onClick={() => void claimTrial()}
-              style={{ padding: "10px 14px", fontWeight: 700, fontSize: 14, flexShrink: 0 }}
             >
-              Забрать бесплатно
+              Забрать
             </button>
           </div>
         </GlassPanel>
       )}
 
-      <GlassPanel className="reveal">
-        <div className="category-pills">
-          {CATEGORIES.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              className={`glass-button${category === c.id ? " primary" : ""}`}
-              onClick={() => setCategory(c.id)}
-              style={{ padding: "8px 14px", fontSize: 13, flex: "0 0 auto" }}
-            >
-              {c.label}
-            </button>
-          ))}
-        </div>
-      </GlassPanel>
+      <Segmented
+        options={CATEGORY_OPTIONS}
+        value={category}
+        onChange={setCategory}
+        labels={CATEGORY_LABELS}
+        tinted
+        fill
+        role="radiogroup"
+        ariaLabel="Категория предложений"
+      />
 
       <GlassPanel className="reveal">
         {error && <ErrorBanner message={error} onClose={() => setError(null)} isAdmin={isAdmin} />}
         {offers === null ? (
           <TrackSkeleton rows={3} />
         ) : visible.length === 0 ? (
-          <EmptyState icon={<MagnifyingGlass size={40} weight="bold" />} label="ничего не найдено" />
+          <EmptyState icon={<MagnifyingGlass size={40} weight="bold" />} label="В этой категории пока нет предложений" />
         ) : (
           <div className="stack">
             {visible.map((o) => (
               <div className="offer-row" key={o.id}>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 12, minWidth: 0, flex: 1 }}>
-                  <span className="offer-icon" aria-hidden="true">
-                    <IconOrEmoji icon={o.icon} size={22} />
-                  </span>
+                <span className="offer-identity">
+                  <IconOrEmoji icon={o.icon} size={22} />
                   <span className="offer-info">
                     <span className="offer-title">{o.title}</span>
                     <span className="offer-label">{grantLabel(o)}</span>
@@ -193,16 +197,17 @@ export default function BuyScreen({ reason, isAdmin = false }: { reason?: string
                 <span className="offer-price-wrap">
                   <button
                     type="button"
-                    className="glass-button offer-price-btn"
+                    className="offer-price"
                     disabled={busyId === o.id}
+                    aria-busy={busyId === o.id}
+                    aria-label={`Купить «${o.title}» за ${formatPrice(o.amount, o.asset)}`}
                     onClick={() => buy(o.id, "crypto")}
                   >
                     {busyId === o.id ? (
-                      <CircleNotch size={16} weight="bold" className="spin" />
+                      <CircleNotch size={16} weight="bold" className="spin" aria-hidden="true" />
                     ) : (
                       <>
-                        {formatPrice(o.amount, o.asset)}
-                        {!o.starsAmount && <CaretRight size={16} weight="bold" />}
+                        <span className="offer-price-amount">{formatPrice(o.amount, o.asset)}</span>
                       </>
                     )}
                   </button>
@@ -211,13 +216,15 @@ export default function BuyScreen({ reason, isAdmin = false }: { reason?: string
                       type="button"
                       className="glass-button primary offer-stars-btn"
                       disabled={busyId === o.id}
+                      aria-busy={busyId === o.id}
+                      aria-label={`Купить «${o.title}» за ${o.starsAmount} звёзд`}
                       onClick={() => buy(o.id, "stars")}
                     >
                       {busyId === o.id ? (
-                        <CircleNotch size={14} weight="bold" className="spin" />
+                        <CircleNotch size={14} weight="bold" className="spin" aria-hidden="true" />
                       ) : (
                         <>
-                          {o.starsAmount} <Star size={14} weight="fill" />
+                          {o.starsAmount} <Star size={14} weight="fill" aria-hidden="true" />
                         </>
                       )}
                     </button>
@@ -234,7 +241,7 @@ export default function BuyScreen({ reason, isAdmin = false }: { reason?: string
           <ul className="plain-list">
             {paidInvoices.map((p) => (
               <li key={p.id} style={{ padding: "8px 0", borderBottom: "1px solid var(--hairline)" }}>
-                #{p.id}: {p.amount} {p.asset === "XTR" ? <Star size={14} weight="fill" /> : p.asset}
+                Покупка №{p.id} — {p.amount} {p.asset === "XTR" ? <Star size={14} weight="fill" aria-hidden="true" /> : p.asset}
               </li>
             ))}
           </ul>
