@@ -2540,22 +2540,18 @@ div.player-bar-thumbnail::after {
   border-bottom-color: var(--glass-border-light);
 }
 
-.offer-icon {
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
-  background: var(--lg-v2-chip);
-  border: 1px solid var(--lg-v2-chip-border);
+.offer-identity {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  overflow: hidden;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
 }
 
-:root[data-scheme="light"] .offer-icon {
-  background: rgba(255, 255, 255, 0.5);
-  border-color: var(--glass-border-light);
+.offer-identity svg,
+.offer-identity .icon-or-emoji {
+  color: var(--accent);
+  flex-shrink: 0;
 }
 
 .offer-info {
@@ -2587,22 +2583,43 @@ div.player-bar-thumbnail::after {
   color: var(--text-muted-light);
 }
 
-.offer-price-btn {
-  height: 40px;
-  padding: 0 12px;
+.offer-price {
+  appearance: none;
+  background: none;
+  border: none;
+  padding: 4px 2px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  cursor: pointer;
+}
+
+.offer-price:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.offer-price-amount {
   font-weight: 700;
-  font-size: 14px;
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+  font-size: 15px;
+  color: var(--text-dark);
+}
+
+:root[data-scheme="light"] .offer-price-amount {
+  color: var(--text-light);
 }
 
 @media (hover: hover) {
-  .offer-price-btn:hover {
-    border-color: var(--accent);
+  .offer-price:hover .offer-price-amount {
+    color: var(--accent);
   }
+}
+
+.offer-price:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
 }
 
 .offer-stars-btn {
@@ -2772,18 +2789,6 @@ div.player-bar-thumbnail::after {
   min-width: 0;
 }
 
-.category-pills {
-  display: flex;
-  gap: 6px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  margin-bottom: 12px;
-}
-
-.category-pills::-webkit-scrollbar {
-  display: none;
-}
-
 .search-wrap {
   display: flex;
   align-items: center;
@@ -2867,6 +2872,11 @@ div.player-bar-thumbnail::after {
   color: var(--success);
 }
 
+.trial-card {
+  padding: 12px 16px;
+  border-radius: 18px;
+}
+
 .trial-card-row {
   display: flex;
   align-items: center;
@@ -2882,9 +2892,19 @@ div.player-bar-thumbnail::after {
 }
 
 .trial-card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-weight: 700;
-  font-size: 15px;
+  font-size: 13px;
   color: var(--text-dark);
+}
+
+.trial-card-btn {
+  padding: 8px 14px;
+  font-weight: 700;
+  font-size: 13px;
+  flex-shrink: 0;
 }
 
 :root[data-scheme="light"] .trial-card-title {
