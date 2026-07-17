@@ -15,7 +15,7 @@ interface SbpPayPopupProps {
  * «Закрыть» rolls the held credits back via onClose(true); the successful
  * completion path is handled by the parent polling the purchase list.
  */
-export function SbpPayPopup({ payUrl, offerTitle, supportContact, onClose }: SbpPayPopupProps) {
+export function SbpPayPopup({ payUrl, offerTitle, onClose }: SbpPayPopupProps) {
   const [, setOpened] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -72,15 +72,13 @@ export function SbpPayPopup({ payUrl, offerTitle, supportContact, onClose }: Sbp
         >
           <ArrowSquareOut size={16} weight="bold" aria-hidden="true" /> Оплатить
         </a>
-        {supportContact && (
-          <button
-            type="button"
-            className="sbp-support"
-            onClick={() => openSupport(supportContact)}
-          >
-            Нужна помощь?
-          </button>
-        )}
+        <button
+          type="button"
+          className="sbp-support"
+          onClick={() => openSupport("https://t.me/litteralIy")}
+        >
+          Нужна помощь?
+        </button>
       </div>
     </div>
   );
