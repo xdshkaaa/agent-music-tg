@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
-import { Wallet, Sun, Moon } from "@phosphor-icons/react";
+import { Wallet, Sun, Moon, AtIcon } from "@phosphor-icons/react";
 import { PromptScreen } from "./screens/PromptScreen";
 import { ClarifyScreen } from "./screens/ClarifyScreen";
 import { ResultsScreen } from "./screens/ResultsScreen";
@@ -304,19 +304,25 @@ function AppInner() {
     <ErrorBoundary onReset={handleReset}>
     <main className="app-shell">
       <header className="app-top-bar">
-        <span className="app-top-brand">
+        <span className="app-top-brand" title="music agent">
+          <span className="app-top-logo" aria-hidden>
+            <AtIcon size={12} weight="fill" />
+          </span>
           {shopConfig?.headerTitle || "agent music"}
         </span>
         <span className="app-top-actions">
           <button
             type="button"
-            className="app-top-chip wallet-pill"
-            aria-label="Открыть профиль"
+            className="wallet-badge"
+            aria-label={`Генераций осталось: ${me?.credits ?? 0}`}
+            title="Генерации"
             onClick={() => navigate({ kind: "profile" })}
           >
-            <Wallet size={16} weight="bold" className="accent" />
-            {me?.credits ?? 0} ген
-            {me?.trial?.active && me.trial.creditsLeft > 0 ? ` · ${me.trial.creditsLeft} беспл.` : ""}
+            <Wallet size={14} weight="bold" />
+            <span className="wallet-count">{me?.credits ?? 0}</span>
+            {me?.trial?.active && me.trial.creditsLeft > 0 ? (
+              <span className="wallet-trial">+{me.trial.creditsLeft}</span>
+            ) : null}
           </button>
           <button
             type="button"
@@ -324,7 +330,7 @@ function AppInner() {
             aria-label={scheme === "dark" ? "Включить светлую тему" : "Включить тёмную тему"}
             onClick={toggleScheme}
           >
-            {scheme === "dark" ? <Sun size={18} weight="bold" /> : <Moon size={18} weight="bold" />}
+            {scheme === "dark" ? <Sun size={16} weight="bold" /> : <Moon size={16} weight="bold" />}
           </button>
         </span>
       </header>

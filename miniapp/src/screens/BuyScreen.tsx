@@ -7,6 +7,7 @@ import { InlineNotice } from "../components/InlineNotice";
 import { IconOrEmoji } from "../components/IconOrEmoji";
 import { TrackSkeleton } from "../components/TrackSkeleton";
 import { Segmented } from "../components/Segmented";
+import { SbpPayPopup } from "../components/SbpPayPopup";
 import { api, type Offer, type Invoice, type PaymentMethod, type TrialStatus } from "../lib/api";
 import { openPayUrl, openStarsInvoice, openSupport } from "../lib/telegram";
 
@@ -34,10 +35,6 @@ function grantLabel(o: Offer): string {
     : `${n} ${pluralRu(n, ["генерация", "генерации", "генераций"])}`;
 }
 
-function formatPrice(amount: string, asset: string): string {
-  return `${parseFloat(amount)} ${asset}`;
-}
-
 export default function BuyScreen({ reason, isAdmin = false }: { reason?: string; isAdmin?: boolean }) {
   const [offers, setOffers] = useState<Offer[] | null>(null);
   const [paidInvoices, setPaidInvoices] = useState<Invoice[]>([]);
@@ -50,6 +47,7 @@ export default function BuyScreen({ reason, isAdmin = false }: { reason?: string
   const [trialSuccess, setTrialSuccess] = useState(false);
   const [offerErrors, setOfferErrors] = useState<Record<number, string>>({});
   const [supportContact, setSupportContact] = useState<string>("");
+  const [sbpInvoice, setSbpInvoice] = useState<{ id: number; payUrl: string; offerTitle: string } | null>(null);
 
   // null until the first fetch lands, so pre-existing purchases
   // don't fire the "payment received" toast on mount.
@@ -82,7 +80,7 @@ export default function BuyScreen({ reason, isAdmin = false }: { reason?: string
     return (offers ?? []).filter((o) => category === "all" || o.grantKind === category);
   }, [offers, category]);
 
-  async function buy(offerId: number, method: PaymentMethod = "crypto") {
+  async function buy(offerId: number, method: PaymentMethod = "stars") {
     setBusyId(offerId);
     setError(null);
     try {
@@ -97,6 +95,13 @@ export default function BuyScreen({ reason, isAdmin = false }: { reason?: string
           window.setTimeout(() => void refresh(), 1500);
           window.setTimeout(() => void refresh(), 4000);
         });
+      } else if (method === "platega") {
+        // СБП pays in an external bank app; show the sheet above the dock and
+        // poll for the webhook-driven grant while it is open.
+        setSbpInvoice({ id: result.id, payUrl: result.payUrl, offerTitle: result.offerTitle });
+        window.setTimeout(() => void refresh(), 3000);
+        window.setTimeout(() => void refresh(), 8000);
+        window.setTimeout(() => void refresh(), 15000);
       } else {
         openPayUrl(result.payUrl);
         // Crypto payment happens outside the app (bot chat / browser); poll
@@ -120,6 +125,21 @@ export default function BuyScreen({ reason, isAdmin = false }: { reason?: string
       delete next[offerId];
       return next;
     });
+  }
+
+  async function handleSbpClose(cancelled: boolean) {
+    const inv = sbpInvoice;
+    setSbpInvoice(null);
+    if (cancelled && inv) {
+      // Roll the held credits back if the user bailed before paying.
+      try {
+        await api.cancelInvoice(inv.id);
+      } catch {
+        /* ignore — the invoice still expires server-side */
+      }
+      void refresh();
+      window.dispatchEvent(new CustomEvent("balance-changed"));
+    }
   }
 
   async function claimTrial() {
@@ -208,22 +228,6 @@ export default function BuyScreen({ reason, isAdmin = false }: { reason?: string
                   </span>
                 </span>
                 <span className="offer-price-wrap">
-                  <button
-                    type="button"
-                    className="offer-price"
-                    disabled={busyId === o.id}
-                    aria-busy={busyId === o.id}
-                    aria-label={`Купить «${o.title}» за ${formatPrice(o.amount, o.asset)}`}
-                    onClick={() => buy(o.id, "crypto")}
-                  >
-                    {busyId === o.id ? (
-                      <CircleNotch size={16} weight="bold" className="spin" aria-hidden="true" />
-                    ) : (
-                      <>
-                        <span className="offer-price-amount">{formatPrice(o.amount, o.asset)}</span>
-                      </>
-                    )}
-                  </button>
                   {o.starsAmount && (
                     <button
                       type="button"
@@ -285,6 +289,15 @@ export default function BuyScreen({ reason, isAdmin = false }: { reason?: string
             ))}
           </ul>
         </GlassPanel>
+      )}
+
+      {sbpInvoice && (
+        <SbpPayPopup
+          payUrl={sbpInvoice.payUrl}
+          offerTitle={sbpInvoice.offerTitle}
+          supportContact={supportContact}
+          onClose={handleSbpClose}
+        />
       )}
     </div>
   );

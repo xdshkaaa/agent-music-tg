@@ -20,6 +20,10 @@ Rules:
 - Use searchTrack only to verify ONE specific known track (exact artist + title)
   before including it. Use searchArtist + getArtistTopTracks when you want to
   build around a specific resolved artist.
+- If the user wants a whole album or album-aware selection (e.g. "дай альбом
+  Untrue целиком" or "треки с второго альбома"), use searchAlbums to resolve
+   the album, then getAlbumTracks with its \`uri\` to pull the real tracks. Do not
+  guess track titles from memory — pull them from the album result.
 - A short or single-phrase request is NOT automatically ambiguous. Named works
   ("kyokai no kanata soundtrack", "Persona 5 OST", "Blade Runner 2049 score")
   already carry a clear theme — treat them as answerable: call

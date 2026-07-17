@@ -1,9 +1,10 @@
 import type { AppDb } from "../db";
 import { env } from "../env";
-import { listPendingInvoices, markCanceled } from "./invoices-store";
+import { listPendingInvoices } from "./invoices-store";
 import { getInvoices } from "./crypto-pay";
 import { getTransaction, plategaEnabled } from "./platega";
 import { fulfillInvoice, fulfillPendingInvoice, type FulfillResult } from "./fulfillment";
+import { cancelInvoiceAndRefund } from "./cancel";
 
 const POLL_INTERVAL_MS = 60_000;
 const PLATEGA_STALE_MS = 60 * 60 * 1000;
@@ -55,7 +56,7 @@ export async function pollPlategaOnce(
   const now = Date.now();
   for (const inv of pending) {
     if (now - inv.createdAt * 1000 > PLATEGA_STALE_MS) {
-      markCanceled(db, "platega", inv.externalId);
+      cancelInvoiceAndRefund(db, "platega", inv.externalId);
       continue;
     }
     try {
@@ -64,7 +65,7 @@ export async function pollPlategaOnce(
         const result = fulfillPendingInvoice(db, "platega", inv.externalId);
         if (result.fulfilled && result.offerTitle && onFulfilled) await onFulfilled(result);
       } else if (tx.status === "CANCELED" || tx.status === "CHARGEBACKED") {
-        markCanceled(db, "platega", inv.externalId);
+        cancelInvoiceAndRefund(db, "platega", inv.externalId);
       }
     } catch (e) {
       console.error("[platega poller] tx fetch failed", inv.externalId, e);

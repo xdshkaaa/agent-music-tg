@@ -2,6 +2,7 @@ import type { AppDb } from "../db";
 import { env } from "../env";
 import { getOffer } from "./offers-store";
 import { insertPendingInvoice } from "./invoices-store";
+import { reserveCredits } from "../access/users-store";
 import { createInvoice } from "./crypto-pay";
 import { createTransaction, type PlategaTransaction } from "./platega";
 
@@ -15,12 +16,25 @@ export class OfferUnavailableError extends Error {}
 export class RubPriceMissingError extends Error {}
 
 /**
+ * Earmarks generation credits for a credits offer when its invoice is created,
+ * so a canceled payment can roll them back. Subscription offers have nothing
+ * to hold (access is time-based), so they reserve nothing.
+ */
+function reserveForOffer(db: AppDb, chatId: number, offerId: number): number {
+  const offer = getOffer(db, offerId);
+  if (!offer || offer.grantKind !== "credits" || offer.grantAmount <= 0) return 0;
+  return reserveCredits(db, chatId, offer.grantAmount);
+}
+
+/**
  * Creates a Crypto Pay invoice for an active offer and stores a pending record.
  * The offer's amount/asset are frozen onto the invoice at this point.
  */
 export async function purchaseOffer(db: AppDb, chatId: number, offerId: number): Promise<PurchaseResult> {
   const offer = getOffer(db, offerId);
   if (!offer || !offer.active) throw new OfferUnavailableError("offer is not available");
+
+  const reservedCredits = reserveForOffer(db, chatId, offerId);
 
   const invoice = await createInvoice({
     asset: offer.asset,
@@ -36,6 +50,7 @@ export async function purchaseOffer(db: AppDb, chatId: number, offerId: number):
     offerId,
     amount: offer.amount,
     asset: offer.asset,
+    reservedCredits,
   });
 
   const payUrl = invoice.mini_app_invoice_url ?? invoice.bot_invoice_url ?? invoice.pay_url ?? "";
@@ -62,6 +77,8 @@ export async function purchaseOfferRub(
   if (!offer || !offer.active) throw new OfferUnavailableError("offer is not available");
   if (!offer.rubAmount) throw new RubPriceMissingError("offer has no RUB price");
 
+  const reservedCredits = reserveForOffer(db, chatId, offerId);
+
   const tx = await create({
     amountRub: offer.rubAmount,
     description: offer.title,
@@ -77,6 +94,7 @@ export async function purchaseOfferRub(
     offerId,
     amount: String(offer.rubAmount),
     asset: "RUB",
+    reservedCredits,
   });
 
   return { invoiceId: 0, payUrl: tx.redirect, offerTitle: offer.title };

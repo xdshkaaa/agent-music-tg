@@ -10,6 +10,16 @@ export interface Track {
   deepLink?: string;
 }
 
+export interface Album {
+  /** Provider-specific URI: sc:12345 / ytm:albumId */
+  uri: string;
+  title: string;
+  artist: string;
+  artwork?: string;
+  /** Present on resolve-only backends (SoundCloud/YouTube Music): open-in-app link. */
+  deepLink?: string;
+}
+
 export interface RemotePlaylist {
   id: string;
   uri: string;
@@ -35,6 +45,11 @@ export interface MusicProvider {
   searchTracks(query: string, limit?: number): Promise<Track[]>;
   searchArtist(name: string): Promise<{ id: string; name: string } | null>;
   getArtistTopTracks(artistId: string, limit?: number): Promise<Track[]>;
+
+  /** Free-text search returning up to `limit` candidate albums for a phrase. */
+  searchAlbums(query: string, limit?: number): Promise<Album[]>;
+  /** Returns the tracks belonging to a resolved album. */
+  getAlbumTracks(albumId: string, limit?: number): Promise<Track[]>;
 
   // Present only when capabilities.remotePlaylists:
   createPlaylist?(name: string, description?: string): Promise<RemotePlaylist>;
