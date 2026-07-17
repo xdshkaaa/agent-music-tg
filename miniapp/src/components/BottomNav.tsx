@@ -30,9 +30,12 @@ export function BottomNav({
     const idx = tabs.findIndex((t) => t.key === tab);
     const btn = tabRefs.current[idx];
     const indicator = indicatorRef.current;
-    if (!btn || !indicator) return;
+    const parent = btn?.parentElement;
+    if (!btn || !indicator || !parent) return;
+    const maxX = parent.clientWidth - btn.offsetWidth;
+    const x = Math.min(Math.max(btn.offsetLeft, 0), Math.max(maxX, 0));
     indicator.style.width = `${btn.offsetWidth}px`;
-    indicator.style.transform = `translateX(${btn.offsetLeft}px)`;
+    indicator.style.transform = `translateX(${x}px)`;
   }, [tab, tabs]);
 
   useEffect(() => {

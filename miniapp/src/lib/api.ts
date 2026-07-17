@@ -51,7 +51,7 @@ export interface Offer {
   grantAmount: number;
 }
 
-export type PaymentMethod = "crypto" | "stars" | "platega";
+export type PaymentMethod = "stars" | "platega";
 
 export interface Invoice {
   id: number;
@@ -67,6 +67,7 @@ export interface Invoice {
 }
 
 export interface InvoiceResult {
+  id: number;
   payUrl: string;
   offerTitle: string;
   method: PaymentMethod;
@@ -125,6 +126,14 @@ export interface Track {
   artist: string;
   album?: string;
   durationMs?: number;
+  artwork?: string;
+  deepLink?: string;
+}
+
+export interface Album {
+  uri: string;
+  title: string;
+  artist: string;
   artwork?: string;
   deepLink?: string;
 }
@@ -321,14 +330,22 @@ export const api = {
 
   search: (query: string, limit = 20) =>
     request<{ tracks: Track[] }>(`/api/search?q=${encodeURIComponent(query)}&limit=${limit}`),
+  searchAlbums: (query: string, limit = 20) =>
+    request<{ albums: Album[] }>(`/api/search/albums?q=${encodeURIComponent(query)}&limit=${limit}`),
+  albumTracks: (uri: string, limit = 30) =>
+    request<{ tracks: Track[] }>(`/api/search/album-tracks?uri=${encodeURIComponent(uri)}&limit=${limit}`),
 
   verifyTracks: (uris: string[]) =>
     request<Record<string, TrackVerificationStatus>>(`/api/tracks/verify?uris=${encodeURIComponent(uris.join(","))}`),
 
   // --- Payments ---
   offers: () => request<{ offers: Offer[] }>("/api/offers"),
-  createInvoice: (offerId: number, method: PaymentMethod = "crypto") =>
+  createInvoice: (offerId: number, method: PaymentMethod = "stars") =>
     request<InvoiceResult>("/api/invoices", { method: "POST", body: JSON.stringify({ offerId, method }) }),
+  cancelInvoice: (id: number) =>
+    request<{ ok: boolean; canceled?: boolean; refundedCredits?: number }>(`/api/invoices/${id}/cancel`, {
+      method: "POST",
+    }),
   purchases: () => request<{ purchases: Invoice[] }>("/api/me/purchases"),
   claimTrial: () => request<{ trial: TrialStatus }>("/api/trial/claim", { method: "POST" }),
 

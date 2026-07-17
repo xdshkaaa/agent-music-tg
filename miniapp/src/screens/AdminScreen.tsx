@@ -371,7 +371,7 @@ function ShopSettingsPanel() {
         <input className="glass-input" placeholder="Контакт поддержки" value={settings.supportContact} onChange={(e) => setSettings({ ...settings, supportContact: e.target.value })} />
         <textarea className="glass-input" rows={3} placeholder="Текст «О магазине»" value={settings.aboutText} onChange={(e) => setSettings({ ...settings, aboutText: e.target.value })} />
         <input className="glass-input" placeholder="Иконка хедера (emoji или URL)" value={settings.headerIcon ?? ""} onChange={(e) => setSettings({ ...settings, headerIcon: e.target.value })} />
-        <input className="glass-input" placeholder="Название хедера (по умолчанию agent music)" value={settings.headerTitle} onChange={(e) => setSettings({ ...settings, headerTitle: e.target.value })} />
+        <input className="glass-input" placeholder="Название хедера (по умолчанию Music Agent)" value={settings.headerTitle} onChange={(e) => setSettings({ ...settings, headerTitle: e.target.value })} />
         <button type="submit" className="glass-button primary" disabled={busy}>Сохранить</button>
         {status && <p role="status">{status}</p>}
       </form>
