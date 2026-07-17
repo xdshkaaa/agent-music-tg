@@ -23,7 +23,12 @@ export type AdminFlow =
   | { kind: "admin_all_settings_key" }
   | { kind: "admin_all_settings_value"; key: string }
   | { kind: "admin_add_channel"; step: "input" }
-  | { kind: "admin_trial_reset" };
+  | { kind: "admin_trial_reset" }
+  | { kind: "admin_issuance_credits_chatid" }
+  | { kind: "admin_issuance_credits_amount"; targetId: number }
+  | { kind: "admin_issuance_sub_chatid" }
+  | { kind: "admin_issuance_sub_days"; targetId: number }
+  | { kind: "admin_issuance_revoke_chatid" };
 
 export type SessionState = PendingClarify | AdminFlow;
 
@@ -58,7 +63,10 @@ const ADMIN_FLOW_KINDS = [
   "admin_grant_credits", "admin_extend_subscription", "admin_access_add",
   "admin_provider_config_set", "admin_payments_toggle",
   "admin_all_settings_key", "admin_all_settings_value",
-  "admin_add_channel",
+  "admin_add_channel", "admin_trial_reset",
+  "admin_issuance_credits_chatid", "admin_issuance_credits_amount",
+  "admin_issuance_sub_chatid", "admin_issuance_sub_days",
+  "admin_issuance_revoke_chatid",
 ];
 
 export function getAdminFlow(db: AppDb, chatId: number): AdminFlow | null {
