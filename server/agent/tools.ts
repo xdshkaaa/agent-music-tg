@@ -62,6 +62,39 @@ const getArtistTopTracksSpec: ToolSpec = {
   },
 };
 
+const searchAlbumsSpec: ToolSpec = {
+  name: "searchAlbums",
+  description:
+    "Free-text search returning up to `limit` candidate albums for a phrase " +
+    "(e.g. \"Burial — Untrue\"). Use when the user wants a whole album, or to " +
+    "find an album before pulling its tracks with getAlbumTracks. " +
+    "Returns an array of {uri,title,artist,artwork?,deepLink?}.",
+  parameters: {
+    type: "object",
+    properties: {
+      query: { type: "string", description: "The full album search phrase — usually artist + album name." },
+      limit: { type: "integer", description: "How many candidate albums to return (default 10).", minimum: 1, maximum: 25 },
+    },
+    required: ["query"],
+  },
+};
+
+const getAlbumTracksSpec: ToolSpec = {
+  name: "getAlbumTracks",
+  description:
+    "Fetch the tracks of a resolved album. Pass the `uri` from searchAlbums " +
+    "verbatim (its `backend:id` form). Returns up to `limit` tracks you can add " +
+    "to a playlist. Use searchAlbums first to obtain the uri.",
+  parameters: {
+    type: "object",
+    properties: {
+      uri: { type: "string", description: "Album uri from searchAlbums, e.g. \"sc:12345\" or \"ytm:album:AbC\"" },
+      limit: { type: "integer", description: "How many tracks to return (default 30).", minimum: 1, maximum: 50 },
+    },
+    required: ["uri"],
+  },
+};
+
 const clarifySpec: ToolSpec = {
   name: "clarify",
   description:
@@ -145,6 +178,8 @@ export const MUSIC_AGENT_TOOLS: ToolSpec[] = [
   searchTracksSpec,
   searchArtistSpec,
   getArtistTopTracksSpec,
+  searchAlbumsSpec,
+  getAlbumTracksSpec,
   clarifySpec,
   finalizePlaylistSpec,
   addToPlaylistSpec,
@@ -196,6 +231,22 @@ export async function dispatchTool(
       const id = String(args.artistId ?? "");
       const limit = typeof args.limit === "number" ? args.limit : 5;
       return (await deps.music.getArtistTopTracks(id, limit)).map(trackToResult);
+    }
+    case "searchAlbums": {
+      const query = String(args.query ?? "");
+      const limit = typeof args.limit === "number" ? args.limit : 10;
+      return (await deps.music.searchAlbums(query, limit)).map((a) => {
+        const out: Record<string, unknown> = { uri: a.uri, title: a.title, artist: a.artist };
+        if (a.artwork) out.artwork = a.artwork;
+        if (a.deepLink) out.deepLink = a.deepLink;
+        return out;
+      });
+    }
+    case "getAlbumTracks": {
+      const uri = String(args.uri ?? "");
+      const id = uri.includes(":") ? uri.split(":").slice(1).join(":") : uri;
+      const limit = typeof args.limit === "number" ? args.limit : 30;
+      return (await deps.music.getAlbumTracks(id, limit)).map(trackToResult);
     }
     case "clarify": {
       const question = String(args.question ?? "");
