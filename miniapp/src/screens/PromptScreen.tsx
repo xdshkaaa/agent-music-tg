@@ -1,23 +1,34 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUp,
   CheckCircle,
   CircleNotch,
   DownloadSimple,
+  MagnifyingGlass,
+  Playlist,
   Sparkle,
+  User,
   WarningCircle,
 } from "@phosphor-icons/react";
 import { GlassPanel } from "../components/GlassPanel";
 import { ReasoningTranscript } from "../components/ReasoningTranscript";
 import { TrackPlayButton } from "../components/PlayerBar";
-import { api, type Track } from "../lib/api";
+import { api, type Album, type Track } from "../lib/api";
 import type { AgentEvent } from "../lib/reasoning";
 import { useTextScramble } from "../lib/useTextScramble";
 
-const MAX_INPUT_HEIGHT = 132;
+const MAX_INPUT_HEIGHT = 96;
+const RECENT_KEY = "miniapp-recent-searches";
+const RECENT_MAX = 8;
 
 type DownloadState = { kind: "idle" } | { kind: "sending" } | { kind: "sent" } | { kind: "error"; message: string };
 type Mode = "ai" | "search";
+
+type AlbumState = {
+  tracks: Track[];
+  status: "idle" | "loading" | "error";
+  error: string | null;
+};
 
 type HeroPhrase = { before: string; accent: string; after: string };
 
@@ -28,6 +39,58 @@ const HERO_PHRASES: HeroPhrase[] = [
   { before: "Врубаем ", accent: "музыку", after: "?" },
   { before: "Какое ", accent: "настроение", after: "?" },
 ];
+
+function loadRecent(): string[] {
+  try {
+    const raw = localStorage.getItem(RECENT_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((x): x is string => typeof x === "string" && x.trim().length > 0).slice(0, RECENT_MAX);
+  } catch {
+    return [];
+  }
+}
+
+function pushRecent(query: string): string[] {
+  const q = query.trim();
+  if (!q) return loadRecent();
+  const next = [q, ...loadRecent().filter((x) => x.toLowerCase() !== q.toLowerCase())].slice(0, RECENT_MAX);
+  try {
+    localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+  } catch {
+    // ignore storage failures
+  }
+  return next;
+}
+
+/** Rank unique artist names from tracks + albums, preferring exact / prefix matches. */
+function deriveArtists(query: string, tracks: Track[], albums: Album[], limit = 6): string[] {
+  const q = query.trim().toLowerCase();
+  const counts = new Map<string, { name: string; score: number }>();
+
+  function add(name: string, base: number) {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const key = trimmed.toLowerCase();
+    const lower = key;
+    let bonus = base;
+    if (lower === q) bonus += 100;
+    else if (lower.startsWith(q)) bonus += 40;
+    else if (lower.includes(q)) bonus += 15;
+    const prev = counts.get(key);
+    if (!prev || bonus > prev.score) counts.set(key, { name: trimmed, score: bonus });
+    else counts.set(key, { name: prev.name, score: prev.score + 1 });
+  }
+
+  for (const t of tracks) add(t.artist, 10);
+  for (const a of albums) add(a.artist, 12);
+
+  return [...counts.values()]
+    .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, "ru"))
+    .slice(0, limit)
+    .map((x) => x.name);
+}
 
 export function PromptScreen({
   onSubmit,
@@ -45,9 +108,12 @@ export function PromptScreen({
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const [tracks, setTracks] = useState<Track[]>([]);
+  const [albums, setAlbums] = useState<Album[]>([]);
   const [searchStatus, setSearchStatus] = useState<"idle" | "loading" | "error">("idle");
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Record<string, AlbumState>>({});
   const [trackDownloads, setTrackDownloads] = useState<Record<string, DownloadState>>({});
+  const [recent, setRecent] = useState<string[]>(() => loadRecent());
   const requestId = useRef(0);
 
   const canSubmit = mode === "ai" && !busy && prompt.trim().length > 0;
@@ -58,11 +124,28 @@ export function PromptScreen({
   const heroFull = `${heroPhrase.before}${heroPhrase.accent}${heroPhrase.after}`;
   const { displayText: heroDisplay, isComplete: heroComplete } = useTextScramble(heroFull, heroTrigger, 500);
 
+  const artists = useMemo(
+    () => (mode === "search" && prompt.trim() ? deriveArtists(prompt, tracks, albums) : []),
+    [mode, prompt, tracks, albums],
+  );
+
+  const hasResults = tracks.length > 0 || albums.length > 0 || artists.length > 0;
+  const queryActive = mode === "search" && prompt.trim().length > 0;
+
   useEffect(() => {
     const t = setTimeout(() => setHeroTrigger(1), 50);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (mode !== "search") return;
+    const el = inputRef.current;
+    if (!el) return;
+    // Autofocus search so the first action is typing, not mode-picking.
+    const t = setTimeout(() => el.focus(), 40);
+    return () => clearTimeout(t);
+  }, [mode]);
 
   function handleHeroClick() {
     if (!heroComplete) return;
@@ -79,6 +162,7 @@ export function PromptScreen({
     const q = prompt.trim();
     if (q.length === 0) {
       setTracks([]);
+      setAlbums([]);
       setSearchStatus("idle");
       setSearchError(null);
       return;
@@ -87,21 +171,63 @@ export function PromptScreen({
     setSearchStatus("loading");
     setSearchError(null);
     const timer = setTimeout(() => {
-      api
-        .search(q)
-        .then((res) => {
+      Promise.allSettled([api.search(q, 20), api.searchAlbums(q, 12)])
+        .then(([trackRes, albumRes]) => {
           if (requestId.current !== id) return;
-          setTracks(res.tracks);
+          const nextTracks = trackRes.status === "fulfilled" ? trackRes.value.tracks : [];
+          const nextAlbums = albumRes.status === "fulfilled" ? albumRes.value.albums : [];
+          setTracks(nextTracks);
+          setAlbums(nextAlbums);
+          if (trackRes.status === "rejected" && albumRes.status === "rejected") {
+            const err = trackRes.reason;
+            setSearchError(err instanceof Error ? err.message : String(err));
+            setSearchStatus("error");
+            return;
+          }
           setSearchStatus("idle");
-        })
-        .catch((e) => {
-          if (requestId.current !== id) return;
-          setSearchError(e instanceof Error ? e.message : String(e));
-          setSearchStatus("error");
+          setRecent(pushRecent(q));
         });
     }, 300);
     return () => clearTimeout(timer);
   }, [mode, prompt]);
+
+  async function toggleAlbum(album: Album) {
+    if (expanded[album.uri]) {
+      setExpanded((m) => {
+        const next = { ...m };
+        delete next[album.uri];
+        return next;
+      });
+      return;
+    }
+    setExpanded((m) => ({ ...m, [album.uri]: { tracks: [], status: "loading", error: null } }));
+    try {
+      const { tracks } = await api.albumTracks(album.uri);
+      setExpanded((m) => ({ ...m, [album.uri]: { tracks, status: "idle", error: null } }));
+    } catch (e) {
+      setExpanded((m) => ({
+        ...m,
+        [album.uri]: { tracks: [], status: "error", error: e instanceof Error ? e.message : String(e) },
+      }));
+    }
+  }
+
+  async function downloadAlbumTracks(album: Album, albumTracks: Track[]) {
+    if (albumTracks.length === 0) return;
+    const key = `album:${album.uri}`;
+    if (trackDownloads[key]?.kind === "sending") return;
+    setTrackDownloads((m) => ({ ...m, [key]: { kind: "sending" } }));
+    try {
+      await api.download(`${album.title} — ${album.artist}`, albumTracks);
+      setTrackDownloads((m) => ({ ...m, [key]: { kind: "sent" } }));
+      window.dispatchEvent(new CustomEvent("download-created"));
+    } catch (err) {
+      setTrackDownloads((m) => ({
+        ...m,
+        [key]: { kind: "error", message: err instanceof Error ? err.message : String(err) },
+      }));
+    }
+  }
 
   function autoGrow() {
     const el = inputRef.current;
@@ -115,9 +241,26 @@ export function PromptScreen({
     onSubmit(prompt.trim());
   }
 
-  function toggleMode() {
-    setMode((m) => (m === "ai" ? "search" : "ai"));
+  function pickRecent(q: string) {
+    setPrompt(q);
+    requestAnimationFrame(() => {
+      autoGrow();
+      inputRef.current?.focus();
+    });
   }
+
+  function pickArtist(name: string) {
+    setPrompt(name);
+    requestAnimationFrame(() => {
+      autoGrow();
+      inputRef.current?.focus();
+    });
+  }
+
+  const MODES: { id: Mode; label: string; icon: typeof Sparkle }[] = [
+    { id: "ai", label: "AI", icon: Sparkle },
+    { id: "search", label: "Поиск", icon: MagnifyingGlass },
+  ];
 
   async function handleTrackDownload(e: React.MouseEvent, track: Track) {
     e.stopPropagation();
@@ -147,12 +290,35 @@ export function PromptScreen({
         </h1>
       </div>
 
-      <div className="prompt-pill">
+      <div className="prompt-modes" role="group" aria-label="Режим">
+        {MODES.map((m) => {
+          const Icon = m.icon;
+          return (
+            <button
+              key={m.id}
+              type="button"
+              className={`prompt-mode-seg-btn${mode === m.id ? " active" : ""}`}
+              aria-pressed={mode === m.id}
+              onClick={() => setMode(m.id)}
+            >
+              <Icon size={15} weight={mode === m.id ? "fill" : "regular"} />
+              <span>{m.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className={`prompt-pill${mode === "search" ? " prompt-pill--search" : ""}`}>
+        {mode === "search" && (
+          <span className="prompt-pill-icon" aria-hidden>
+            <MagnifyingGlass size={18} weight="bold" />
+          </span>
+        )}
         <textarea
           ref={inputRef}
           className="prompt-pill-input"
           rows={1}
-          placeholder={mode === "ai" ? "Опишите запрос…" : "Трек или артист"}
+          placeholder={mode === "ai" ? "Опишите запрос…" : "Трек, исполнитель или альбом"}
           value={prompt}
           onChange={(e) => {
             setPrompt(e.target.value);
@@ -166,16 +332,6 @@ export function PromptScreen({
           }}
           disabled={busy}
         />
-        <button
-          type="button"
-          className={`prompt-mode-toggle${mode === "search" ? " inactive" : ""}`}
-          aria-label={mode === "ai" ? "Режим: AI" : "Режим: поиск"}
-          aria-pressed={mode === "ai"}
-          onClick={toggleMode}
-        >
-          <Sparkle size={18} weight={mode === "ai" ? "fill" : "regular"} />
-          {mode === "search" && <span className="icon-strike" />}
-        </button>
         {mode === "ai" && (
           <button
             type="button"
@@ -184,7 +340,7 @@ export function PromptScreen({
             disabled={!canSubmit}
             onClick={submit}
           >
-            {busy ? <CircleNotch size={20} weight="bold" className="spin" /> : <ArrowUp size={20} weight="bold" />}
+            {busy ? <CircleNotch size={18} weight="bold" className="spin" /> : <ArrowUp size={18} weight="bold" />}
           </button>
         )}
       </div>
@@ -193,16 +349,30 @@ export function PromptScreen({
         <ReasoningTranscript events={events} collapsed={!busy} friendly={!isAdmin} />
       )}
 
-      {mode === "search" && (
+      {mode === "search" && !queryActive && recent.length > 0 && (
+        <div className="search-section">
+          <h2 className="search-section-title">Недавние поиски</h2>
+          <div className="search-recent">
+            {recent.map((q) => (
+              <button key={q} type="button" className="search-recent-chip" onClick={() => pickRecent(q)}>
+                <MagnifyingGlass size={14} weight="bold" />
+                <span>{q}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {mode === "search" && queryActive && (
         <>
-          {searchStatus === "loading" && (
-            <p className="text-muted mt-16" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {searchStatus === "loading" && !hasResults && (
+            <p className="text-muted search-status">
               <CircleNotch size={16} className="spin" /> Ищу…
             </p>
           )}
 
           {searchStatus === "error" && (
-            <div className="error-row mt-16" style={{ fontSize: 13 }}>
+            <div className="error-row search-status" style={{ fontSize: 13 }}>
               <span className="error-row-icon">
                 <WarningCircle size={16} weight="bold" />
               </span>
@@ -212,63 +382,197 @@ export function PromptScreen({
             </div>
           )}
 
-          {searchStatus === "idle" && prompt.trim().length > 0 && tracks.length === 0 && (
-            <p className="text-muted mt-16">Ничего не найдено</p>
+          {searchStatus === "idle" && !hasResults && (
+            <div className="search-empty">
+              <p className="search-empty-title">Ничего не найдено</p>
+              <p className="text-muted search-empty-hint">Попробуйте:</p>
+              <ul className="search-empty-list">
+                <li>другое название</li>
+                <li>имя исполнителя</li>
+                <li>название альбома</li>
+              </ul>
+            </div>
+          )}
+
+          {artists.length > 0 && (
+            <section className="search-section">
+              <h2 className="search-section-title">Исполнители</h2>
+              <div className="stack reveal-stagger">
+                {artists.map((name, i) => (
+                  <button
+                    key={name}
+                    type="button"
+                    className="track-row search-artist-row"
+                    style={{ ["--i" as string]: i }}
+                    onClick={() => pickArtist(name)}
+                  >
+                    <span className="search-artist-avatar" aria-hidden>
+                      <User size={18} weight="bold" />
+                    </span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p className="search-row-title">{name}</p>
+                      <p className="text-muted search-row-meta">Исполнитель</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {albums.length > 0 && (
+            <section className="search-section">
+              <h2 className="search-section-title">Альбомы</h2>
+              <div className="stack reveal-stagger">
+                {albums.map((album, i) => {
+                  const open = expanded[album.uri];
+                  const dlKey = `album:${album.uri}`;
+                  const dl = trackDownloads[dlKey];
+                  return (
+                    <div className="album-block" key={album.uri} style={{ ["--i" as string]: i }}>
+                      <div
+                        className="track-row album-head"
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => void toggleAlbum(album)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            void toggleAlbum(album);
+                          }
+                        }}
+                      >
+                        {album.artwork ? (
+                          <img className="track-artwork" src={album.artwork} alt="" />
+                        ) : (
+                          <div className="track-artwork" />
+                        )}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p className="search-row-title">{album.title}</p>
+                          <p className="text-muted search-row-meta">{album.artist}</p>
+                        </div>
+                        <button
+                          type="button"
+                          className="icon-btn track-download-btn"
+                          aria-label={
+                            dl?.kind === "sending"
+                              ? "Отправляю альбом…"
+                              : dl?.kind === "sent"
+                                ? "Отправлено в чат"
+                                : "Сохранить альбом"
+                          }
+                          title={
+                            dl?.kind === "sending"
+                              ? "Отправляю альбом…"
+                              : dl?.kind === "sent"
+                                ? "Отправлено в чат"
+                                : "Сохранить альбом"
+                          }
+                          disabled={dl?.kind === "sending"}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void downloadAlbumTracks(album, open?.tracks ?? []);
+                          }}
+                        >
+                          {dl?.kind === "sending" ? (
+                            <CircleNotch size={18} className="spin" />
+                          ) : dl?.kind === "sent" ? (
+                            <CheckCircle size={18} weight="fill" />
+                          ) : (
+                            <DownloadSimple size={18} />
+                          )}
+                        </button>
+                        <span className={`album-chevron${open ? " open" : ""}`} aria-hidden>
+                          <Playlist size={16} />
+                        </span>
+                      </div>
+                      {open && (
+                        <div className="album-tracks">
+                          {open.status === "loading" && (
+                            <p className="text-muted" style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 8px" }}>
+                              <CircleNotch size={14} className="spin" /> Загружаю треки…
+                            </p>
+                          )}
+                          {open.status === "error" && (
+                            <p className="text-muted" style={{ padding: "4px 8px" }}>{open.error}</p>
+                          )}
+                          {open.status === "idle" && open.tracks.length === 0 && (
+                            <p className="text-muted" style={{ padding: "4px 8px" }}>Пусто</p>
+                          )}
+                          {open.tracks.map((track) => (
+                            <div className="track-row track-sub" key={track.uri}>
+                              <div style={{ width: 44, flex: "0 0 auto" }} />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <p className="search-row-title">{track.title}</p>
+                                <p className="text-muted search-row-meta">{track.artist}</p>
+                              </div>
+                              <TrackPlayButton
+                                track={{ uri: track.uri, title: track.title, artist: track.artist, artwork: track.artwork }}
+                                queue={open.tracks.map((t) => ({ uri: t.uri, title: t.title, artist: t.artist, artwork: t.artwork }))}
+                                stopPropagation
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
           )}
 
           {tracks.length > 0 && (
-            <div className="stack mt-16 reveal-stagger">
-              {tracks.map((track, i) => (
-                <div className="track-row" key={track.uri} style={{ ["--i" as string]: i }}>
-                  {track.artwork ? (
-                    <img className="track-artwork" src={track.artwork} alt="" />
-                  ) : (
-                    <div className="track-artwork" />
-                  )}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {track.title}
-                    </p>
-                    <p className="text-muted" style={{ fontSize: 13 }}>
-                      {track.artist}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    className="icon-btn track-download-btn"
-                    aria-label={
-                      trackDownloads[track.uri]?.kind === "sending"
-                        ? "Отправляю…"
-                        : trackDownloads[track.uri]?.kind === "sent"
-                          ? "Отправлено в чат"
-                          : "Сохранить трек"
-                    }
-                    title={
-                      trackDownloads[track.uri]?.kind === "sending"
-                        ? "Отправляю…"
-                        : trackDownloads[track.uri]?.kind === "sent"
-                          ? "Отправлено в чат"
-                          : "Сохранить трек"
-                    }
-                    disabled={trackDownloads[track.uri]?.kind === "sending"}
-                    onClick={(e) => void handleTrackDownload(e, track)}
-                  >
-                    {trackDownloads[track.uri]?.kind === "sending" ? (
-                      <CircleNotch size={18} className="spin" />
-                    ) : trackDownloads[track.uri]?.kind === "sent" ? (
-                      <CheckCircle size={18} weight="fill" />
+            <section className="search-section">
+              <h2 className="search-section-title">Треки</h2>
+              <div className="stack reveal-stagger">
+                {tracks.map((track, i) => (
+                  <div className="track-row" key={track.uri} style={{ ["--i" as string]: i }}>
+                    {track.artwork ? (
+                      <img className="track-artwork" src={track.artwork} alt="" />
                     ) : (
-                      <DownloadSimple size={18} />
+                      <div className="track-artwork" />
                     )}
-                  </button>
-                  <TrackPlayButton
-                    track={{ uri: track.uri, title: track.title, artist: track.artist, artwork: track.artwork }}
-                    queue={tracks.map((t) => ({ uri: t.uri, title: t.title, artist: t.artist, artwork: t.artwork }))}
-                    stopPropagation
-                  />
-                </div>
-              ))}
-            </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p className="search-row-title">{track.title}</p>
+                      <p className="text-muted search-row-meta">{track.artist}</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="icon-btn track-download-btn"
+                      aria-label={
+                        trackDownloads[track.uri]?.kind === "sending"
+                          ? "Отправляю…"
+                          : trackDownloads[track.uri]?.kind === "sent"
+                            ? "Отправлено в чат"
+                            : "Сохранить трек"
+                      }
+                      title={
+                        trackDownloads[track.uri]?.kind === "sending"
+                          ? "Отправляю…"
+                          : trackDownloads[track.uri]?.kind === "sent"
+                            ? "Отправлено в чат"
+                            : "Сохранить трек"
+                      }
+                      disabled={trackDownloads[track.uri]?.kind === "sending"}
+                      onClick={(e) => void handleTrackDownload(e, track)}
+                    >
+                      {trackDownloads[track.uri]?.kind === "sending" ? (
+                        <CircleNotch size={18} className="spin" />
+                      ) : trackDownloads[track.uri]?.kind === "sent" ? (
+                        <CheckCircle size={18} weight="fill" />
+                      ) : (
+                        <DownloadSimple size={18} />
+                      )}
+                    </button>
+                    <TrackPlayButton
+                      track={{ uri: track.uri, title: track.title, artist: track.artist, artwork: track.artwork }}
+                      queue={tracks.map((t) => ({ uri: t.uri, title: t.title, artist: t.artist, artwork: t.artwork }))}
+                      stopPropagation
+                    />
+                  </div>
+                ))}
+              </div>
+            </section>
           )}
         </>
       )}

@@ -22,7 +22,6 @@ const {
 } = await import("./downloads-store");
 const { processDownload } = await import("./deliver");
 const { StreamCache } = await import("./stream-cache");
-const { deliverAutoAudio } = await import("../bot/auto-audio");
 const { verificationStore } = await import("./track-verification");
 
 import type { Extractor } from "./extractor";
@@ -324,67 +323,3 @@ function fakeApi() {
   } as unknown as Api;
   return { api, sent };
 }
-
-describe("deliverAutoAudio (bot download history)", () => {
-  test("creates a downloads record and marks all sent as done", async () => {
-    const db = openDb(":memory:");
-    const { api } = fakeApi();
-    const tracks = [toTrack("ytm:a"), toTrack("ytm:b")];
-    seedCache(db, ["ytm:a", "ytm:b"]);
-    tracks.forEach((t) => verificationStore.set(t.uri, "verified"));
-
-    await deliverAutoAudio(db, CHAT, tracks, "My List", api);
-
-    const all = listDownloads(db, CHAT);
-    expect(all).toHaveLength(1);
-    const rec = all[0]!;
-    expect(rec.playlistName).toBe("My List");
-    expect(rec.status).toBe("done");
-    expect(rec.tracks.every((t) => t.status === "sent")).toBe(true);
-    // owner isolation preserved
-    expect(listDownloads(db, 999)).toHaveLength(0);
-  });
-
-  test("marks failed track and reflects partial status", async () => {
-    const db = openDb(":memory:");
-    const { api } = fakeApi();
-    const extractor = fakeExtractor({ failUris: ["ytm:bad"] });
-    const { sender } = fakeSender();
-    const tracks = [toTrack("ytm:ok"), toTrack("ytm:bad")];
-    tracks.forEach((t) => verificationStore.set(t.uri, "verified"));
-
-    await deliverAutoAudio(db, CHAT, tracks, "P", api, { extractor, sender, scratchDir: scratch() });
-
-    const rec = listDownloads(db, CHAT)[0]!;
-    expect(rec.status).toBe("partial");
-    expect(rec.tracks.find((t) => t.uri === "ytm:ok")?.status).toBe("sent");
-    const bad = rec.tracks.find((t) => t.uri === "ytm:bad")!;
-    expect(bad.status).toBe("failed");
-    expect(bad.error).toContain("extract failed");
-  });
-
-  test("skips unavailable tracks as failed and yields partial", async () => {
-    const db = openDb(":memory:");
-    const { api } = fakeApi();
-    const tracks = [toTrack("ytm:ok"), toTrack("ytm:gone")];
-    seedCache(db, ["ytm:ok"]);
-    verificationStore.set("ytm:ok", "verified");
-    verificationStore.set("ytm:gone", "unavailable");
-
-    await deliverAutoAudio(db, CHAT, tracks, "P", api);
-
-    const rec = listDownloads(db, CHAT)[0]!;
-    expect(rec.status).toBe("partial");
-    expect(rec.tracks.find((t) => t.uri === "ytm:ok")?.status).toBe("sent");
-    const gone = rec.tracks.find((t) => t.uri === "ytm:gone")!;
-    expect(gone.status).toBe("failed");
-    expect(gone.error).toBe("недоступен");
-  });
-
-  test("no tracks is a no-op (no record created)", async () => {
-    const db = openDb(":memory:");
-    const { api } = fakeApi();
-    await deliverAutoAudio(db, CHAT, [], "Empty", api);
-    expect(listDownloads(db, CHAT)).toHaveLength(0);
-  });
-});

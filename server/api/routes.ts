@@ -29,7 +29,8 @@ import {
   getOffer,
   type GrantKind,
 } from "../payments/offers-store";
-import { listInvoicesForChat } from "../payments/invoices-store";
+import { listInvoicesForChat, getInvoiceById } from "../payments/invoices-store";
+import { cancelInvoiceAndRefund } from "../payments/cancel";
 import { purchaseOffer, purchaseOfferRub, OfferUnavailableError, RubPriceMissingError } from "../payments/purchase";
 import { UnsupportedAssetError, isSupportedAsset, SUPPORTED_ASSETS } from "../payments/crypto-pay";
 import { plategaEnabled } from "../payments/platega";
@@ -251,6 +252,17 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
     return c.json({ purchases: listInvoicesForChat(db, c.get("chatId")) });
   });
 
+  // Cancel a pending invoice from the Mini App (e.g. user backs out of the
+  // СБП payment popup). Rolls back any held generation credits.
+  app.post("/invoices/:id/cancel", (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
+    const invoice = getInvoiceById(db, id);
+    if (!invoice || invoice.chatId !== c.get("chatId")) return c.json({ error: "not found" }, 404);
+    const result = cancelInvoiceAndRefund(db, invoice.provider, invoice.externalId);
+    return c.json({ canceled: result.canceled, refundedCredits: result.refundedCredits ?? 0 });
+  });
+
   // --- Playlist history (opt-in) ----------------------------------------
 
   app.post("/generations/:id/save", (c) => {
@@ -307,6 +319,51 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
     }
   });
 
+  app.get("/search/albums", async (c) => {
+    const chatId = c.get("chatId");
+    const q = (c.req.query("q") ?? "").trim().slice(0, 200);
+    if (!q) {
+      return c.json({ error: "q is required" }, 400);
+    }
+    if (isSearchRateLimited(chatId)) {
+      return c.json({ error: "too many requests" }, 429);
+    }
+    const limit = Math.min(Math.max(Number(c.req.query("limit")) || 20, 1), 30);
+    const backendId = getActiveBackendId(db, DEFAULT_BACKEND);
+    const music = createMusicProvider(isMusicBackend(backendId) ? backendId : DEFAULT_BACKEND);
+    try {
+      const albums = await music.searchAlbums(q, limit);
+      return c.json({ albums });
+    } catch (e) {
+      console.error("[search/albums]", e);
+      return c.json({ error: "album search failed" }, 502);
+    }
+  });
+
+  // Returns the tracks for a resolved album (uri is `backend:id`).
+  app.get("/search/album-tracks", async (c) => {
+    const chatId = c.get("chatId");
+    const uri = (c.req.query("uri") ?? "").trim();
+    if (!uri) {
+      return c.json({ error: "uri is required" }, 400);
+    }
+    if (isSearchRateLimited(chatId)) {
+      return c.json({ error: "too many requests" }, 429);
+    }
+    const rawLimit = Number(c.req.query("limit")) || 30;
+    const limit = Math.min(Math.max(rawLimit, 1), 50);
+    const backendId = getActiveBackendId(db, DEFAULT_BACKEND);
+    const music = createMusicProvider(isMusicBackend(backendId) ? backendId : DEFAULT_BACKEND);
+    const id = uri.includes(":") ? uri.split(":").slice(1).join(":") : uri;
+    try {
+      const tracks = await music.getAlbumTracks(id, limit);
+      return c.json({ tracks });
+    } catch (e) {
+      console.error("[search/album-tracks]", e);
+      return c.json({ error: "album tracks failed" }, 502);
+    }
+  });
+
   // --- Offers & purchase -----------------------------------------------
 
   // Free trial claim: instant grant, no invoice. Gated like /invoices — when
@@ -350,7 +407,7 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
       if (!offer.rubAmount) return c.json({ error: "offer has no RUB price" }, 400);
       try {
         const result = await purchaseOfferRub(db, c.get("chatId"), offerId);
-        return c.json({ ...result, method: "platega" });
+        return c.json({ id: result.invoiceId, payUrl: result.payUrl, offerTitle: result.offerTitle, method: "platega" });
       } catch (e) {
         if (e instanceof OfferUnavailableError || e instanceof RubPriceMissingError) {
           return c.json({ error: e.message }, 400);
@@ -380,7 +437,7 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
 
     try {
       const result = await purchaseOffer(db, c.get("chatId"), offerId);
-      return c.json({ ...result, method: "crypto" });
+      return c.json({ id: result.invoiceId, payUrl: result.payUrl, offerTitle: result.offerTitle, method: "crypto" });
     } catch (e) {
       if (e instanceof OfferUnavailableError) return c.json({ error: e.message }, 400);
       if (e instanceof UnsupportedAssetError) {

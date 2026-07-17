@@ -1,7 +1,7 @@
 import type { AppDb } from "../db";
 import { getInvoice, markPaid, type InvoiceProvider } from "./invoices-store";
 import { getOffer } from "./offers-store";
-import { addCredits, extendSubscription } from "../access/users-store";
+import { addCredits, extendSubscription, refundCredits } from "../access/users-store";
 
 export interface FulfillResult {
   fulfilled: boolean;
@@ -32,6 +32,9 @@ export function fulfillPendingInvoice(db: AppDb, provider: InvoiceProvider, exte
     if (offer.grantKind === "subscription") {
       extendSubscription(db, invoice.chatId, offer.grantAmount, 0);
     } else {
+      // Release the credit hold taken at invoice creation, then grant the pack
+      // so the user nets exactly +grantAmount (no double count).
+      if (invoice.reservedCredits > 0) refundCredits(db, invoice.chatId, invoice.reservedCredits);
       addCredits(db, invoice.chatId, offer.grantAmount, 0);
     }
     return {

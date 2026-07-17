@@ -221,14 +221,3 @@ export function setPrewarmStreamCache(cache: StreamCache): void {
 export function setVerificationExtractor(extractor: Extractor): void {
   _extractor = extractor;
 }
-
-export function formatPlaylistReply(playlist: FinalizedPlaylist): string {
-  const lines = playlist.tracks.map((t, i) => {
-    const link = t.deepLink ? ` — ${t.deepLink}` : "";
-    return `${i + 1}. ${t.artist} — ${t.title}${link}`;
-  });
-  const header = playlist.remotePlaylistUrl
-    ? `🎧 *${playlist.name}*\n${playlist.remotePlaylistUrl}`
-    : `🎧 *${playlist.name}*`;
-  return [header, "", ...lines].join("\n");
-}

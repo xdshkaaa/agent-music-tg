@@ -163,19 +163,19 @@ describe("offer stars price validation", () => {
 
   test("grandfathered offer with NULL starsAmount still listed and crypto-purchasable", () => {
     const db = freshDb();
-    const row = db.query<{ id: number }, [string, string, string, number, string]>(
+    const row = db.query<{ id: number }, [string, string, string, string, number]>(
       `INSERT INTO offers (title, amount, asset, grant_kind, grant_amount) VALUES (?, ?, ?, ?, ?) RETURNING id`,
     ).get("legacy", "5", "USDT", "credits", 10);
     const legacyId = row!.id;
 
     const offers = listActiveOffers(db);
     expect(offers).toHaveLength(1);
-    expect(offers[0].id).toBe(legacyId);
-    expect(offers[0].starsAmount).toBeNull();
+    expect(offers[0]!.id).toBe(legacyId);
+    expect(offers[0]!.starsAmount).toBeNull();
 
     // crypto purchase still works
-    insertPendingInvoice(db, { provider: "crypto", externalId: "legacy-1", chatId: CHAT, offerId: legacyId, amount: "5", asset: "USDT" });
-    const res = fulfillInvoice(db, "legacy-1");
+    insertPendingInvoice(db, { provider: "crypto", externalId: "777", chatId: CHAT, offerId: legacyId, amount: "5", asset: "USDT" });
+    const res = fulfillInvoice(db, 777);
     expect(res.fulfilled).toBe(true);
     expect(getUser(db, CHAT)?.credits).toBe(BONUS + 10);
   });

@@ -168,6 +168,12 @@ function migrate(db: AppDb): void {
   } catch {}
   db.run(`UPDATE downloads SET updated_at = created_at WHERE updated_at IS NULL;`);
 
+  // invoices.reserved_credits: generation credits earmarked (held) when a
+  // credits invoice is created, so a canceled payment can roll them back.
+  try {
+    db.run(`ALTER TABLE invoices ADD COLUMN reserved_credits INTEGER NOT NULL DEFAULT 0;`);
+  } catch {}
+
   db.run(`
     -- Telegram file_id cache: audio uploaded once, re-sent by file_id after.
     -- Keyed by track uri (ytm:<id> / sc:<id>); shared across users.

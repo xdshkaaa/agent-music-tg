@@ -14,6 +14,7 @@ export interface Invoice {
   status: InvoiceStatus;
   createdAt: number;
   paidAt: number | null;
+  reservedCredits: number;
 }
 
 interface InvoiceRow {
@@ -27,6 +28,7 @@ interface InvoiceRow {
   status: string;
   created_at: number;
   paid_at: number | null;
+  reserved_credits: number;
 }
 
 function toInvoice(row: InvoiceRow): Invoice {
@@ -41,17 +43,34 @@ function toInvoice(row: InvoiceRow): Invoice {
     status: row.status === "paid" ? "paid" : row.status === "canceled" ? "canceled" : "pending",
     createdAt: row.created_at,
     paidAt: row.paid_at,
+    reservedCredits: row.reserved_credits ?? 0,
   };
 }
 
 export function insertPendingInvoice(
   db: AppDb,
-  input: { provider: InvoiceProvider; externalId: string; chatId: number; offerId: number; amount: string; asset: string },
+  input: {
+    provider: InvoiceProvider;
+    externalId: string;
+    chatId: number;
+    offerId: number;
+    amount: string;
+    asset: string;
+    reservedCredits?: number;
+  },
 ): void {
   db.query(
-    `INSERT INTO invoices (provider, external_id, chat_id, offer_id, amount, asset, status)
-     VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
-  ).run(input.provider, input.externalId, input.chatId, input.offerId, input.amount, input.asset);
+    `INSERT INTO invoices (provider, external_id, chat_id, offer_id, amount, asset, status, reserved_credits)
+     VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)`,
+  ).run(
+    input.provider,
+    input.externalId,
+    input.chatId,
+    input.offerId,
+    input.amount,
+    input.asset,
+    input.reservedCredits ?? 0,
+  );
 }
 
 /**
@@ -78,6 +97,11 @@ export function getInvoice(db: AppDb, provider: InvoiceProvider, externalId: str
   const row = db
     .query<InvoiceRow, [string, string]>(`SELECT * FROM invoices WHERE provider = ? AND external_id = ?`)
     .get(provider, externalId);
+  return row ? toInvoice(row) : null;
+}
+
+export function getInvoiceById(db: AppDb, id: number): Invoice | null {
+  const row = db.query<InvoiceRow, [number]>(`SELECT * FROM invoices WHERE id = ?`).get(id);
   return row ? toInvoice(row) : null;
 }
 
@@ -111,15 +135,18 @@ export function markPaid(db: AppDb, provider: InvoiceProvider, externalId: strin
 }
 
 /**
- * Guarded status transition pending -> canceled. Returns true only if THIS
- * call flipped the row; never cancels an already-paid invoice.
+ * Guarded status transition pending -> canceled. Returns the canceled invoice
+ * (with its reserved-credit hold) when THIS call flipped the row, or null when
+ * the invoice was already paid/canceled/missing — so the caller can roll back
+ * the held generations exactly once.
  */
-export function markCanceled(db: AppDb, provider: InvoiceProvider, externalId: string): boolean {
+export function markCanceled(db: AppDb, provider: InvoiceProvider, externalId: string): Invoice | null {
   const res = db
     .query(
       `UPDATE invoices SET status = 'canceled'
        WHERE provider = ? AND external_id = ? AND status = 'pending'`,
     )
     .run(provider, externalId);
-  return res.changes === 1;
+  if (res.changes !== 1) return null;
+  return getInvoice(db, provider, externalId);
 }

@@ -1,4 +1,4 @@
-import type { MusicProvider, ProviderCapabilities, Track } from "./types";
+import type { Album, MusicProvider, ProviderCapabilities, Track } from "./types";
 import { withTimeout } from "../core/concurrency";
 
 const SEARCH_TIMEOUT_MS = 15_000;
@@ -7,6 +7,8 @@ interface YtmApi {
   searchSongs(query: string): Promise<any[]>;
   searchArtists(query: string): Promise<any[]>;
   getArtistSongs(artistId: string): Promise<any[]>;
+  searchAlbums(query: string): Promise<any[]>;
+  getAlbum(albumId: string): Promise<any>;
 }
 
 function normalizeName(s: string): string {
@@ -77,6 +79,28 @@ export class YouTubeMusicBackend implements MusicProvider {
   async getArtistTopTracks(artistId: string, limit = 5): Promise<Track[]> {
     const api = await this.ensureApi();
     const songs = await api.getArtistSongs(artistId);
+    return songs.slice(0, limit).map(toTrack);
+  }
+
+  async searchAlbums(query: string, limit = 10): Promise<Album[]> {
+    const api = await this.ensureApi();
+    const albums = await withTimeout(api.searchAlbums(query), SEARCH_TIMEOUT_MS, [] as any[]);
+    return albums.slice(0, limit).map((a: any) => ({
+      uri: `ytm:album:${a.albumId}`,
+      title: a.name,
+      artist: a.artist?.name ?? "",
+      artwork: a.thumbnails?.at(-1)?.url,
+      deepLink: `https://music.youtube.com/browse/MPREb_${a.albumId}`,
+    }));
+  }
+
+  async getAlbumTracks(albumId: string, limit = 30): Promise<Track[]> {
+    // albumId is the opaque id returned verbatim by searchAlbums; reject
+    // anything else to avoid path/SSRF manipulation of the API call.
+    if (!/^[A-Za-z0-9_-]+$/.test(albumId)) throw new Error(`invalid albumId: ${albumId}`);
+    const api = await this.ensureApi();
+    const album = await withTimeout(api.getAlbum(albumId), SEARCH_TIMEOUT_MS, null as any);
+    const songs = (album?.songs ?? []) as any[];
     return songs.slice(0, limit).map(toTrack);
   }
 }

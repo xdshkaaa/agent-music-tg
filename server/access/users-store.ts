@@ -181,3 +181,26 @@ export function consumeCredit(db: AppDb, chatId: number): boolean {
     .run(chatId);
   return res.changes === 1;
 }
+
+/**
+ * Earmarks up to `n` generation credits as a hold while a credits invoice is
+ * pending. Deducts the smaller of `n` and the current balance (never goes
+ * negative), and returns the amount actually reserved so fulfillment can
+ * release it and cancellation can roll it back.
+ */
+export function reserveCredits(db: AppDb, chatId: number, n: number): number {
+  if (n <= 0) return 0;
+  const current = getUser(db, chatId);
+  const balance = current?.credits ?? 0;
+  const reserved = Math.min(n, balance);
+  if (reserved > 0) {
+    db.query(`UPDATE users SET credits = credits - ? WHERE chat_id = ?`).run(reserved, chatId);
+  }
+  return reserved;
+}
+
+/** Refunds `n` generation credits (used to release a hold or roll one back). */
+export function refundCredits(db: AppDb, chatId: number, n: number): void {
+  if (n <= 0) return;
+  addCredits(db, chatId, n);
+}

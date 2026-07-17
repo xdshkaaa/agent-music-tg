@@ -1,4 +1,4 @@
-import type { MusicProvider, ProviderCapabilities, Track } from "./types";
+import type { Album, MusicProvider, ProviderCapabilities, Track } from "./types";
 
 const API_BASE = "https://api-v2.soundcloud.com";
 
@@ -97,8 +97,9 @@ export class SoundCloudBackend implements MusicProvider {
     return item ? toTrack(item) : null;
   }
 
-  async searchTracks(query: string, limit = 10): Promise<Track[]> {
+  async searchTracks(query: string, rawLimit = 10): Promise<Track[]> {
     const q = encodeURIComponent(query);
+    const limit = clampLimit(rawLimit, 25);
     const data = await this.request(`/search/tracks?q=${q}&limit=${limit}`);
     return ((data.collection ?? []) as any[]).slice(0, limit).map(toTrack);
   }
@@ -110,8 +111,43 @@ export class SoundCloudBackend implements MusicProvider {
     return item ? { id: String(item.id), name: item.username } : null;
   }
 
-  async getArtistTopTracks(artistId: string, limit = 5): Promise<Track[]> {
+  async getArtistTopTracks(artistId: string, rawLimit = 5): Promise<Track[]> {
+    // artistId comes from the agent, which echoes it back verbatim from a
+    // prior searchArtist result. Reject anything that isn't the opaque numeric
+    // id SoundCloud returns, so a crafted value can't manipulate the request
+    // path (path traversal / SSRF against an internal host).
+    if (!/^\d+$/.test(artistId)) throw new Error(`invalid artistId: ${artistId}`);
+    const limit = clampLimit(rawLimit, 20);
     const data = await this.request(`/users/${artistId}/toptracks?limit=${limit}`);
     return ((data.collection ?? []) as any[]).slice(0, limit).map(toTrack);
   }
+
+  async searchAlbums(query: string, rawLimit = 10): Promise<Album[]> {
+    const q = encodeURIComponent(query);
+    const limit = clampLimit(rawLimit, 25);
+    const data = await this.request(`/search/albums?q=${q}&limit=${limit}`);
+    return ((data.collection ?? []) as any[]).slice(0, limit).map((item) => ({
+      uri: `sc:${item.id}`,
+      title: item.title,
+      artist: item.user?.username ?? "",
+      artwork: item.artwork_url ?? undefined,
+      deepLink: item.permalink_url,
+    }));
+  }
+
+  async getAlbumTracks(albumId: string, rawLimit = 30): Promise<Track[]> {
+    // albumId comes from searchAlbums, echoed verbatim. Reject anything
+    // that isn't the opaque numeric id SoundCloud returns.
+    if (!/^\d+$/.test(albumId)) throw new Error(`invalid albumId: ${albumId}`);
+    const limit = clampLimit(rawLimit, 50);
+    const data = await this.request(`/playlists/${albumId}/tracks?limit=${limit}`);
+    return ((data.collection ?? []) as any[]).slice(0, limit).map(toTrack);
+  }
+}
+
+/** Clamps a caller-supplied limit into a safe positive range. */
+function clampLimit(raw: unknown, max: number): number {
+  const n = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return Math.min(10, max);
+  return Math.min(Math.floor(n), max);
 }

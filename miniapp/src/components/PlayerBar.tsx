@@ -43,13 +43,13 @@ export function PlayerBar({ onOpen }: { onOpen?: () => void }) {
 
   const playIcon =
     status === "loading" ? (
-      <CircleNotch size={22} weight="bold" className="spin" />
+      <CircleNotch size={18} weight="bold" className="spin" />
     ) : status === "playing" ? (
-      <Pause size={22} weight="fill" />
+      <Pause size={18} weight="fill" />
     ) : status === "error" ? (
-      <WarningCircle size={22} weight="bold" />
+      <WarningCircle size={18} weight="bold" />
     ) : (
-      <Play size={22} weight="fill" />
+      <Play size={18} weight="fill" />
     );
 
   return (
@@ -87,7 +87,7 @@ export function PlayerBar({ onOpen }: { onOpen?: () => void }) {
         disabled={!hasNext}
         onClick={() => player.nextTrack()}
       >
-        <SkipForward size={22} weight="fill" />
+        <SkipForward size={18} weight="fill" />
       </button>
     </div>
   );

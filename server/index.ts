@@ -10,7 +10,8 @@ import { verifyWebhookSignature, type WebhookUpdate } from "./payments/webhook";
 import { fulfillInvoice, fulfillPendingInvoice, type FulfillResult } from "./payments/fulfillment";
 import { startPoller, startPlategaPoller } from "./payments/poller";
 import { verifyPlategaCallback, type PlategaWebhookBody } from "./payments/platega";
-import { markCanceled, getInvoice } from "./payments/invoices-store";
+import { getInvoice } from "./payments/invoices-store";
+import { cancelInvoiceAndRefund } from "./payments/cancel";
 import { alertPaymentFulfilled } from "./payments/alerts";
 import { YtDlpExtractor } from "./audio/extractor";
 import { StreamCache } from "./audio/stream-cache";
@@ -107,10 +108,10 @@ app.post("/api/platega/webhook", async (c) => {
     const result = fulfillPendingInvoice(db, "platega", id);
     await notifyFulfilled(result);
   } else if (body.status === "CANCELED") {
-    markCanceled(db, "platega", id);
+    cancelInvoiceAndRefund(db, "platega", id);
   } else if (body.status === "CHARGEBACKED") {
-    const canceled = markCanceled(db, "platega", id);
-    if (!canceled) {
+    const result = cancelInvoiceAndRefund(db, "platega", id);
+    if (!result.canceled) {
       const invoice = getInvoice(db, "platega", id);
       console.error("[platega webhook] chargeback on already-paid transaction", id);
       await alertPaymentFulfilled(db, {
