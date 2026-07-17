@@ -171,4 +171,8 @@ process.on("SIGINT", () => {
 export default {
   port: env.port,
   fetch: app.fetch,
+  // AI generation streams (SSE) can go >10s between events; Bun's default
+  // idleTimeout (10s) kills the socket mid-stream otherwise, surfacing as
+  // "Load failed" on the client.
+  idleTimeout: 255,
 };

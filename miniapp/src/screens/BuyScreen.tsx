@@ -258,7 +258,7 @@ export default function BuyScreen({ reason, isAdmin = false }: { reason?: string
                       {busyId === o.id ? (
                         <CircleNotch size={14} weight="bold" className="spin" aria-hidden="true" />
                       ) : (
-                        `${o.rubAmount} ₽ · СБП`
+                        `${o.rubAmount} ₽`
                       )}
                     </button>
                   )}

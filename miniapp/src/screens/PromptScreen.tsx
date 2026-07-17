@@ -5,7 +5,7 @@ import {
   CircleNotch,
   DownloadSimple,
   MagnifyingGlass,
-  Playlist,
+  CaretRightIcon,
   Sparkle,
   User,
   WarningCircle,
@@ -64,12 +64,17 @@ function pushRecent(query: string): string[] {
   return next;
 }
 
-/** Rank unique artist names from tracks + albums, preferring exact / prefix matches. */
-function deriveArtists(query: string, tracks: Track[], albums: Album[], limit = 6): string[] {
-  const q = query.trim().toLowerCase();
-  const counts = new Map<string, { name: string; score: number }>();
+export interface ArtistHit {
+  name: string;
+  artwork: string | null;
+}
 
-  function add(name: string, base: number) {
+/** Rank unique artist names from tracks + albums, preferring exact / prefix matches. */
+function deriveArtists(query: string, tracks: Track[], albums: Album[], limit = 6): ArtistHit[] {
+  const q = query.trim().toLowerCase();
+  const counts = new Map<string, { name: string; score: number; artwork: string | null }>();
+
+  function add(name: string, base: number, artwork: string | undefined) {
     const trimmed = name.trim();
     if (!trimmed) return;
     const key = trimmed.toLowerCase();
@@ -79,17 +84,24 @@ function deriveArtists(query: string, tracks: Track[], albums: Album[], limit = 
     else if (lower.startsWith(q)) bonus += 40;
     else if (lower.includes(q)) bonus += 15;
     const prev = counts.get(key);
-    if (!prev || bonus > prev.score) counts.set(key, { name: trimmed, score: bonus });
-    else counts.set(key, { name: prev.name, score: prev.score + 1 });
+    if (!prev) {
+      counts.set(key, { name: trimmed, score: bonus, artwork: artwork ?? null });
+    } else {
+      counts.set(key, {
+        name: prev.name,
+        score: bonus > prev.score ? bonus : prev.score + 1,
+        artwork: prev.artwork ?? artwork ?? null,
+      });
+    }
   }
 
-  for (const t of tracks) add(t.artist, 10);
-  for (const a of albums) add(a.artist, 12);
+  for (const t of tracks) add(t.artist, 10, t.artwork);
+  for (const a of albums) add(a.artist, 12, a.artwork);
 
   return [...counts.values()]
     .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, "ru"))
     .slice(0, limit)
-    .map((x) => x.name);
+    .map((x) => ({ name: x.name, artwork: x.artwork }));
 }
 
 export function PromptScreen({
@@ -398,7 +410,7 @@ export function PromptScreen({
             <section className="search-section">
               <h2 className="search-section-title">Исполнители</h2>
               <div className="stack reveal-stagger">
-                {artists.map((name, i) => (
+                {artists.map(({ name, artwork }, i) => (
                   <button
                     key={name}
                     type="button"
@@ -407,7 +419,7 @@ export function PromptScreen({
                     onClick={() => pickArtist(name)}
                   >
                     <span className="search-artist-avatar" aria-hidden>
-                      <User size={18} weight="bold" />
+                      {artwork ? <img src={artwork} alt="" /> : <User size={18} weight="bold" />}
                     </span>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p className="search-row-title">{name}</p>
@@ -482,7 +494,7 @@ export function PromptScreen({
                           )}
                         </button>
                         <span className={`album-chevron${open ? " open" : ""}`} aria-hidden>
-                          <Playlist size={16} />
+                          <CaretRightIcon size={16} />
                         </span>
                       </div>
                       {open && (
