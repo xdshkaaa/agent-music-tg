@@ -67,13 +67,13 @@ describe("markCanceled", () => {
     const offer = createOffer(db, { title: "pack", amount: "5", asset: "USDT", starsAmount: 100, rubAmount: 300, grantKind: "credits", grantAmount: 10 });
     insertPendingInvoice(db, { provider: "platega", externalId: "tx-2", chatId: CHAT, offerId: offer.id, amount: "300", asset: "RUB" });
 
-    expect(markCanceled(db, "platega", "tx-2")).toBe(true);
+    expect(markCanceled(db, "platega", "tx-2")).not.toBeNull();
     expect(getInvoice(db, "platega", "tx-2")?.status).toBe("canceled");
-    expect(markCanceled(db, "platega", "tx-2")).toBe(false);
+    expect(markCanceled(db, "platega", "tx-2")).toBeNull();
 
     insertPendingInvoice(db, { provider: "platega", externalId: "tx-3", chatId: CHAT, offerId: offer.id, amount: "300", asset: "RUB" });
     fulfillPendingInvoice(db, "platega", "tx-3");
-    expect(markCanceled(db, "platega", "tx-3")).toBe(false);
+    expect(markCanceled(db, "platega", "tx-3")).toBeNull();
     expect(getInvoice(db, "platega", "tx-3")?.status).toBe("paid");
   });
 });

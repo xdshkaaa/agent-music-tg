@@ -44,6 +44,12 @@ function fakeMusic(opts: { remotePlaylists: boolean; searchTrack?: (artist: stri
     async getArtistTopTracks() {
       return [];
     },
+    async searchAlbums() {
+      return [];
+    },
+    async getAlbumTracks() {
+      return [];
+    },
     ...(opts.remotePlaylists
       ? {
           async createPlaylist(name: string): Promise<RemotePlaylist> {
