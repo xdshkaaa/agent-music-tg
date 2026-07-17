@@ -98,3 +98,43 @@ describe("POST /api/invoices (stars)", () => {
     }
   });
 });
+
+describe("POST /api/invoices (platega)", () => {
+  const savedPaymentsEnabled = env.paymentsEnabled;
+  const savedMerchantId = env.plategaMerchantId;
+  const savedSecret = env.plategaSecret;
+
+  test("503 when platega credentials are not configured", async () => {
+    env.paymentsEnabled = true;
+    env.plategaMerchantId = "";
+    env.plategaSecret = "";
+    try {
+      const db = freshDb();
+      const offer = createOffer(db, { title: "p", amount: "5", asset: "USDT", starsAmount: 100, rubAmount: 300, grantKind: "credits", grantAmount: 10 });
+      const app = createApiRoutes(db, {});
+      const res = await post(app, { offerId: offer.id, method: "platega" });
+      expect(res.status).toBe(503);
+    } finally {
+      env.paymentsEnabled = savedPaymentsEnabled;
+      env.plategaMerchantId = savedMerchantId;
+      env.plategaSecret = savedSecret;
+    }
+  });
+
+  test("400 when offer has no RUB price", async () => {
+    env.paymentsEnabled = true;
+    env.plategaMerchantId = "merchant";
+    env.plategaSecret = "secret";
+    try {
+      const db = freshDb();
+      const offer = createOffer(db, { title: "p", amount: "5", asset: "USDT", starsAmount: 100, grantKind: "credits", grantAmount: 10 });
+      const app = createApiRoutes(db, {});
+      const res = await post(app, { offerId: offer.id, method: "platega" });
+      expect(res.status).toBe(400);
+    } finally {
+      env.paymentsEnabled = savedPaymentsEnabled;
+      env.plategaMerchantId = savedMerchantId;
+      env.plategaSecret = savedSecret;
+    }
+  });
+});
