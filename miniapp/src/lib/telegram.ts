@@ -77,3 +77,20 @@ export function openPayUrl(url: string): void {
   if (/^https?:\/\/t\.me\//i.test(url)) webApp.openTelegramLink(url);
   else webApp.openLink(url);
 }
+
+/**
+ * Opens the configured support contact. Accepts a username (@handle, t.me/...),
+ * a bare handle, or any URL. Falls back to opening in a new tab.
+ */
+export function openSupport(contact: string): void {
+  const trimmed = (contact ?? "").trim();
+  if (!trimmed) return;
+  const handle = trimmed.replace(/^https?:\/\/t\.me\//i, "").replace(/^@/, "");
+  const webApp = getTelegramWebApp();
+  if (!webApp) {
+    window.open(/^https?:\/\//i.test(trimmed) ? trimmed : `https://t.me/${handle}`, "_blank");
+    return;
+  }
+  if (/^https?:\/\//i.test(trimmed)) webApp.openLink(trimmed);
+  else webApp.openTelegramLink(`https://t.me/${handle}`);
+}

@@ -4,6 +4,8 @@
  *  as the primary message. */
 
 export interface FriendlyError {
+  /** Short heading shown above the body (optional). */
+  title?: string;
   /** Short, non-technical message shown to the user. */
   message: string;
   /** Raw technical text, shown only inside the collapsible details. */
@@ -51,6 +53,13 @@ export function humanizeError(raw: string): FriendlyError {
   if (/completion failed|chat completion|could not parse|tool call|invalid json/i.test(lower)) {
     return {
       message: "Не удалось собрать плейлист. Попробуйте ещё раз.",
+      detail: text,
+    };
+  }
+  if (/crypto asset unsupported|unsupported asset|unsupported_crypto_asset|unsupported asset/i.test(lower)) {
+    return {
+      title: "Способ оплаты недоступен",
+      message: "Сейчас метод недоступен, ожидается подключение платёжного метода",
       detail: text,
     };
   }

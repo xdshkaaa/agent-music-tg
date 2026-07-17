@@ -30,7 +30,9 @@ import {
   type GrantKind,
 } from "../payments/offers-store";
 import { listInvoicesForChat } from "../payments/invoices-store";
-import { purchaseOffer, OfferUnavailableError } from "../payments/purchase";
+import { purchaseOffer, purchaseOfferRub, OfferUnavailableError, RubPriceMissingError } from "../payments/purchase";
+import { UnsupportedAssetError, isSupportedAsset, SUPPORTED_ASSETS } from "../payments/crypto-pay";
+import { plategaEnabled } from "../payments/platega";
 import { getAdminStats } from "../admin/stats";
 import { broadcast, type SendFn } from "../admin/broadcast";
 import { getGrantHistoryForUser, getAllGrantHistory, countGrantHistory } from "../admin/grant-history";
@@ -80,6 +82,13 @@ function parseRequiredStarsAmount(v: unknown): number | "invalid" {
 /** Validates starsAmount for partial updates. Returns null (clear), number (set), or "invalid". */
 function parseOptionalStarsAmount(v: unknown): number | null | "invalid" {
   if (v === null || v === "" || v === 0) return null;
+  const n = Number(v);
+  return Number.isInteger(n) && n > 0 ? n : "invalid";
+}
+
+/** Validates rubAmount (nullable). Returns null (clear), number (set), or "invalid". */
+function parseOptionalRubAmount(v: unknown): number | null | "invalid" {
+  if (v === undefined || v === null || v === "" || v === 0) return null;
   const n = Number(v);
   return Number.isInteger(n) && n > 0 ? n : "invalid";
 }
@@ -318,8 +327,8 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
   });
 
   app.get("/shop-config", (c) => {
-    const { headerIcon, headerTitle } = getShopSettings(db);
-    return c.json({ headerIcon, headerTitle });
+    const { headerIcon, headerTitle, supportContact } = getShopSettings(db);
+    return c.json({ headerIcon, headerTitle, supportContact });
   });
 
   app.post("/invoices", async (c) => {
@@ -330,7 +339,25 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
     const offerId = Number(body.offerId);
     if (!Number.isFinite(offerId)) return c.json({ error: "offerId is required" }, 400);
     const method = body.method ?? "crypto";
-    if (method !== "crypto" && method !== "stars") return c.json({ error: "method must be crypto|stars" }, 400);
+    if (method !== "crypto" && method !== "stars" && method !== "platega") {
+      return c.json({ error: "method must be crypto|stars|platega" }, 400);
+    }
+
+    if (method === "platega") {
+      if (!plategaEnabled()) return c.json({ error: "platega payments unavailable" }, 503);
+      const offer = getOffer(db, offerId);
+      if (!offer || !offer.active) return c.json({ error: "offer is not available" }, 400);
+      if (!offer.rubAmount) return c.json({ error: "offer has no RUB price" }, 400);
+      try {
+        const result = await purchaseOfferRub(db, c.get("chatId"), offerId);
+        return c.json({ ...result, method: "platega" });
+      } catch (e) {
+        if (e instanceof OfferUnavailableError || e instanceof RubPriceMissingError) {
+          return c.json({ error: e.message }, 400);
+        }
+        return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
+      }
+    }
 
     if (method === "stars") {
       const offer = getOffer(db, offerId);
@@ -356,6 +383,9 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
       return c.json({ ...result, method: "crypto" });
     } catch (e) {
       if (e instanceof OfferUnavailableError) return c.json({ error: e.message }, 400);
+      if (e instanceof UnsupportedAssetError) {
+        return c.json({ error: "crypto asset unsupported", asset: e.asset }, 400);
+      }
       return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
     }
   });
@@ -412,6 +442,7 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
       amount: string;
       asset: string;
       starsAmount: number | null;
+      rubAmount?: number | null;
       icon: string | null;
       active: boolean;
       grantKind: string;
@@ -420,8 +451,16 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
     if (!b.title || !b.amount || !b.asset || !isGrantKind(b.grantKind) || !Number.isFinite(Number(b.grantAmount))) {
       return c.json({ error: "title, amount, asset, grantKind (credits|subscription), grantAmount are required" }, 400);
     }
+    if (!isSupportedAsset(b.asset)) {
+      return c.json(
+        { error: `unsupported asset: ${String(b.asset).toUpperCase()}. Supported: ${SUPPORTED_ASSETS.join(", ")}` },
+        400,
+      );
+    }
     const starsAmount = parseRequiredStarsAmount(b.starsAmount);
     if (starsAmount === "invalid") return c.json({ error: "starsAmount must be a positive integer" }, 400);
+    const rubAmount = parseOptionalRubAmount(b.rubAmount);
+    if (rubAmount === "invalid") return c.json({ error: "rubAmount must be a positive integer" }, 400);
     const icon = parseIcon(b.icon);
     if (icon === "invalid") return c.json({ error: "icon must be ≤200 characters" }, 400);
     const offer = createOffer(db, {
@@ -429,6 +468,7 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
       amount: String(b.amount),
       asset: b.asset,
       starsAmount,
+      rubAmount,
       icon,
       active: b.active,
       grantKind: b.grantKind,
@@ -445,6 +485,7 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
       amount: string;
       asset: string;
       starsAmount: number | null;
+      rubAmount?: number | null;
       icon: string | null;
       active: boolean;
       grantKind: string;
@@ -455,6 +496,8 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
     }
     const starsAmount = b.starsAmount !== undefined ? parseOptionalStarsAmount(b.starsAmount) : undefined;
     if (starsAmount === "invalid") return c.json({ error: "starsAmount must be a positive integer" }, 400);
+    const rubAmount = b.rubAmount !== undefined ? parseOptionalRubAmount(b.rubAmount) : undefined;
+    if (rubAmount === "invalid") return c.json({ error: "rubAmount must be a positive integer" }, 400);
     const icon = parseIcon(b.icon);
     if (icon === "invalid") return c.json({ error: "icon must be ≤200 characters" }, 400);
     const offer = updateOffer(db, id, {
@@ -462,6 +505,7 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
       amount: b.amount !== undefined ? String(b.amount) : undefined,
       asset: b.asset,
       starsAmount,
+      rubAmount,
       icon,
       active: b.active,
       grantKind: b.grantKind as GrantKind | undefined,

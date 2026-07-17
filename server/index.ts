@@ -7,8 +7,11 @@ import { loadCustomEmojis, accent } from "./bot/emoji";
 import { createApiRoutes } from "./api/routes";
 import { setVerificationExtractor, setPrewarmStreamCache } from "./core/run-generation";
 import { verifyWebhookSignature, type WebhookUpdate } from "./payments/webhook";
-import { fulfillInvoice, type FulfillResult } from "./payments/fulfillment";
-import { startPoller } from "./payments/poller";
+import { fulfillInvoice, fulfillPendingInvoice, type FulfillResult } from "./payments/fulfillment";
+import { startPoller, startPlategaPoller } from "./payments/poller";
+import { verifyPlategaCallback, type PlategaWebhookBody } from "./payments/platega";
+import { markCanceled, getInvoice } from "./payments/invoices-store";
+import { alertPaymentFulfilled } from "./payments/alerts";
 import { YtDlpExtractor } from "./audio/extractor";
 import { StreamCache } from "./audio/stream-cache";
 import { createTelegramAudioSender } from "./audio/telegram-sender";
@@ -37,6 +40,7 @@ const send = async (chatId: number, text: string): Promise<void> => {
 };
 
 async function notifyFulfilled(result: FulfillResult): Promise<void> {
+  await alertPaymentFulfilled(db, result);
   if (!result.fulfilled || !result.chatId || !result.offerTitle) return;
   const check = accent("check");
   try {
@@ -72,6 +76,56 @@ app.post("/api/crypto/webhook", async (c) => {
   return c.json({ ok: true });
 });
 
+// Platega webhook — MUST be registered before the requireAuth-protected /api
+// routes; Platega does not carry our Mini App initData auth. Always responds
+// 200 once authenticated (per Platega retry semantics).
+app.post("/api/platega/webhook", async (c) => {
+  const merchantId = c.req.header("x-merchantid");
+  const secret = c.req.header("x-secret");
+  if (!verifyPlategaCallback(merchantId, secret)) {
+    return c.json({ error: "invalid signature" }, 401);
+  }
+  let body: PlategaWebhookBody;
+  try {
+    body = (await c.req.json()) as PlategaWebhookBody;
+  } catch {
+    return c.json({ error: "invalid body" }, 400);
+  }
+  const id = body.id;
+  if (!id) return c.json({ ok: true });
+
+  if (body.status === "CONFIRMED") {
+    const invoice = getInvoice(db, "platega", id);
+    if (!invoice) {
+      console.error("[platega webhook] unknown transaction", id);
+      return c.json({ ok: true });
+    }
+    if (Number(invoice.amount) !== Number(body.amount) || (body.currency ?? "RUB") !== "RUB") {
+      console.error("[platega webhook] amount/currency mismatch", id, invoice.amount, body.amount, body.currency);
+      return c.json({ ok: true });
+    }
+    const result = fulfillPendingInvoice(db, "platega", id);
+    await notifyFulfilled(result);
+  } else if (body.status === "CANCELED") {
+    markCanceled(db, "platega", id);
+  } else if (body.status === "CHARGEBACKED") {
+    const canceled = markCanceled(db, "platega", id);
+    if (!canceled) {
+      const invoice = getInvoice(db, "platega", id);
+      console.error("[platega webhook] chargeback on already-paid transaction", id);
+      await alertPaymentFulfilled(db, {
+        fulfilled: true,
+        chatId: invoice?.chatId,
+        provider: "platega",
+        amount: invoice?.amount,
+        asset: invoice?.asset,
+        offerTitle: `⚠️ ЧАРДЖБЭК по транзакции ${id}`,
+      });
+    }
+  }
+  return c.json({ ok: true });
+});
+
 // Stars invoice links for the Mini App: Bot API createInvoiceLink with the XTR
 // currency takes an empty provider_token (Telegram-native payments).
 // Bot API returns https://telegram.me/$... but WebApp.openInvoice only accepts
@@ -103,8 +157,15 @@ app.route("/api", createApiRoutes(db, { send, createStarsInvoiceLink, audio }));
 bot.start();
 
 const stopPoller = startPoller(db, notifyFulfilled);
-process.on("SIGTERM", stopPoller);
-process.on("SIGINT", stopPoller);
+const stopPlategaPoller = startPlategaPoller(db, notifyFulfilled);
+process.on("SIGTERM", () => {
+  stopPoller();
+  stopPlategaPoller();
+});
+process.on("SIGINT", () => {
+  stopPoller();
+  stopPlategaPoller();
+});
 
 export default {
   port: env.port,

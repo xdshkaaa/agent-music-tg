@@ -8,6 +8,7 @@ export interface Offer {
   amount: string;
   asset: string;
   starsAmount: number | null;
+  rubAmount: number | null;
   icon: string | null;
   active: boolean;
   grantKind: GrantKind;
@@ -19,6 +20,7 @@ export interface OfferInput {
   amount: string;
   asset: string;
   starsAmount: number;
+  rubAmount?: number | null;
   icon?: string | null;
   active?: boolean;
   grantKind: GrantKind;
@@ -31,6 +33,7 @@ interface OfferRow {
   amount: string;
   asset: string;
   stars_amount: number | null;
+  rub_amount: number | null;
   icon: string | null;
   active: number;
   grant_kind: string;
@@ -44,6 +47,7 @@ function toOffer(row: OfferRow): Offer {
     amount: row.amount,
     asset: row.asset,
     starsAmount: row.stars_amount,
+    rubAmount: row.rub_amount,
     icon: row.icon,
     active: row.active === 1,
     grantKind: row.grant_kind === "subscription" ? "subscription" : "credits",
@@ -52,26 +56,33 @@ function toOffer(row: OfferRow): Offer {
 }
 
 export class InvalidStarsAmountError extends Error {}
+export class InvalidRubAmountError extends Error {}
 
 export function assertValidStarsAmount(v: number): void {
   if (!Number.isInteger(v) || v <= 0) throw new InvalidStarsAmountError("starsAmount must be a positive integer");
 }
 
+export function assertValidRubAmount(v: number): void {
+  if (!Number.isInteger(v) || v <= 0) throw new InvalidRubAmountError("rubAmount must be a positive integer");
+}
+
 export function createOffer(db: AppDb, input: OfferInput): Offer {
   assertValidStarsAmount(input.starsAmount);
+  if (input.rubAmount !== undefined && input.rubAmount !== null) assertValidRubAmount(input.rubAmount);
   const row = db
     .query<
       OfferRow,
-      [string, string, string, number, string | null, number, string, number]
+      [string, string, string, number, number | null, string | null, number, string, number]
     >(
-      `INSERT INTO offers (title, amount, asset, stars_amount, icon, active, grant_kind, grant_amount)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
+      `INSERT INTO offers (title, amount, asset, stars_amount, rub_amount, icon, active, grant_kind, grant_amount)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
     )
     .get(
       input.title,
       input.amount,
       input.asset,
       input.starsAmount,
+      input.rubAmount ?? null,
       input.icon ?? null,
       input.active === false ? 0 : 1,
       input.grantKind,
@@ -93,26 +104,34 @@ export function getOffer(db: AppDb, id: number): Offer | null {
   return row ? toOffer(row) : null;
 }
 
-export function updateOffer(db: AppDb, id: number, patch: Omit<Partial<OfferInput>, 'starsAmount'> & { starsAmount?: number | null }): Offer | null {
+export function updateOffer(
+  db: AppDb,
+  id: number,
+  patch: Omit<Partial<OfferInput>, 'starsAmount' | 'rubAmount'> & { starsAmount?: number | null; rubAmount?: number | null },
+): Offer | null {
   const existing = getOffer(db, id);
   if (!existing) return null;
 
   if (patch.starsAmount !== undefined && patch.starsAmount !== null) {
     assertValidStarsAmount(patch.starsAmount);
   }
+  if (patch.rubAmount !== undefined && patch.rubAmount !== null) {
+    assertValidRubAmount(patch.rubAmount);
+  }
 
   const title = patch.title ?? existing.title;
   const amount = patch.amount ?? existing.amount;
   const asset = patch.asset ?? existing.asset;
   const starsAmount = patch.starsAmount === undefined ? existing.starsAmount : patch.starsAmount;
+  const rubAmount = patch.rubAmount === undefined ? existing.rubAmount : patch.rubAmount;
   const icon = patch.icon === undefined ? existing.icon : patch.icon;
   const active = patch.active ?? existing.active;
   const grantKind = patch.grantKind ?? existing.grantKind;
   const grantAmount = patch.grantAmount ?? existing.grantAmount;
 
   db.query(
-    `UPDATE offers SET title = ?, amount = ?, asset = ?, stars_amount = ?, icon = ?, active = ?, grant_kind = ?, grant_amount = ? WHERE id = ?`,
-  ).run(title, amount, asset, starsAmount ?? null, icon ?? null, active ? 1 : 0, grantKind, grantAmount, id);
+    `UPDATE offers SET title = ?, amount = ?, asset = ?, stars_amount = ?, rub_amount = ?, icon = ?, active = ?, grant_kind = ?, grant_amount = ? WHERE id = ?`,
+  ).run(title, amount, asset, starsAmount ?? null, rubAmount ?? null, icon ?? null, active ? 1 : 0, grantKind, grantAmount, id);
   return getOffer(db, id);
 }
 

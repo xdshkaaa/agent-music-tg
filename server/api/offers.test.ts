@@ -114,3 +114,47 @@ describe("POST /admin/offers (create)", () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe("admin offers rubAmount round-trip", () => {
+  test("create with rubAmount, then patch to a new value, then clear it", async () => {
+    const db = freshDb();
+    const app = createApiRoutes(db);
+    const createRes = await app.request("/admin/offers", {
+      method: "POST",
+      headers: { "X-Telegram-Init-Data": buildInitData(ADMIN_CHAT), "content-type": "application/json" },
+      body: JSON.stringify({ title: "rub pack", amount: "5", asset: "USDT", starsAmount: 100, rubAmount: 300, grantKind: "credits", grantAmount: 10 }),
+    });
+    expect(createRes.status).toBe(200);
+    const created = (await createRes.json()) as { offer: { id: number; rubAmount: number | null } };
+    expect(created.offer.rubAmount).toBe(300);
+
+    const patchRes = await app.request(`/admin/offers/${created.offer.id}`, {
+      method: "PATCH",
+      headers: { "X-Telegram-Init-Data": buildInitData(ADMIN_CHAT), "content-type": "application/json" },
+      body: JSON.stringify({ rubAmount: 500 }),
+    });
+    expect(patchRes.status).toBe(200);
+    const patched = (await patchRes.json()) as { offer: { rubAmount: number | null } };
+    expect(patched.offer.rubAmount).toBe(500);
+
+    const clearRes = await app.request(`/admin/offers/${created.offer.id}`, {
+      method: "PATCH",
+      headers: { "X-Telegram-Init-Data": buildInitData(ADMIN_CHAT), "content-type": "application/json" },
+      body: JSON.stringify({ rubAmount: null }),
+    });
+    expect(clearRes.status).toBe(200);
+    const cleared = (await clearRes.json()) as { offer: { rubAmount: number | null } };
+    expect(cleared.offer.rubAmount).toBeNull();
+  });
+
+  test("rejects invalid rubAmount (-5)", async () => {
+    const db = freshDb();
+    const app = createApiRoutes(db);
+    const res = await app.request("/admin/offers", {
+      method: "POST",
+      headers: { "X-Telegram-Init-Data": buildInitData(ADMIN_CHAT), "content-type": "application/json" },
+      body: JSON.stringify({ title: "test", amount: "5", asset: "USDT", starsAmount: 100, rubAmount: -5, grantKind: "credits", grantAmount: 10 }),
+    });
+    expect(res.status).toBe(400);
+  });
+});
