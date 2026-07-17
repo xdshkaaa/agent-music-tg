@@ -152,6 +152,20 @@ run_remote "cd '$API_DIR/releases/$RELEASE' && /root/.bun/bin/bun install --prod
 log "Pointing 'current' symlinks at the new release"
 run_remote "ln -sfn '$API_DIR/releases/$RELEASE' '$API_DIR/current' && ln -sfn '$STATIC_DIR/releases/$RELEASE' '$STATIC_DIR/current'"
 
+log "Verifying 'current' symlinks resolve to the new release"
+if ! $DRY_RUN; then
+  ACTUAL_STATIC=$(run_ssh "readlink -f '$STATIC_DIR/current'")
+  EXPECTED_STATIC="$STATIC_DIR/releases/$RELEASE"
+  if [ "$ACTUAL_STATIC" != "$EXPECTED_STATIC" ]; then
+    err "Static 'current' points at '$ACTUAL_STATIC', expected '$EXPECTED_STATIC'. Deploy aborted to avoid serving a stale build."
+    exit 1
+  fi
+  if ! run_ssh "test -n \"\$(ls -A '$STATIC_DIR/current/dist/assets' 2>/dev/null)\""; then
+    err "New static release has no built assets under dist/assets. Deploy aborted."
+    exit 1
+  fi
+fi
+
 log "Restarting service"
 run_remote "systemctl restart agent-music-tg && sleep 3"
 
