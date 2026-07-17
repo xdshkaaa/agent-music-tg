@@ -113,22 +113,6 @@ export function isSubscriptionGateEnabled(db: AppDb): boolean {
 
 // --- Membership cache ----------------------------------------------------
 
-export function getCachedMemberships(
-  db: AppDb,
-  chatId: number,
-): Map<number, boolean> {
-  const rows = db
-    .query<{ channel_id: number; is_member: number }, [number]>(
-      `SELECT channel_id, is_member FROM channel_memberships WHERE chat_id = ?`,
-    )
-    .all(chatId);
-  const map = new Map<number, boolean>();
-  for (const r of rows) {
-    map.set(r.channel_id, r.is_member === 1);
-  }
-  return map;
-}
-
 export function getCachedMembership(
   db: AppDb,
   chatId: number,
@@ -165,10 +149,6 @@ export function setCachedMembership(
        is_member = excluded.is_member,
        checked_at = excluded.checked_at`,
   ).run(chatId, channelId, isMember ? 1 : 0);
-}
-
-export function clearChannelMemberships(db: AppDb, channelId: number): void {
-  db.query(`DELETE FROM channel_memberships WHERE channel_id = ?`).run(channelId);
 }
 
 export function isMembershipCacheFresh(
