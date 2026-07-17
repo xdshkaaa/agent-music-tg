@@ -39,7 +39,7 @@ const SETTINGS_LABELS: Record<AdminTab, string> = {
   broadcast: "Рассылка",
 };
 
-const EMPTY_OFFER: OfferInput = { title: "", amount: "", asset: "USDT", starsAmount: null, icon: "", grantKind: "credits", grantAmount: 1 };
+const EMPTY_OFFER: OfferInput = { title: "", amount: "", asset: "USDT", starsAmount: null, rubAmount: null, icon: "", grantKind: "credits", grantAmount: 1 };
 
 // Crypto Pay-supported assets — a single one per offer (no comma-separated lists).
 const CRYPTO_ASSETS = ["USDT", "TON", "BTC", "ETH", "LTC", "BNB", "TRX", "USDC"] as const;
@@ -209,7 +209,7 @@ function OfferForm({ initial, submitLabel, onSubmit, onCancel }: {
       {error && <p role="alert" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><WarningCircle size={16} weight="bold" /> {error}</p>}
       <input className="glass-input" placeholder="Название" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required />
       <div className="row">
-        <input className="glass-input" placeholder="Цена" inputMode="decimal" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} required />
+        <input className="glass-input" placeholder="Цена" inputMode="decimal" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
         <select className="glass-input" value={form.asset} onChange={(e) => setForm({ ...form, asset: e.target.value })} required>
           {CRYPTO_ASSETS.map((a) => (
             <option key={a} value={a}>{a}</option>
@@ -224,6 +224,16 @@ function OfferForm({ initial, submitLabel, onSubmit, onCancel }: {
         onChange={(e) => {
           const val = e.target.value;
           setForm({ ...form, starsAmount: val === "" ? null : Number(val) || 0 });
+        }}
+      />
+      <input
+        className="glass-input"
+        placeholder="Цена в ₽ (СБП)"
+        inputMode="numeric"
+        value={form.rubAmount == null ? "" : String(form.rubAmount)}
+        onChange={(e) => {
+          const val = e.target.value;
+          setForm({ ...form, rubAmount: val === "" ? null : Number(val) || 0 });
         }}
       />
       <input className="glass-input" placeholder="Иконка (emoji или URL)" value={form.icon ?? ""} onChange={(e) => setForm({ ...form, icon: e.target.value })} />
@@ -266,10 +276,10 @@ function OffersPanel() {
       <div className="stack mt-12">
         {offers.map((o) =>
           editing?.id === o.id ? (
-            <OfferForm key={o.id} initial={{ title: o.title, amount: o.amount, asset: o.asset, starsAmount: o.starsAmount, icon: o.icon ?? "", active: o.active, grantKind: o.grantKind, grantAmount: o.grantAmount }} submitLabel="Сохранить" onSubmit={async (input) => { await api.adminUpdateOffer(o.id, input); setEditing(null); refresh(); }} onCancel={() => setEditing(null)} />
+            <OfferForm key={o.id} initial={{ title: o.title, amount: o.amount, asset: o.asset, starsAmount: o.starsAmount, rubAmount: o.rubAmount, icon: o.icon ?? "", active: o.active, grantKind: o.grantKind, grantAmount: o.grantAmount }} submitLabel="Сохранить" onSubmit={async (input) => { await api.adminUpdateOffer(o.id, input); setEditing(null); refresh(); }} onCancel={() => setEditing(null)} />
           ) : (
             <div key={o.id} className="row wrap">
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>{o.active ? <Circle size={12} weight="fill" color="var(--accent-green-text)" /> : <Circle size={12} weight="regular" />} {o.icon ?? ""} {o.title}: {o.amount} {o.asset}{o.starsAmount ? ` / ${o.starsAmount} ` : ""}{o.starsAmount ? <Star size={12} weight="fill" /> : ""} ({o.grantKind === "subscription" ? `${o.grantAmount} дн.` : `${o.grantAmount} ген.`})</span>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>{o.active ? <Circle size={12} weight="fill" color="var(--accent-green-text)" /> : <Circle size={12} weight="regular" />} {o.icon ?? ""} {o.title}: {o.amount} {o.asset}{o.starsAmount ? ` / ${o.starsAmount} ` : ""}{o.starsAmount ? <Star size={12} weight="fill" /> : ""}{o.rubAmount ? ` / ${o.rubAmount} ₽` : ""} ({o.grantKind === "subscription" ? `${o.grantAmount} дн.` : `${o.grantAmount} ген.`})</span>
               <button className="glass-button" onClick={() => setEditing(o)}>Изменить</button>
               <button className="glass-button" onClick={() => toggleActive(o)}>{o.active ? "Скрыть" : "Показать"}</button>
               <button className="glass-button" onClick={() => remove(o)}>Удалить</button>

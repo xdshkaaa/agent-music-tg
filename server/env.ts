@@ -52,6 +52,12 @@ export const env = {
   subscriptionHourlyLimit: intWithDefault(process.env.SUBSCRIPTION_HOURLY_LIMIT, 25),
   cryptobotToken: process.env.CRYPTOBOT_TOKEN ?? "",
   cryptobotNetwork: (process.env.CRYPTOBOT_NETWORK ?? "mainnet").trim().toLowerCase() === "testnet" ? "testnet" : "mainnet",
+  // Platega (СБП / RUB) — payments feature. Both required only when used.
+  plategaMerchantId: process.env.PLATEGA_MERCHANT_ID ?? "",
+  plategaSecret: process.env.PLATEGA_SECRET ?? "",
+  // Separate alert bot for admin top-up notifications.
+  alertBotToken: process.env.ALERT_BOT_TOKEN ?? "",
+  alertChatIds: splitChatIds(process.env.ALERT_CHAT_IDS),
   // Unused: server/bot/emoji.ts now resolves Telegram Premium custom-emoji
   // IDs straight from server/bot/emoji-symbols.json via getCustomEmojiStickers
   // (no bot-owned sticker set required). Kept only so an existing

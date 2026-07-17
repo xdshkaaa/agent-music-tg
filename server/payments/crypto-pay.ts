@@ -16,6 +16,32 @@ export interface CryptoInvoice {
 }
 
 export class CryptoPayError extends Error {}
+/** Thrown when the requested asset is not supported by Crypto Pay. */
+export class UnsupportedAssetError extends CryptoPayError {
+  constructor(asset: string) {
+    super(`asset not supported by Crypto Pay: ${asset}`);
+    this.asset = asset;
+  }
+  asset: string;
+}
+
+/** Assets accepted by the Crypto Pay API (see UNSUPPORTED_ASSET response). */
+export const SUPPORTED_ASSETS = [
+  "USDT",
+  "TON",
+  "SOL",
+  "TRX",
+  "BTC",
+  "ETH",
+  "DOGE",
+  "LTC",
+  "BNB",
+  "USDC",
+] as const;
+
+export function isSupportedAsset(asset: string): boolean {
+  return (SUPPORTED_ASSETS as readonly string[]).includes(asset.trim().toUpperCase());
+}
 
 function baseUrl(): string {
   return BASE_URLS[env.cryptobotNetwork as keyof typeof BASE_URLS] ?? BASE_URLS.mainnet;
@@ -49,8 +75,10 @@ export async function createInvoice(params: {
   description?: string;
   payload?: string;
 }): Promise<CryptoInvoice> {
+  const asset = params.asset.trim().toUpperCase();
+  if (!isSupportedAsset(asset)) throw new UnsupportedAssetError(asset);
   return call<CryptoInvoice>("createInvoice", {
-    asset: params.asset,
+    asset,
     amount: params.amount,
     description: params.description,
     payload: params.payload,

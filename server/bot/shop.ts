@@ -5,8 +5,10 @@ import { listActiveOffers, getOffer, type Offer } from "../payments/offers-store
 import { listInvoicesForChat } from "../payments/invoices-store";
 import { getUser, claimTrial, TRIAL_CREDITS, TRIAL_DAYS } from "../access/users-store";
 import { trialActive } from "../access/entitlements";
-import { purchaseOffer, OfferUnavailableError } from "../payments/purchase";
+import { purchaseOffer, purchaseOfferRub, OfferUnavailableError, RubPriceMissingError } from "../payments/purchase";
 import { fulfillStarsPayment, parseStarsPayload, type StarsPayload } from "../payments/stars";
+import { plategaEnabled } from "../payments/platega";
+import { alertPaymentFulfilled } from "../payments/alerts";
 import { btnText, heading, accent } from "./emoji";
 import { getShopSettings, getPaymentsEnabled } from "../lib/settings";
 import { env } from "../env";
@@ -28,8 +30,10 @@ function offerSymbol(o: Offer): string {
 
 function offerLabel(o: Offer): string {
   const grant = o.grantKind === "subscription" ? `${o.grantAmount} дн. подписки` : `${o.grantAmount} генераций`;
-  const price = o.starsAmount ? `${o.amount} ${o.asset} / ${o.starsAmount} Stars` : `${o.amount} ${o.asset}`;
-  return `${o.title}: ${price} (${grant})`;
+  const parts = [`${o.amount} ${o.asset}`];
+  if (o.starsAmount) parts.push(`${o.starsAmount} Stars`);
+  if (o.rubAmount) parts.push(`${o.rubAmount} ₽`);
+  return `${o.title}: ${parts.join(" / ")} (${grant})`;
 }
 
 /**
@@ -161,7 +165,24 @@ export function registerShop(bot: Bot<BotContext>, db: AppDb): void {
         await ctx.reply("Этот пакет больше недоступен.");
         return;
       }
-      await ctx.reply(`Не удалось создать счёт: ${e instanceof Error ? e.message : String(e)}`);
+      await ctx.reply("Сейчас этот способ оплаты недоступен. Ожидается подключение платёжного метода.");
+    }
+  }
+
+  async function startPlategaPurchase(ctx: BotContext, offerId: number): Promise<void> {
+    try {
+      const result = await purchaseOfferRub(db, ctx.chat!.id, offerId);
+      const kb = new InlineKeyboard().url("Оплатить ₽ (СБП)", result.payUrl);
+      await ctx.reply(
+        `Счёт на «${result.offerTitle}» создан. Оплатите по СБП — ссылка действует ~15 минут. Доступ активируется автоматически.`,
+        { reply_markup: kb },
+      );
+    } catch (e) {
+      if (e instanceof OfferUnavailableError || e instanceof RubPriceMissingError) {
+        await ctx.reply("Этот пакет больше недоступен.");
+        return;
+      }
+      await ctx.reply("Оплата по СБП сейчас недоступна, попробуйте другой способ.");
     }
   }
 
@@ -206,14 +227,14 @@ export function registerShop(bot: Bot<BotContext>, db: AppDb): void {
       await ctx.reply("Этот пакет больше недоступен.");
       return;
     }
-    if (!offer.starsAmount) {
+    const hasRub = offer.rubAmount && plategaEnabled();
+    if (!offer.starsAmount && !hasRub) {
       await startCryptoPurchase(ctx, offerId);
       return;
     }
-    const kb = new InlineKeyboard()
-      .text(`Криптой: ${offer.amount} ${offer.asset}`, `buyc:${offerId}`)
-      .row()
-      .text(btnText(`Stars: ${offer.starsAmount}`, "star"), `buys:${offerId}`);
+    const kb = new InlineKeyboard().text(`${offer.amount} ${offer.asset}`, `buyc:${offerId}`).row();
+    if (offer.starsAmount) kb.text(btnText(`Stars: ${offer.starsAmount}`, "star"), `buys:${offerId}`).row();
+    if (hasRub) kb.text(`Оплатить ₽ (СБП) — ${offer.rubAmount} ₽`, `buyp:${offerId}`);
     await ctx.reply(`«${offer.title}». Выберите способ оплаты:`, { reply_markup: kb });
   });
 
@@ -225,6 +246,11 @@ export function registerShop(bot: Bot<BotContext>, db: AppDb): void {
   bot.callbackQuery(/^buys:(\d+)$/, async (ctx) => {
     await ctx.answerCallbackQuery();
     await startStarsPurchase(ctx, Number(ctx.match[1]));
+  });
+
+  bot.callbackQuery(/^buyp:(\d+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await startPlategaPurchase(ctx, Number(ctx.match[1]));
   });
 
   // Telegram re-validates every Stars checkout here; must answer within 10s.
@@ -249,6 +275,7 @@ export function registerShop(bot: Bot<BotContext>, db: AppDb): void {
       starsAmount: sp.total_amount,
     });
     if (result.fulfilled) {
+      await alertPaymentFulfilled(db, result);
       const check = accent("check");
       await ctx.reply(
         result.offerTitle

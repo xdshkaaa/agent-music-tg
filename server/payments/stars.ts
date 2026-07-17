@@ -34,14 +34,23 @@ export function fulfillStarsPayment(
     if (!insertPaidStarsInvoice(db, input)) return { fulfilled: false, chatId: input.chatId };
 
     const offer = getOffer(db, input.offerId);
-    if (!offer) return { fulfilled: true, chatId: input.chatId };
+    if (!offer) return { fulfilled: true, chatId: input.chatId, provider: "stars", amount: String(input.starsAmount), asset: "XTR" };
 
     if (offer.grantKind === "subscription") {
       extendSubscription(db, input.chatId, offer.grantAmount, 0);
     } else {
       addCredits(db, input.chatId, offer.grantAmount, 0);
     }
-    return { fulfilled: true, chatId: input.chatId, offerTitle: offer.title };
+    return {
+      fulfilled: true,
+      chatId: input.chatId,
+      offerTitle: offer.title,
+      provider: "stars",
+      amount: String(input.starsAmount),
+      asset: "XTR",
+      grantKind: offer.grantKind,
+      grantAmount: offer.grantAmount,
+    };
   });
   return tx();
 }

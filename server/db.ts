@@ -81,6 +81,7 @@ function migrate(db: AppDb): void {
   try { db.run(`ALTER TABLE users ADD COLUMN active_model TEXT;`); } catch {}
   try { db.run(`ALTER TABLE offers ADD COLUMN stars_amount INTEGER;`); } catch {}
   try { db.run(`ALTER TABLE offers ADD COLUMN icon TEXT;`); } catch {}
+  try { db.run(`ALTER TABLE offers ADD COLUMN rub_amount INTEGER;`); } catch {}
   // Free trial bucket: expiring credits separate from paid `credits`;
   // trial_claimed_at doubles as the once-forever claim marker.
   try { db.run(`ALTER TABLE users ADD COLUMN trial_credits INTEGER NOT NULL DEFAULT 0;`); } catch {}

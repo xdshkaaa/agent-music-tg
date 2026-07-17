@@ -1,7 +1,7 @@
 import type { AppDb } from "../db";
 
-export type InvoiceStatus = "pending" | "paid";
-export type InvoiceProvider = "crypto" | "stars";
+export type InvoiceStatus = "pending" | "paid" | "canceled";
+export type InvoiceProvider = "crypto" | "stars" | "platega";
 
 export interface Invoice {
   id: number;
@@ -32,13 +32,13 @@ interface InvoiceRow {
 function toInvoice(row: InvoiceRow): Invoice {
   return {
     id: row.id,
-    provider: row.provider === "stars" ? "stars" : "crypto",
+    provider: row.provider === "stars" ? "stars" : row.provider === "platega" ? "platega" : "crypto",
     externalId: row.external_id,
     chatId: row.chat_id,
     offerId: row.offer_id,
     amount: row.amount,
     asset: row.asset,
-    status: row.status === "paid" ? "paid" : "pending",
+    status: row.status === "paid" ? "paid" : row.status === "canceled" ? "canceled" : "pending",
     createdAt: row.created_at,
     paidAt: row.paid_at,
   };
@@ -104,6 +104,20 @@ export function markPaid(db: AppDb, provider: InvoiceProvider, externalId: strin
   const res = db
     .query(
       `UPDATE invoices SET status = 'paid', paid_at = unixepoch()
+       WHERE provider = ? AND external_id = ? AND status = 'pending'`,
+    )
+    .run(provider, externalId);
+  return res.changes === 1;
+}
+
+/**
+ * Guarded status transition pending -> canceled. Returns true only if THIS
+ * call flipped the row; never cancels an already-paid invoice.
+ */
+export function markCanceled(db: AppDb, provider: InvoiceProvider, externalId: string): boolean {
+  const res = db
+    .query(
+      `UPDATE invoices SET status = 'canceled'
        WHERE provider = ? AND external_id = ? AND status = 'pending'`,
     )
     .run(provider, externalId);

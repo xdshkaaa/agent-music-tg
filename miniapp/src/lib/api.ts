@@ -44,13 +44,14 @@ export interface Offer {
   amount: string;
   asset: string;
   starsAmount: number | null;
+  rubAmount: number | null;
   icon: string | null;
   active: boolean;
   grantKind: GrantKind;
   grantAmount: number;
 }
 
-export type PaymentMethod = "crypto" | "stars";
+export type PaymentMethod = "crypto" | "stars" | "platega";
 
 export interface Invoice {
   id: number;
@@ -60,7 +61,7 @@ export interface Invoice {
   offerId: number;
   amount: string;
   asset: string;
-  status: "pending" | "paid";
+  status: "pending" | "paid" | "canceled";
   createdAt: number;
   paidAt: number | null;
 }
@@ -105,6 +106,7 @@ export interface OfferInput {
   amount: string;
   asset: string;
   starsAmount: number | null;
+  rubAmount?: number | null;
   icon?: string | null;
   active?: boolean;
   grantKind: GrantKind;
@@ -114,6 +116,7 @@ export interface OfferInput {
 export interface ShopConfig {
   headerIcon: string;
   headerTitle: string;
+  supportContact: string;
 }
 
 export interface Track {

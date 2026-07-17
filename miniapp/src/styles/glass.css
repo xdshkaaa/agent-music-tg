@@ -2632,6 +2632,16 @@ div.player-bar-thumbnail::after {
   gap: 4px;
 }
 
+.offer-rub-btn {
+  height: 40px;
+  padding: 0 12px;
+  font-weight: 700;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .empty-state {
   display: flex;
   flex-direction: column;
@@ -2941,34 +2951,34 @@ div.player-bar-thumbnail::after {
 
 /* --- Error toast --------------------------------------------------------
    A compact, overlay toast (NOT a content card) so it never pushes the
-   hero/input down or competes with the primary action. Softer amber tone
-   instead of an aggressive red fill; technical detail is hidden behind
-   a "Подробнее" disclosure. */
+   hero/input down or competes with the primary action. Calm dark-grey
+   surface with amber reserved for the icon only; the technical detail is
+   hidden behind a small "Подробнее" text link. */
 .error-toast {
   position: fixed;
   top: calc(env(safe-area-inset-top, 0px) + 66px);
   left: 50%;
   transform: translateX(-50%);
-  width: calc(100% - 32px);
-  max-width: 448px;
+  width: calc(100% - 40px);
+  max-width: 420px;
   z-index: 60;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px 14px;
-  border-radius: 16px;
-  background: rgba(38, 28, 18, 0.94);
-  border: 1px solid rgba(245, 158, 11, 0.4);
-  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(18px) saturate(160%);
-  color: #fde68a;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(31, 33, 38, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(16px) saturate(160%);
+  color: #e7e9ee;
   animation: error-toast-in 180ms ease-out;
 }
 
 :root[data-scheme="light"] .error-toast {
-  background: rgba(255, 250, 240, 0.97);
-  color: #92400e;
-  border-color: rgba(217, 119, 6, 0.38);
+  background: rgba(250, 250, 252, 0.98);
+  color: #2b2f36;
+  border-color: rgba(0, 0, 0, 0.1);
 }
 
 .error-toast-main {
@@ -2991,7 +3001,7 @@ div.player-bar-thumbnail::after {
   flex: 1;
   min-width: 0;
   margin: 0;
-  font-size: 14px;
+  font-size: 13.5px;
   line-height: 1.35;
 }
 
@@ -3000,18 +3010,27 @@ div.player-bar-thumbnail::after {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
   border: none;
   cursor: pointer;
-  background: rgba(245, 158, 11, 0.16);
-  color: inherit;
-  transition: background 120ms ease;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
+  transition: background 120ms ease, color 120ms ease;
 }
 
 .error-toast-close:hover {
-  background: rgba(245, 158, 11, 0.3);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+:root[data-scheme="light"] .error-toast-close {
+  color: rgba(0, 0, 0, 0.45);
+}
+:root[data-scheme="light"] .error-toast-close:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: rgba(0, 0, 0, 0.75);
 }
 
 .error-toast-actions {
@@ -3027,7 +3046,7 @@ div.player-bar-thumbnail::after {
   gap: 5px;
   padding: 6px 11px;
   border-radius: 9px;
-  border: 1px solid rgba(245, 158, 11, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   background: transparent;
   color: inherit;
   font-size: 13px;
@@ -3036,7 +3055,7 @@ div.player-bar-thumbnail::after {
 }
 
 .error-toast-action:hover {
-  background: rgba(245, 158, 11, 0.15);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .error-toast-caret-open {
@@ -3058,6 +3077,173 @@ div.player-bar-thumbnail::after {
 }
 
 :root[data-scheme="light"] .error-toast-detail {
+  background: rgba(0, 0, 0, 0.06);
+  color: #b91c1c;
+}
+
+/* --- Inline notice (embedded in a card, never overlays content) ------- */
+.inline-notice {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(31, 33, 38, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  color: #e7e9ee;
+}
+
+:root[data-scheme="light"] .inline-notice {
+  background: rgba(245, 245, 248, 0.95);
+  color: #2b2f36;
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+.inline-notice-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.inline-notice-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+:root[data-scheme="light"] .inline-notice-close {
+  color: rgba(0, 0, 0, 0.45);
+}
+:root[data-scheme="light"] .inline-notice-close:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: rgba(0, 0, 0, 0.75);
+}
+
+.inline-notice-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding-right: 18px;
+}
+
+.inline-notice-icon {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: #f59e0b;
+}
+
+:root[data-scheme="light"] .inline-notice-icon {
+  color: #d97706;
+}
+
+.inline-notice-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.inline-notice-title {
+  margin: 0 0 3px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.inline-notice-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: rgba(231, 233, 238, 0.82);
+}
+
+:root[data-scheme="light"] .inline-notice-text {
+  color: rgba(43, 47, 54, 0.78);
+}
+
+.inline-notice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.inline-notice-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 12px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.inline-notice-action:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.inline-notice-action.primary {
+  border-color: rgba(245, 158, 11, 0.45);
+  background: rgba(245, 158, 11, 0.12);
+}
+
+.inline-notice-action.primary:hover {
+  background: rgba(245, 158, 11, 0.2);
+}
+
+.inline-notice-more {
+  display: inline-block;
+  margin-top: 2px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: rgba(231, 233, 238, 0.6);
+  font-size: 12.5px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.inline-notice-more:hover {
+  color: rgba(231, 233, 238, 0.9);
+}
+
+:root[data-scheme="light"] .inline-notice-more {
+  color: rgba(43, 47, 54, 0.6);
+}
+:root[data-scheme="light"] .inline-notice-more:hover {
+  color: rgba(43, 47, 54, 0.9);
+}
+
+.inline-notice-detail {
+  margin: 0;
+  padding: 10px;
+  border-radius: 10px;
+  max-height: 140px;
+  overflow: auto;
+  background: rgba(0, 0, 0, 0.3);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #fca5a5;
+}
+
+:root[data-scheme="light"] .inline-notice-detail {
   background: rgba(0, 0, 0, 0.06);
   color: #b91c1c;
 }

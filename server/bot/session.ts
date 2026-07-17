@@ -12,7 +12,7 @@ export interface PendingClarify {
 
 /** Admin multi-step flows keyed off the same per-chat session row. */
 export type AdminFlow =
-  | { kind: "admin_add_offer"; step: "title" | "amount" | "asset" | "starsAmount" | "grantKind" | "grantAmount"; draft: Record<string, string> }
+  | { kind: "admin_add_offer"; step: "title" | "amount" | "asset" | "starsAmount" | "rubAmount" | "grantKind" | "grantAmount"; draft: Record<string, string> }
   | { kind: "admin_broadcast" }
   | { kind: "admin_setting"; field: "shopName" | "supportContact" | "aboutText" }
   | { kind: "admin_grant_credits"; chatId: number }

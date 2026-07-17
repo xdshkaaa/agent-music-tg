@@ -3,11 +3,12 @@ import { CircleNotch, MagnifyingGlass, Check, CreditCard, Gift, Star } from "@ph
 import { GlassPanel } from "../components/GlassPanel";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorBanner } from "../components/ErrorBanner";
+import { InlineNotice } from "../components/InlineNotice";
 import { IconOrEmoji } from "../components/IconOrEmoji";
 import { TrackSkeleton } from "../components/TrackSkeleton";
 import { Segmented } from "../components/Segmented";
 import { api, type Offer, type Invoice, type PaymentMethod, type TrialStatus } from "../lib/api";
-import { openPayUrl, openStarsInvoice } from "../lib/telegram";
+import { openPayUrl, openStarsInvoice, openSupport } from "../lib/telegram";
 
 type CategoryFilter = "all" | "credits" | "subscription";
 const CATEGORY_LABELS: Record<CategoryFilter, string> = {
@@ -47,15 +48,18 @@ export default function BuyScreen({ reason, isAdmin = false }: { reason?: string
   const [category, setCategory] = useState<CategoryFilter>("all");
   const [showSuccess, setShowSuccess] = useState(false);
   const [trialSuccess, setTrialSuccess] = useState(false);
+  const [offerErrors, setOfferErrors] = useState<Record<number, string>>({});
+  const [supportContact, setSupportContact] = useState<string>("");
 
   // null until the first fetch lands, so pre-existing purchases
   // don't fire the "payment received" toast on mount.
   const prevCountRef = useRef<number | null>(null);
 
   const refresh = () =>
-    Promise.all([api.offers(), api.purchases(), api.me()])
-      .then(([o, p, me]) => {
+    Promise.all([api.offers(), api.purchases(), api.me(), api.shopConfig()])
+      .then(([o, p, me, cfg]) => {
         setOffers(o.offers);
+        setSupportContact(cfg.supportContact ?? "");
         setTrial(me.trial);
         const paid = p.purchases.filter((i) => i.status === "paid");
         setPaidInvoices(paid);
@@ -103,10 +107,19 @@ export default function BuyScreen({ reason, isAdmin = false }: { reason?: string
         window.setTimeout(() => void refresh(), 15000);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      setOfferErrors((prev) => ({ ...prev, [offerId]: msg }));
     } finally {
       setBusyId(null);
     }
+  }
+
+  function clearOfferError(offerId: number) {
+    setOfferErrors((prev) => {
+      const next = { ...prev };
+      delete next[offerId];
+      return next;
+    });
   }
 
   async function claimTrial() {
@@ -229,7 +242,33 @@ export default function BuyScreen({ reason, isAdmin = false }: { reason?: string
                       )}
                     </button>
                   )}
+                  {o.rubAmount && (
+                    <button
+                      type="button"
+                      className="glass-button offer-rub-btn"
+                      disabled={busyId === o.id}
+                      aria-busy={busyId === o.id}
+                      aria-label={`Купить «${o.title}» за ${o.rubAmount} рублей по СБП`}
+                      onClick={() => buy(o.id, "platega")}
+                    >
+                      {busyId === o.id ? (
+                        <CircleNotch size={14} weight="bold" className="spin" aria-hidden="true" />
+                      ) : (
+                        `${o.rubAmount} ₽ · СБП`
+                      )}
+                    </button>
+                  )}
                 </span>
+                {offerErrors[o.id] && (
+                  <InlineNotice
+                    message={offerErrors[o.id]!}
+                    onDismiss={() => clearOfferError(o.id)}
+                    onOtherOption={() => clearOfferError(o.id)}
+                    onSupport={supportContact ? () => openSupport(supportContact) : undefined}
+                    supportContact={supportContact}
+                    isAdmin={isAdmin}
+                  />
+                )}
               </div>
             ))}
           </div>

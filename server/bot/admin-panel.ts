@@ -4,6 +4,7 @@ import type { BotContext } from "./context";
 import { getAdminStats, type StatsPeriod } from "../admin/stats";
 import { broadcast, type SendFn } from "../admin/broadcast";
 import { listOffers, createOffer, setOfferActive, deleteOffer, type GrantKind } from "../payments/offers-store";
+import { isSupportedAsset, SUPPORTED_ASSETS as SUPPORTED_CRYPTO_ASSETS } from "../payments/crypto-pay";
 import {
   getShopSettings, setShopSettings,
   getActiveProviderId, setActiveProviderId,
@@ -112,7 +113,7 @@ async function showOffers(ctx: BotContext, db: AppDb): Promise<void> {
     kb
       .text(
         btnText(
-          `${o.title} (${o.amount} ${o.asset}${o.starsAmount ? ` / ${o.starsAmount} Stars` : ""})`,
+          `${o.title} (${o.amount} ${o.asset}${o.starsAmount ? ` / ${o.starsAmount} Stars` : ""}${o.rubAmount ? ` / ${o.rubAmount} ₽` : ""})`,
           "package",
           o.active ? "success" : "danger",
         ),
@@ -563,11 +564,19 @@ export async function handleAdminText(ctx: BotContext, db: AppDb, send: SendFn):
       setAdminFlow(db, chatId, { kind: "admin_add_offer", step: "asset", draft });
       await ctx.reply("Актив (напр. USDT, TON):");
       return true;
-    case "asset":
-      draft.asset = text.toUpperCase();
+    case "asset": {
+      const asset = text.toUpperCase();
+      if (!isSupportedAsset(asset)) {
+        await ctx.reply(
+          `Актив «${asset}» не поддерживается Crypto Pay.\nПоддерживаемые: ${SUPPORTED_CRYPTO_ASSETS.join(", ")}.`,
+        );
+        return true;
+      }
+      draft.asset = asset;
       setAdminFlow(db, chatId, { kind: "admin_add_offer", step: "starsAmount", draft });
       await ctx.reply("Цена в Telegram Stars (целое положительное число):");
       return true;
+    }
     case "starsAmount": {
       const stars = Number(text);
       if (!Number.isInteger(stars) || stars <= 0) {
@@ -575,6 +584,17 @@ export async function handleAdminText(ctx: BotContext, db: AppDb, send: SendFn):
         return true;
       }
       draft.starsAmount = String(stars);
+      setAdminFlow(db, chatId, { kind: "admin_add_offer", step: "rubAmount", draft });
+      await ctx.reply("Цена в рублях для СБП (целое число, 0 — без оплаты в ₽):");
+      return true;
+    }
+    case "rubAmount": {
+      const rub = Number(text);
+      if (!Number.isInteger(rub) || rub < 0) {
+        await ctx.reply("Введите целое число (0 или больше).");
+        return true;
+      }
+      draft.rubAmount = rub > 0 ? String(rub) : "";
       setAdminFlow(db, chatId, { kind: "admin_add_offer", step: "grantKind", draft });
       await ctx.reply("Тип выдачи: напишите `credits` (генерации) или `subscription` (подписка):");
       return true;
@@ -602,12 +622,14 @@ export async function handleAdminText(ctx: BotContext, db: AppDb, send: SendFn):
         amount: draft.amount ?? "0",
         asset: draft.asset ?? "USDT",
         starsAmount: Number(draft.starsAmount),
+        rubAmount: draft.rubAmount ? Number(draft.rubAmount) : null,
         grantKind: (draft.grantKind as GrantKind) ?? "credits",
         grantAmount: amount,
       });
-      await ctx.reply(
-        `Пакет создан: ${offer.title} — ${offer.amount} ${offer.asset}${offer.starsAmount ? ` / ${offer.starsAmount} Stars` : ""}.`,
-      );
+      const priceParts = [`${offer.amount} ${offer.asset}`];
+      if (offer.starsAmount) priceParts.push(`${offer.starsAmount} Stars`);
+      if (offer.rubAmount) priceParts.push(`${offer.rubAmount} ₽`);
+      await ctx.reply(`Пакет создан: ${offer.title} — ${priceParts.join(" / ")}.`);
       return true;
     }
   }
