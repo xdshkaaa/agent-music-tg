@@ -354,7 +354,8 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
     const limit = Math.min(Math.max(rawLimit, 1), 50);
     const backendId = getActiveBackendId(db, DEFAULT_BACKEND);
     const music = createMusicProvider(isMusicBackend(backendId) ? backendId : DEFAULT_BACKEND);
-    const id = uri.includes(":") ? uri.split(":").slice(1).join(":") : uri;
+    let id = uri.includes(":") ? uri.split(":").slice(1).join(":") : uri;
+    if (id.startsWith("album:")) id = id.slice("album:".length);
     try {
       const tracks = await music.getAlbumTracks(id, limit);
       return c.json({ tracks });
