@@ -174,7 +174,7 @@ export function registerShop(bot: Bot<BotContext>, db: AppDb): void {
       const result = await purchaseOfferRub(db, ctx.chat!.id, offerId);
       const kb = new InlineKeyboard().url("Оплатить ₽ (СБП)", result.payUrl);
       await ctx.reply(
-        `Счёт на «${result.offerTitle}» создан. Оплатите по СБП — ссылка действует ~15 минут. Доступ активируется автоматически.`,
+        `Счёт на «${result.offerTitle}» создан. Оплатите по СБП: ссылка действует ~15 минут. Доступ активируется автоматически.`,
         { reply_markup: kb },
       );
     } catch (e) {
@@ -234,7 +234,7 @@ export function registerShop(bot: Bot<BotContext>, db: AppDb): void {
     }
     const kb = new InlineKeyboard().text(`${offer.amount} ${offer.asset}`, `buyc:${offerId}`).row();
     if (offer.starsAmount) kb.text(btnText(`Stars: ${offer.starsAmount}`, "star"), `buys:${offerId}`).row();
-    if (hasRub) kb.text(`Оплатить ₽ (СБП) — ${offer.rubAmount} ₽`, `buyp:${offerId}`);
+    if (hasRub) kb.text(`Оплатить ₽ (СБП): ${offer.rubAmount} ₽`, `buyp:${offerId}`);
     await ctx.reply(`«${offer.title}». Выберите способ оплаты:`, { reply_markup: kb });
   });
 

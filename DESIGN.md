@@ -89,10 +89,14 @@ Restrained strategy: two neutral schemes plus a single rose voice.
 **Character:** Native-feeling and quiet. Body text is the platform's own voice; Golos Text appears only where a screen needs one strong headline — a distinctly Cyrillic-native grotesque, not the Inter-family default.
 
 ### Hierarchy
-- **Display** (700, ~28–32px, 1.1): screen hero headings (prompt screen) only.
-- **Title** (600, 17–20px): panel and section titles.
+All sizes are fixed px (this is an app UI, not a fluid web page) and are exposed as `--fs-*` tokens in `glass.css`. Never hard-code `font-size` in TSX — use the tokens or `.fs-*` utility classes.
+
+- **Display** (800, 28px, line-height 1.1, tracking `-0.01em`): one screen hero heading per screen (prompt input, playlist name). Cyrillic glyphs (Ч Щ Д Ж) need the relaxed `-0.01em`, not the `-0.02em` typical of Latin display type.
+- **Subdisplay** (700, 22px, tracking `-0.01em`): the full-screen player title — a rare gap filler between Display and Title.
+- **Title** (700, 19px, 1.15): panel and section titles (`.screen-title`, `h2`).
 - **Body** (400, 16px, 1.45): prompts, track titles, descriptions.
-- **Label** (500, 13–14px): muted metadata, nav labels, chips.
+- **Label** (500–600, 14px, tracking `0.01em`): muted metadata, nav labels, chips, inputs.
+- **Micro** (400, 12px, floor): captions, timestamps, dock tabs. Never go below 12px.
 
 ### Named Rules
 **The One Headline Rule.** At most one display-size heading per screen; everything else stays in the body/title band.

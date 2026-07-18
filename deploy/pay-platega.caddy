@@ -1,0 +1,14 @@
+# Platega webhook ingress — public host pay-platega.xdshka.party routes here
+# via Cloudflare Tunnel. Only the webhook path is exposed; everything else 404s.
+# Append this block to /etc/caddy/Caddyfile on the VPS, then:
+#   caddy validate --config /etc/caddy/Caddyfile
+#   systemctl reload caddy
+:8096 {
+    @hook path /api/platega/webhook
+    handle @hook {
+        reverse_proxy 127.0.0.1:8787
+    }
+    handle {
+        respond 404
+    }
+}

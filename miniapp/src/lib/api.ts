@@ -234,6 +234,61 @@ export interface DownloadRecord {
   createdAt: number;
 }
 
+export interface SavedTrack {
+  uri: string;
+  title: string;
+  artist: string;
+  artwork: string | null;
+  createdAt: number;
+}
+
+export interface ArtistCard {
+  id: string;
+  name: string;
+  artwork?: string;
+}
+
+export interface ArtistDetail {
+  id: string;
+  name: string;
+  artwork?: string;
+  topTracks: Track[];
+  albums: Album[];
+}
+
+export type LyricsResult =
+  | { status: "synced"; lines: { t: number; line: string }[] }
+  | { status: "plain"; text: string }
+  | { status: "notFound" };
+
+export interface Playlist {
+  id: number;
+  name: string;
+  createdAt: number;
+  trackCount: number;
+}
+
+export interface PlaylistTrack {
+  uri: string;
+  title: string;
+  artist: string;
+  artwork: string | null;
+  createdAt: number;
+}
+
+export interface PlaylistDetail extends Playlist {
+  tracks: PlaylistTrack[];
+}
+
+export class PlaylistLimitReachedError extends Error {
+  constructor(
+    public readonly limit: number,
+    public readonly starsPrice: number,
+  ) {
+    super("playlist limit reached");
+  }
+}
+
 export interface HistoryEntry {
   id: number;
   prompt: string;
@@ -329,11 +384,71 @@ export const api = {
   shopConfig: () => request<ShopConfig>("/api/shop-config"),
 
   search: (query: string, limit = 20) =>
-    request<{ tracks: Track[] }>(`/api/search?q=${encodeURIComponent(query)}&limit=${limit}`),
+    request<{ tracks: Track[]; artists: ArtistCard[] }>(`/api/search?q=${encodeURIComponent(query)}&limit=${limit}`),
   searchAlbums: (query: string, limit = 20) =>
     request<{ albums: Album[] }>(`/api/search/albums?q=${encodeURIComponent(query)}&limit=${limit}`),
   albumTracks: (uri: string, limit = 30) =>
     request<{ tracks: Track[] }>(`/api/search/album-tracks?uri=${encodeURIComponent(uri)}&limit=${limit}`),
+
+  artist: (query: { id?: string; name?: string }) => {
+    const params = new URLSearchParams();
+    if (query.id) params.set("id", query.id);
+    if (query.name) params.set("name", query.name);
+    return request<ArtistDetail>(`/api/artist?${params.toString()}`);
+  },
+
+  lyrics: (artist: string, title: string, durationSec?: number) => {
+    const params = new URLSearchParams({ artist, title });
+    if (durationSec) params.set("duration", String(Math.round(durationSec)));
+    return request<LyricsResult>(`/api/lyrics?${params.toString()}`);
+  },
+
+  // --- Player reactions ---
+  reactionStatus: (uri: string) =>
+    request<{ liked: boolean; disliked: boolean }>(`/api/reactions/status?uri=${encodeURIComponent(uri)}`),
+  dislikeTrack: (track: { uri: string; title: string; artist: string }) =>
+    request<{ ok: boolean }>("/api/reactions/dislike", { method: "POST", body: JSON.stringify(track) }),
+  undislikeTrack: (uri: string) =>
+    request<{ ok: boolean }>(`/api/reactions/dislike/${encodeURIComponent(uri)}`, { method: "DELETE" }),
+
+  // --- Playlists ("Музыка") ---
+  playlists: () => request<{ playlists: Playlist[]; limit: number }>("/api/playlists"),
+  playlist: (id: number) => request<{ playlist: PlaylistDetail }>(`/api/playlists/${id}`),
+  createPlaylist: async (name: string) => {
+    const res = await fetch("/api/playlists", {
+      method: "POST",
+      headers: { "content-type": "application/json", "X-Telegram-Init-Data": getInitData() },
+      body: JSON.stringify({ name }),
+    });
+    if (res.status === 403) {
+      const body = (await res.json().catch(() => ({}))) as { limit?: number; starsPrice?: number };
+      throw new PlaylistLimitReachedError(body.limit ?? 2, body.starsPrice ?? 5);
+    }
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(body.error ?? `request failed: ${res.status}`);
+    }
+    return res.json() as Promise<{ playlist: Playlist }>;
+  },
+  renamePlaylist: (id: number, name: string) =>
+    request<{ ok: boolean }>(`/api/playlists/${id}`, { method: "PATCH", body: JSON.stringify({ name }) }),
+  deletePlaylist: (id: number) => request<{ ok: boolean }>(`/api/playlists/${id}`, { method: "DELETE" }),
+  addTrackToPlaylist: async (id: number, track: { uri: string; title: string; artist: string; artwork?: string | null }) => {
+    const res = await fetch(`/api/playlists/${id}/tracks`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "X-Telegram-Init-Data": getInitData() },
+      body: JSON.stringify(track),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(body.error ?? `request failed: ${res.status}`);
+    }
+    return res.json() as Promise<{ ok: boolean; duplicate: boolean }>;
+  },
+  removeTrackFromPlaylist: (id: number, uri: string) =>
+    request<{ ok: boolean }>(`/api/playlists/${id}/tracks/${encodeURIComponent(uri)}`, { method: "DELETE" }),
+  buyPlaylistSlots: (slots = 1) =>
+    request<{ payUrl: string }>("/api/playlists/slots/invoice", { method: "POST", body: JSON.stringify({ slots }) }),
 
   verifyTracks: (uris: string[]) =>
     request<Record<string, TrackVerificationStatus>>(`/api/tracks/verify?uris=${encodeURIComponent(uris.join(","))}`),
@@ -355,6 +470,13 @@ export const api = {
   renameGeneration: (id: number, name: string) =>
     request<{ ok: boolean }>(`/api/generations/${id}`, { method: "PATCH", body: JSON.stringify({ name }) }),
   fetchHistory: () => request<{ history: HistoryEntry[] }>("/api/history"),
+
+  // --- Saved tracks ("Плейлисты") ---
+  myMusic: () => request<{ tracks: SavedTrack[] }>("/api/my-music"),
+  addMyMusic: (track: { uri: string; title: string; artist: string; artwork?: string | null }) =>
+    request<{ ok: boolean }>("/api/my-music", { method: "POST", body: JSON.stringify(track) }),
+  removeMyMusic: (uri: string) =>
+    request<{ ok: boolean }>(`/api/my-music/${encodeURIComponent(uri)}`, { method: "DELETE" }),
 
   // --- Admin: payments management ---
   adminStats: (period: StatsPeriod = "all") => request<AdminStats>(`/api/admin/stats?period=${period}`),

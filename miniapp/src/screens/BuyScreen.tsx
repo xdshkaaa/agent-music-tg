@@ -163,6 +163,11 @@ export default function BuyScreen({ reason, isAdmin = false }: { reason?: string
 
   return (
     <div className="stack">
+      <GlassPanel className="reveal">
+        <h1 className="screen-title">Магазин</h1>
+        <p className="text-muted screen-subtitle">Генерации и подписки на сервис</p>
+      </GlassPanel>
+
       {reason && (
         <GlassPanel role="status"><CreditCard size={18} weight="bold" /> {reason}</GlassPanel>
       )}
@@ -217,9 +222,9 @@ export default function BuyScreen({ reason, isAdmin = false }: { reason?: string
         ) : visible.length === 0 ? (
           <EmptyState icon={<MagnifyingGlass size={40} weight="bold" />} label="В этой категории пока нет предложений" />
         ) : (
-          <div className="stack">
-            {visible.map((o) => (
-              <div className="offer-row" key={o.id}>
+          <div className="stack reveal-stagger">
+            {visible.map((o, i) => (
+              <div className="offer-row" key={o.id} style={{ ["--i" as string]: i }}>
                 <span className="offer-identity">
                   <IconOrEmoji icon={o.icon} size={22} />
                   <span className="offer-info">

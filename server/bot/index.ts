@@ -15,6 +15,7 @@ import { registerModel } from "./model";
 import { registerReset } from "./reset";
 import { registerHistory, buildHistoryView } from "./history";
 import { btnText, heading } from "./emoji";
+import { grantPlaylistSlotsForPayment } from "../access/stars-payments-store";
 
 export function createBot(db: AppDb): Bot<BotContext> {
   const bot = new Bot<BotContext>(env.telegramBotToken);
@@ -31,6 +32,12 @@ export function createBot(db: AppDb): Bot<BotContext> {
   function buildStartKeyboard(ctx: BotContext): InlineKeyboard {
     const kb = new InlineKeyboard()
       .webApp(btnText("Открыть приложение", "app"), env.publicOrigin).row()
+      // Deep-link into a specific screen. Uses the same inline webApp button
+      // type as "Открыть приложение" — a persistent reply-keyboard's webApp
+      // buttons don't reliably deliver initData on all Telegram clients,
+      // which broke auth for these shortcuts.
+      .webApp(btnText("Поиск", "search"), `${env.publicOrigin}?tab=create&mode=search`)
+      .webApp(btnText("Мои плейлисты", "music"), `${env.publicOrigin}?tab=playlists`).row()
       .text(btnText("Купить", "money"), "nav:buy")
       .text(btnText("Профиль", "profile"), "nav:profile")
       .text(btnText("История", "history"), "nav:history").row()
@@ -43,10 +50,14 @@ export function createBot(db: AppDb): Bot<BotContext> {
 
   function buildMenuView(ctx: BotContext): ShopView {
     const shop = getShopSettings(db);
-    const header = `<b>${heading("info", "AGENT MUSIC")}</b>`;
-    const bullets = ["• Сгенерируй плейлист", "• Купи доступ"].join("\n");
-    const body = `${shop.shopName}\n\n${shop.aboutText}`;
-    return { text: `${header}\n${bullets}\n\n${body}`, keyboard: buildStartKeyboard(ctx) };
+    const header = `${heading("info", `<b>AGENT MUSIC</b>`)}`;
+    const features = [
+      `${heading("music", "<b>Генерация</b> плейлиста под настроение")}`,
+      `${heading("search", "<b>Поиск</b> треков и альбомов — прямо в Telegram")}`,
+      `${heading("money", "<b>Оплата</b>: СБП, QR, Telegram Stars")}`,
+    ].join("\n");
+    const body = `${shop.shopName}\n\n<i>${shop.aboutText}</i>`;
+    return { text: `${header}\n\n${features}\n\n${body}`, keyboard: buildStartKeyboard(ctx) };
   }
 
   function buildSupportView(): ShopView {
@@ -65,6 +76,17 @@ export function createBot(db: AppDb): Bot<BotContext> {
         setPhotoFileId(db, ctx.chat.id, first[first.length - 1]!.file_id);
       }
     } catch { /* non-critical; profile will show placeholder */ }
+
+    // Clear the old persistent reply keyboard ("Мои плейлисты" / "Моя
+    // музыка") from earlier builds — Telegram clients keep it displayed
+    // until a message explicitly removes it, even after the bot stops
+    // sending it. Sent as an invisible, self-deleting message; fire-and-forget
+    // so it doesn't delay the real menu below.
+    ctx
+      .reply("⁣", { reply_markup: { remove_keyboard: true } })
+      .then((cleared) => ctx.api.deleteMessage(ctx.chat.id, cleared.message_id))
+      .catch(() => { /* best-effort; non-critical if it fails */ });
+
     const view = buildMenuView(ctx);
     await ctx.reply(view.text, { reply_markup: view.keyboard, parse_mode: "HTML" });
   });
@@ -183,6 +205,26 @@ export function createBot(db: AppDb): Bot<BotContext> {
     { command: "profile", description: "Мой профиль" },
     { command: "support", description: "Поддержка" },
   ]).catch(() => {});
+
+  // Telegram Stars (XTR): approve every checkout our own bot issued, then grant
+  // the purchased playlist slots idempotently by charge id on confirmation.
+  bot.on("pre_checkout_query", async (ctx) => {
+    await ctx.answerPreCheckoutQuery(true).catch(() => {});
+  });
+
+  bot.on("message:successful_payment", async (ctx) => {
+    const payment = ctx.message.successful_payment;
+    const match = payment.invoice_payload.match(/^slots:(-?\d+):(\d+):/);
+    if (!match) return;
+    const chatId = Number(match[1]);
+    const slots = Number(match[2]);
+    const granted = grantPlaylistSlotsForPayment(db, payment.telegram_payment_charge_id, chatId, slots);
+    if (granted) {
+      await ctx
+        .reply(`${heading("check", `Готово! +${slots} к лимиту плейлистов.`)}`, { parse_mode: "HTML" })
+        .catch(() => {});
+    }
+  });
 
   bot.on("message:text", async (ctx) => {
     const chatId = ctx.chat.id;

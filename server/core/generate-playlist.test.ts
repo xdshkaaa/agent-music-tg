@@ -44,6 +44,12 @@ function fakeMusic(opts: { remotePlaylists: boolean; searchTrack?: (artist: stri
     async getArtistTopTracks() {
       return [];
     },
+    async searchArtists() {
+      return [];
+    },
+    async getArtistAlbums() {
+      return [];
+    },
     async searchAlbums() {
       return [];
     },
@@ -91,6 +97,37 @@ function addToPlaylistResult(id: string, tracks: { artist: string; title: string
 }
 
 describe("generatePlaylist", () => {
+  test("hard-filters disliked uris from the finalized result", async () => {
+    const provider = fakeProvider([
+      finalizeResult("Test", [
+        { artist: "Burial", title: "Archangel" },
+        { artist: "Four Tet", title: "Baby" },
+      ]),
+    ]);
+    const music = fakeMusic({ remotePlaylists: false });
+    const { playlist } = await generatePlaylist({
+      provider,
+      music,
+      prompt: "test",
+      dislikedUris: new Set(["ytm:Burial-Archangel"]),
+    });
+    expect(playlist.tracks.map((t) => t.uri)).toEqual(["ytm:Four Tet-Baby"]);
+  });
+
+  test("injects a capped dislike exclusion note into the initial prompt", async () => {
+    let seenMessages: AgentMessage[] = [];
+    const provider: AgentProvider = {
+      id: "fake",
+      async generateMessages(_system, messages) {
+        seenMessages = messages;
+        return finalizeResult("Test", [{ artist: "A", title: "One" }]);
+      },
+    };
+    const music = fakeMusic({ remotePlaylists: false });
+    await generatePlaylist({ provider, music, prompt: "test", dislikedTracks: ["Burial - Archangel"] });
+    expect(seenMessages.some((m) => m.role === "user" && m.content.includes("Burial - Archangel"))).toBe(true);
+  });
+
   test("onEvent emits structured tool_call/tool_result pairs with matching ids", async () => {
     const events: unknown[] = [];
     const provider = fakeProvider([

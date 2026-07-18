@@ -147,6 +147,20 @@ function migrate(db: AppDb): void {
       created_at INTEGER NOT NULL DEFAULT (unixepoch())
     );
     CREATE INDEX IF NOT EXISTS idx_downloads_chat ON downloads(chat_id, created_at DESC);
+
+    -- Saved tracks ("Плейлисты" tab): individual tracks a user starred from
+    -- search results, independent of the AI-generated playlist history.
+    CREATE TABLE IF NOT EXISTS saved_tracks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      chat_id INTEGER NOT NULL,
+      uri TEXT NOT NULL,
+      title TEXT NOT NULL,
+      artist TEXT NOT NULL,
+      artwork TEXT,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      UNIQUE(chat_id, uri)
+    );
+    CREATE INDEX IF NOT EXISTS idx_saved_tracks_chat ON saved_tracks(chat_id, created_at DESC);
   `);
 
   // Opt-in playlist history: generation rows keep flowing for extend/resume,
@@ -218,5 +232,63 @@ function migrate(db: AppDb): void {
       created_at INTEGER NOT NULL DEFAULT (unixepoch())
     );
     CREATE INDEX IF NOT EXISTS idx_grant_history_chat_id ON grant_history(chat_id);
+  `);
+
+  // Per-user extra playlist slots purchased with Telegram Stars (free limit is 2).
+  try { db.run(`ALTER TABLE users ADD COLUMN extra_playlist_slots INTEGER NOT NULL DEFAULT 0;`); } catch {}
+
+  db.run(`
+    -- Player reactions: Dislike only (Like reuses saved_tracks). Excludes the
+    -- track from future generations for that user.
+    CREATE TABLE IF NOT EXISTS track_reactions (
+      chat_id INTEGER NOT NULL,
+      uri TEXT NOT NULL,
+      title TEXT NOT NULL,
+      artist TEXT NOT NULL,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      PRIMARY KEY (chat_id, uri)
+    );
+    CREATE INDEX IF NOT EXISTS idx_track_reactions_chat ON track_reactions(chat_id, created_at DESC);
+
+    -- User-owned playlists ("Музыка" section). Free limit is 2 + extra_playlist_slots.
+    CREATE TABLE IF NOT EXISTS playlists (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      chat_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+    CREATE INDEX IF NOT EXISTS idx_playlists_chat ON playlists(chat_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS playlist_tracks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      playlist_id INTEGER NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+      uri TEXT NOT NULL,
+      title TEXT NOT NULL,
+      artist TEXT NOT NULL,
+      artwork TEXT,
+      position INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      UNIQUE(playlist_id, uri)
+    );
+    CREATE INDEX IF NOT EXISTS idx_playlist_tracks_playlist ON playlist_tracks(playlist_id, position);
+
+    -- LRCLIB lyrics cache, keyed by normalized "artist|title". not_found rows
+    -- expire faster (see server/core/lyrics.ts TTL check) so a real result can
+    -- replace a miss without waiting out the long TTL.
+    CREATE TABLE IF NOT EXISTS lyrics_cache (
+      cache_key TEXT PRIMARY KEY,
+      synced_json TEXT,
+      plain_text TEXT,
+      not_found INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+
+    -- Telegram Stars payments, recorded by charge id for idempotent slot grants.
+    CREATE TABLE IF NOT EXISTS stars_payments (
+      charge_id TEXT PRIMARY KEY,
+      chat_id INTEGER NOT NULL,
+      slots INTEGER NOT NULL,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch())
+    );
   `);
 }
