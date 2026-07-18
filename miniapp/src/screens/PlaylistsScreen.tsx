@@ -34,17 +34,13 @@ function DownloadEntry({
   record,
   onResend,
   onDelete,
-  onDeleteInitiate,
   busy,
-  confirming,
   style,
 }: {
   record: DownloadRecord;
   onResend: () => void;
   onDelete: () => void;
-  onDeleteInitiate?: () => void;
   busy: "resend" | "delete" | null;
-  confirming?: boolean;
   style?: CSSProperties;
 }) {
   const player = usePlayer();
@@ -53,19 +49,26 @@ function DownloadEntry({
   const queue = record.tracks.map((rt) => ({ uri: rt.uri, title: rt.title, artist: rt.artist }));
 
   return (
-    <li className="download-entry" style={style}>
-      <div className="download-entry-inner">
-        <MusicNotes size={18} weight="bold" />
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          style={{ flex: 1, minWidth: 0, textAlign: "left", background: "none", border: "none", color: "inherit", cursor: "pointer", padding: 0 }}
-          aria-expanded={expanded}
-        >
-          <p style={{ fontWeight: 600, margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {record.playlistName}
-          </p>
-          <p className="text-muted fs-micro" style={{ margin: "2px 0 0" }}>
+    <li style={{ listStyle: "none" }}>
+      <div
+        className="track-row"
+        style={style}
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
+        onClick={() => setExpanded((v) => !v)}
+        onKeyDown={(e) => {
+          if (e.key !== "Enter" && e.key !== " ") return;
+          e.preventDefault();
+          setExpanded((v) => !v);
+        }}
+      >
+        <div className="track-artwork track-artwork--icon">
+          <MusicNotes size={20} weight="bold" />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p className="search-row-title">{record.playlistName}</p>
+          <p className="text-muted search-row-meta">
             {new Date(record.createdAt * 1000).toLocaleDateString("ru-RU")} · {record.tracks.length} тр. ·{" "}
             <span
               className={
@@ -79,48 +82,39 @@ function DownloadEntry({
               {DOWNLOAD_STATUS_LABEL[record.status]}
             </span>
           </p>
-        </button>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <button
-            type="button"
-            className="action-btn"
-            aria-label="Скачать ещё раз"
-            title="Скачать ещё раз"
-            disabled={busy !== null || active}
-            onClick={onResend}
-          >
-            {busy === "resend" ? <CircleNotch size={18} className="spin" /> : <ArrowsClockwise size={18} weight="regular" />}
-          </button>
-          {confirming ? (
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-              <button type="button" className="action-btn action-btn--destructive" aria-label="Подтвердить удаление" onClick={onDelete} disabled={busy !== null}>
-                {busy === "delete" ? <CircleNotch size={18} className="spin" /> : <Check size={18} weight="bold" />}
-              </button>
-              <button type="button" className="action-btn" aria-label="Отменить удаление" onClick={onDeleteInitiate}>
-                <X size={18} weight="bold" />
-              </button>
-            </div>
-          ) : (
-          <button
-            type="button"
-            className="action-btn action-btn--destructive"
-            aria-label="Удалить из истории"
-            title="Удалить из истории"
-            disabled={busy !== null}
-            onClick={onDeleteInitiate}
-          >
-            {busy === "delete" ? <CircleNotch size={18} className="spin" /> : <Trash size={18} weight="regular" />}
-          </button>
-          )}
         </div>
+        {busy !== null && <CircleNotch size={16} className="spin" style={{ color: "var(--text-muted)" }} />}
         <button
           type="button"
-          className="action-btn action-btn--neutral"
+          className="icon-btn track-download-btn"
           aria-label={expanded ? "Свернуть" : "Показать треки"}
-          onClick={() => setExpanded((v) => !v)}
+          title={expanded ? "Свернуть" : "Показать треки"}
+          onClick={(e) => {
+            e.stopPropagation();
+            setExpanded((v) => !v);
+          }}
         >
-          {expanded ? <CaretUp size={16} weight="regular" /> : <CaretDown size={16} weight="regular" />}
+          {expanded ? <CaretUp size={18} /> : <CaretDown size={18} />}
         </button>
+        <TrackOverflowMenu
+          actions={[
+            {
+              key: "resend",
+              label: "Скачать ещё раз",
+              icon: <ArrowsClockwise size={18} />,
+              disabled: busy !== null || active,
+              onClick: onResend,
+            },
+            {
+              key: "delete",
+              label: "Удалить из истории",
+              icon: <Trash size={18} />,
+              disabled: busy !== null,
+              destructive: true,
+              onClick: onDelete,
+            },
+          ]}
+        />
       </div>
       {expanded && (
         <ul className="download-entry-tracks">
@@ -214,7 +208,6 @@ function LibrarySection({ onOpen }: { onOpen: (entry: HistoryEntry) => void }) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<{ id: number; kind: "resend" | "delete" } | null>(null);
-  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
 
   useEffect(() => {
     api.fetchHistory()
@@ -280,7 +273,6 @@ function LibrarySection({ onOpen }: { onOpen: (entry: HistoryEntry) => void }) {
   async function handleDelete(record: DownloadRecord) {
     setBusyId({ id: record.id, kind: "delete" });
     setError(null);
-    setConfirmDeleteId(null);
     const previous = downloads;
     setDownloads((list) => list.filter((d) => d.id !== record.id));
     try {
@@ -316,10 +308,8 @@ function LibrarySection({ onOpen }: { onOpen: (entry: HistoryEntry) => void }) {
                 key={`d-${item.record.id}`}
                 record={item.record}
                 busy={busyId?.id === item.record.id ? busyId.kind : null}
-                confirming={confirmDeleteId === item.record.id}
                 onResend={() => handleResend(item.record)}
                 onDelete={() => handleDelete(item.record)}
-                onDeleteInitiate={() => setConfirmDeleteId(confirmDeleteId === item.record.id ? null : item.record.id)}
                 style={{ ["--i" as string]: i }}
               />
             ) : (

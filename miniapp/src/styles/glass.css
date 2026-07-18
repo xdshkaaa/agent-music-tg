@@ -943,6 +943,13 @@ textarea.glass-input {
   background: rgba(0, 0, 0, 0.06);
 }
 
+.track-artwork--icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+}
+
 .nav-row {
   display: flex;
   gap: 10px;
