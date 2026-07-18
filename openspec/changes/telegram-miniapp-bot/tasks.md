@@ -63,7 +63,7 @@
 
 ## 9. VPS deployment
 
-- [x] 9.1 Confirm `miniapp.xdshka.party` A record points to `103.214.69.38` (user-side DNS prerequisite) before proceeding
+- [x] 9.1 Confirm `miniapp.xdshka.party` A record points to `YOUR_VPS_IP` (user-side DNS prerequisite) before proceeding
 - [x] 9.2 Provision VPS: Bun runtime, Caddy install, firewall rules for 80/443
 - [x] 9.3 Write Caddyfile: automatic TLS for `miniapp.xdshka.party`, reverse-proxy `/bot/*`, `/api/*`, `/spotify/*` to the Bun process, serve Mini App static build for everything else
 - [x] 9.4 Write systemd unit for the Bun server process (`Restart=on-failure`, env file reference, enabled on boot)
