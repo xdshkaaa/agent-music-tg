@@ -538,7 +538,7 @@ function AccessPanel() {
             value={newChatId}
             onChange={(e) => setNewChatId(e.target.value)}
           />
-          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, cursor: "pointer" }}>
+          <label className="fs-label" style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
             <input type="checkbox" checked={newIsAdmin} onChange={(e) => setNewIsAdmin(e.target.checked)} />
             Назначить администратором
           </label>

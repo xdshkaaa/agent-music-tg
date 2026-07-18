@@ -18,6 +18,21 @@ import { getPendingClarify, setPendingClarify, clearSession } from "../bot/sessi
 import { startGeneration, resumeGeneration, extendGeneration } from "../core/run-generation";
 import { getUser, upsertUser, listUsers, addCredits, extendSubscription, revokeSubscription, claimTrial, setPhotoFileId, setUserMusicBackend, type User } from "../access/users-store";
 import { countGenerations, saveGeneration, unsaveGeneration, listSavedGenerations, renameGeneration } from "../access/generations-store";
+import { addSavedTrack, removeSavedTrack, listSavedTracks, isSavedTrack } from "../access/saved-tracks-store";
+import { addDislike, removeDislike, isDisliked } from "../access/reactions-store";
+import {
+  listPlaylists,
+  createPlaylist,
+  renamePlaylist,
+  deletePlaylist,
+  getPlaylist,
+  addTrackToPlaylist,
+  removeTrackFromPlaylist,
+  getPlaylistLimit,
+  PlaylistLimitError,
+  STARS_PER_SLOT,
+} from "../access/playlists-store";
+import { getLyrics } from "../core/lyrics";
 import { trialActive } from "../access/entitlements";
 import { env } from "../env";
 import {
@@ -296,6 +311,181 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
     return c.json({ history: listSavedGenerations(db, c.get("chatId")) });
   });
 
+  // --- Saved tracks ("Плейлисты" tab) ------------------------------------
+
+  app.get("/my-music", (c) => {
+    return c.json({ tracks: listSavedTracks(db, c.get("chatId")) });
+  });
+
+  app.post("/my-music", async (c) => {
+    const body = await c.req.json().catch(() => null);
+    const uri = typeof body?.uri === "string" ? body.uri.trim() : "";
+    const title = typeof body?.title === "string" ? body.title.trim() : "";
+    const artist = typeof body?.artist === "string" ? body.artist.trim() : "";
+    const artwork = typeof body?.artwork === "string" ? body.artwork : null;
+    if (!uri || !title || !artist) return c.json({ error: "invalid track" }, 400);
+    addSavedTrack(db, c.get("chatId"), { uri, title, artist, artwork });
+    return c.json({ ok: true });
+  });
+
+  app.delete("/my-music/:uri", (c) => {
+    const uri = decodeURIComponent(c.req.param("uri"));
+    const ok = removeSavedTrack(db, c.get("chatId"), uri);
+    if (!ok) return c.json({ error: "not found" }, 404);
+    return c.json({ ok: true });
+  });
+
+  // --- Lyrics (LRCLIB, server-cached) ------------------------------------
+
+  app.get("/lyrics", async (c) => {
+    const artist = (c.req.query("artist") ?? "").trim().slice(0, 200);
+    const title = (c.req.query("title") ?? "").trim().slice(0, 200);
+    if (!artist || !title) return c.json({ error: "artist and title are required" }, 400);
+    const durationRaw = Number(c.req.query("duration"));
+    const duration = Number.isFinite(durationRaw) && durationRaw > 0 ? durationRaw : undefined;
+    try {
+      const result = await getLyrics(db, artist, title, duration);
+      if (result.kind === "synced") return c.json({ status: "synced", lines: result.lines });
+      if (result.kind === "plain") return c.json({ status: "plain", text: result.text });
+      return c.json({ status: "notFound" });
+    } catch (e) {
+      console.error("[lyrics]", e);
+      return c.json({ status: "notFound" });
+    }
+  });
+
+  // --- Playlists ("Музыка" section) --------------------------------------
+
+  app.get("/playlists", (c) => {
+    const chatId = c.get("chatId");
+    return c.json({ playlists: listPlaylists(db, chatId), limit: getPlaylistLimit(db, chatId) });
+  });
+
+  app.post("/playlists", async (c) => {
+    const chatId = c.get("chatId");
+    const body = await c.req.json().catch(() => null);
+    const name = typeof body?.name === "string" ? body.name.trim() : "";
+    if (!name || name.length > 200) return c.json({ error: "invalid name" }, 400);
+    try {
+      const playlist = createPlaylist(db, chatId, name);
+      return c.json({ playlist });
+    } catch (e) {
+      if (e instanceof PlaylistLimitError) {
+        return c.json({ error: "limit", limit: e.limit, starsPrice: e.starsPrice }, 403);
+      }
+      throw e;
+    }
+  });
+
+  app.get("/playlists/:id", (c) => {
+    const chatId = c.get("chatId");
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
+    const playlist = getPlaylist(db, chatId, id);
+    if (!playlist) return c.json({ error: "not found" }, 404);
+    return c.json({ playlist });
+  });
+
+  app.patch("/playlists/:id", async (c) => {
+    const chatId = c.get("chatId");
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
+    const body = await c.req.json().catch(() => null);
+    const name = typeof body?.name === "string" ? body.name.trim() : "";
+    if (!name || name.length > 200) return c.json({ error: "invalid name" }, 400);
+    const ok = renamePlaylist(db, chatId, id, name);
+    if (!ok) return c.json({ error: "not found" }, 404);
+    return c.json({ ok: true });
+  });
+
+  app.delete("/playlists/:id", (c) => {
+    const chatId = c.get("chatId");
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
+    const ok = deletePlaylist(db, chatId, id);
+    if (!ok) return c.json({ error: "not found" }, 404);
+    return c.json({ ok: true });
+  });
+
+  app.post("/playlists/:id/tracks", async (c) => {
+    const chatId = c.get("chatId");
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
+    const body = await c.req.json().catch(() => null);
+    const uri = typeof body?.uri === "string" ? body.uri.trim() : "";
+    const title = typeof body?.title === "string" ? body.title.trim() : "";
+    const artist = typeof body?.artist === "string" ? body.artist.trim() : "";
+    const artwork = typeof body?.artwork === "string" ? body.artwork : null;
+    if (!uri || !title || !artist) return c.json({ error: "invalid track" }, 400);
+    const result = addTrackToPlaylist(db, chatId, id, { uri, title, artist, artwork });
+    if (result === "not_found") return c.json({ error: "not found" }, 404);
+    return c.json({ ok: true, duplicate: result === "duplicate" });
+  });
+
+  app.delete("/playlists/:id/tracks/:uri", (c) => {
+    const chatId = c.get("chatId");
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
+    const uri = decodeURIComponent(c.req.param("uri"));
+    const ok = removeTrackFromPlaylist(db, chatId, id, uri);
+    if (!ok) return c.json({ error: "not found" }, 404);
+    return c.json({ ok: true });
+  });
+
+  // Stars invoice for extra playlist slots — bot-issued XTR invoice link,
+  // opened in the Mini App via WebApp.openInvoice. Fulfillment happens in the
+  // bot's successful_payment handler (idempotent by charge id).
+  app.post("/playlists/slots/invoice", async (c) => {
+    const chatId = c.get("chatId");
+    const body = await c.req.json().catch(() => null);
+    const rawSlots = Number(body?.slots ?? 1);
+    const slots = Number.isInteger(rawSlots) && rawSlots > 0 && rawSlots <= 20 ? rawSlots : 1;
+    if (!deps.createStarsInvoiceLink) return c.json({ error: "stars payments unavailable" }, 503);
+    try {
+      const payload = `slots:${chatId}:${slots}:${crypto.randomUUID()}`;
+      const payUrl = await deps.createStarsInvoiceLink({
+        title: slots === 1 ? "Доп. слот для плейлиста" : `Доп. слоты для плейлистов (${slots})`,
+        description: `+${slots} к лимиту плейлистов`,
+        payload,
+        starsAmount: slots * STARS_PER_SLOT,
+      });
+      return c.json({ payUrl });
+    } catch (e) {
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
+    }
+  });
+
+  // --- Player reactions (dislike; like continues through /my-music) -----
+
+  app.post("/reactions/dislike", async (c) => {
+    const chatId = c.get("chatId");
+    const body = await c.req.json().catch(() => null);
+    const uri = typeof body?.uri === "string" ? body.uri.trim() : "";
+    const title = typeof body?.title === "string" ? body.title.trim() : "";
+    const artist = typeof body?.artist === "string" ? body.artist.trim() : "";
+    if (!uri || !title || !artist) return c.json({ error: "invalid track" }, 400);
+    // Mutual exclusivity: disliking removes the track from Favorites first.
+    removeSavedTrack(db, chatId, uri);
+    addDislike(db, chatId, { uri, title, artist });
+    return c.json({ ok: true });
+  });
+
+  // Combined like/dislike state for a track (player reaction buttons on open).
+  app.get("/reactions/status", (c) => {
+    const chatId = c.get("chatId");
+    const uri = (c.req.query("uri") ?? "").trim();
+    if (!uri) return c.json({ error: "uri is required" }, 400);
+    return c.json({ liked: isSavedTrack(db, chatId, uri), disliked: isDisliked(db, chatId, uri) });
+  });
+
+  app.delete("/reactions/dislike/:uri", (c) => {
+    const chatId = c.get("chatId");
+    const uri = decodeURIComponent(c.req.param("uri"));
+    const ok = removeDislike(db, chatId, uri);
+    if (!ok) return c.json({ error: "not found" }, 404);
+    return c.json({ ok: true });
+  });
+
   // --- Plain search (no AI agent) ---------------------------------------
 
   app.get("/search", async (c) => {
@@ -312,10 +502,55 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
     const music = createMusicProvider(isMusicBackend(backendId) ? backendId : DEFAULT_BACKEND);
     try {
       const tracks = await music.searchTracks(q, limit);
-      return c.json({ tracks });
+      let artists: Awaited<ReturnType<typeof music.searchArtists>> = [];
+      try {
+        artists = await music.searchArtists(q, 5);
+      } catch (e) {
+        console.error("[search/artists]", e);
+      }
+      return c.json({ tracks, artists });
     } catch (e) {
       console.error("[search]", e);
       return c.json({ error: "search failed" }, 502);
+    }
+  });
+
+  // Resolves an artist page: by id (from a search card) or by name (from the
+  // player's artist-name tap, which only has a display string on hand).
+  app.get("/artist", async (c) => {
+    const chatId = c.get("chatId");
+    const id = (c.req.query("id") ?? "").trim();
+    const name = (c.req.query("name") ?? "").trim().slice(0, 200);
+    if (!id && !name) return c.json({ error: "id or name is required" }, 400);
+    if (isSearchRateLimited(chatId)) {
+      return c.json({ error: "too many requests" }, 429);
+    }
+    const backendId = getActiveBackendId(db, DEFAULT_BACKEND);
+    const music = createMusicProvider(isMusicBackend(backendId) ? backendId : DEFAULT_BACKEND);
+    try {
+      let artistId = id;
+      let artistName = name;
+      if (!artistId) {
+        const resolved = await music.searchArtist(name);
+        if (!resolved) return c.json({ error: "artist not found" }, 404);
+        artistId = resolved.id;
+        artistName = resolved.name;
+      }
+      const [topTracks, albums] = await Promise.all([
+        music.getArtistTopTracks(artistId, 10).catch((e) => {
+          console.error("[artist/topTracks]", e);
+          return [];
+        }),
+        music.getArtistAlbums(artistId, 10).catch((e) => {
+          console.error("[artist/albums]", e);
+          return [];
+        }),
+      ]);
+      const artwork = topTracks[0]?.artwork ?? albums[0]?.artwork;
+      return c.json({ id: artistId, name: artistName || topTracks[0]?.artist || "", artwork, topTracks, albums });
+    } catch (e) {
+      console.error("[artist]", e);
+      return c.json({ error: "artist lookup failed" }, 502);
     }
   });
 

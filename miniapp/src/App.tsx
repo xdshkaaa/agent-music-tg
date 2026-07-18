@@ -5,6 +5,7 @@ import { ClarifyScreen } from "./screens/ClarifyScreen";
 import { ResultsScreen } from "./screens/ResultsScreen";
 import BuyScreen from "./screens/BuyScreen";
 import ProfileScreen from "./screens/ProfileScreen";
+import PlaylistsScreen from "./screens/PlaylistsScreen";
 import { GlassPanel } from "./components/GlassPanel";
 import { ScreenTransition } from "./components/ScreenTransition";
 import { ErrorBanner } from "./components/ErrorBanner";
@@ -16,6 +17,9 @@ import { PlayerProvider, usePlayer } from "./lib/player";
 import { PlayerBar } from "./components/PlayerBar";
 import { BottomNav } from "./components/BottomNav";
 import { PlayerScreen } from "./screens/PlayerScreen";
+import { ArtistScreen } from "./screens/ArtistScreen";
+import { AddToPlaylistSheet } from "./components/AddToPlaylistSheet";
+import { applyAccent, initialAccent } from "./lib/accent";
 
 // Lazy: the admin screen's own chunk is only fetched when isAdmin is true,
 // so it never ships to a regular allowed user's browser. The real
@@ -27,10 +31,11 @@ type Screen =
   | { kind: "clarify"; question: string; options: string[] }
   | { kind: "results"; playlist: FinalizedPlaylist; generationId: number; saved?: boolean }
   | { kind: "buy"; reason?: string }
+  | { kind: "playlists" }
   | { kind: "profile" }
   | { kind: "admin" };
 
-function activeTab(screen: Screen): "create" | "shop" | "profile" | "admin" {
+function activeTab(screen: Screen): "create" | "shop" | "playlists" | "profile" | "admin" {
   switch (screen.kind) {
     case "prompt":
     case "clarify":
@@ -38,6 +43,8 @@ function activeTab(screen: Screen): "create" | "shop" | "profile" | "admin" {
       return "create";
     case "buy":
       return "shop";
+    case "playlists":
+      return "playlists";
     case "profile":
       return "profile";
     case "admin":
@@ -51,8 +58,9 @@ const TAB_ORDER: Record<string, number> = {
   clarify: 0,
   results: 0,
   buy: 2,
-  profile: 3,
-  admin: 4,
+  playlists: 3,
+  profile: 4,
+  admin: 5,
 };
 
 export function App() {
@@ -80,10 +88,17 @@ function AppInner() {
   const screen = history[history.length - 1];
   const [transitionDir, setTransitionDir] = useState<"forward" | "back">("forward");
   const [showPlayer, setShowPlayer] = useState(false);
+  const [artistTarget, setArtistTarget] = useState<{ id?: string; name?: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [events, setEvents] = useState<AgentEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [scheme, setScheme] = useState<"light" | "dark">(() => initialScheme());
+  const [accent, setAccent] = useState<string>(() => initialAccent());
+
+  function changeAccent(value: string) {
+    setAccent(value);
+    applyAccent(value);
+  }
   const [lastGenerate, setLastGenerate] = useState<{ prompt: string } | null>(null);
   const [lastClarify, setLastClarify] = useState<{ answer: string } | null>(null);
   const [lastCreateScreen, setLastCreateScreen] = useState<Screen>({ kind: "prompt" });
@@ -107,8 +122,18 @@ function AppInner() {
     const webApp = getTelegramWebApp();
     webApp?.ready();
     webApp?.expand();
+    applyAccent(accent);
     api.me().then(setMe).catch(() => {});
     api.shopConfig().then(setShopConfig).catch(() => {});
+
+    // Bot inline buttons ("Поиск" / "Мои плейлисты" / "Моя музыка") deep-link
+    // here with ?tab=... so they land on the right screen, not just the root.
+    // mode=search (read by PromptScreen itself) additionally pre-selects the
+    // search tab within "Создать".
+    const tabParam = new URLSearchParams(window.location.search).get("tab");
+    if (tabParam === "playlists") navigate({ kind: "playlists" });
+    else if (tabParam === "profile") navigate({ kind: "profile" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Hot-swap the wallet chip: anything that changes the balance (generation,
@@ -124,19 +149,21 @@ function AppInner() {
   useEffect(() => {
     const webApp = getTelegramWebApp();
     if (!webApp?.BackButton) return;
-    if (showPlayer || history.length > 1) {
+    if (artistTarget || showPlayer || history.length > 1) {
       webApp.BackButton.show();
     } else {
       webApp.BackButton.hide();
     }
-  }, [showPlayer, history.length]);
+  }, [artistTarget, showPlayer, history.length]);
 
   useEffect(() => {
     const webApp = getTelegramWebApp();
     const bb = webApp?.BackButton;
     if (!bb) return;
     const handler = () => {
-      if (showPlayer) {
+      if (artistTarget) {
+        setArtistTarget(null);
+      } else if (showPlayer) {
         setShowPlayer(false);
       } else {
         setHistory(prev => (prev.length > 1 ? prev.slice(0, -1) : prev));
@@ -147,7 +174,7 @@ function AppInner() {
     return () => {
       bb.offClick(handler);
     };
-  }, [showPlayer]);
+  }, [artistTarget, showPlayer]);
 
   useEffect(() => {
     const webApp = getTelegramWebApp();
@@ -239,7 +266,15 @@ function AppInner() {
   function renderScreen(): ReactNode | null {
     switch (screen.kind) {
       case "prompt":
-        return <PromptScreen onSubmit={handleSubmit} busy={busy} events={events} isAdmin={isAdmin} />;
+        return (
+          <PromptScreen
+            onSubmit={handleSubmit}
+            busy={busy}
+            events={events}
+            isAdmin={isAdmin}
+            onOpenArtist={(target) => setArtistTarget(target)}
+          />
+        );
       case "clarify":
         return (
           <ClarifyScreen
@@ -262,11 +297,9 @@ function AppInner() {
         );
       case "buy":
         return <BuyScreen reason={screen.reason} isAdmin={isAdmin} />;
-      case "profile":
+      case "playlists":
         return (
-          <ProfileScreen
-            me={me}
-            onGoShop={() => navigate({ kind: "buy" })}
+          <PlaylistsScreen
             onOpenHistory={(entry: HistoryEntry) =>
               navigate({
                 kind: "results",
@@ -275,6 +308,15 @@ function AppInner() {
                 playlist: { name: entry.playlistName ?? entry.prompt, tracks: entry.tracks },
               })
             }
+          />
+        );
+      case "profile":
+        return (
+          <ProfileScreen
+            me={me}
+            onGoShop={() => navigate({ kind: "buy" })}
+            accent={accent}
+            onChangeAccent={changeAccent}
           />
         );
       case "admin":
@@ -355,14 +397,22 @@ function AppInner() {
               ? { kind: "buy" }
               : t === "create"
                 ? lastCreateScreen
-                : t === "profile"
-                  ? { kind: "profile" }
-                  : { kind: "admin" },
+                : t === "playlists"
+                  ? { kind: "playlists" }
+                  : t === "profile"
+                    ? { kind: "profile" }
+                    : { kind: "admin" },
           );
         }}
       />
     </main>
-      {showPlayer && <PlayerScreen onClose={() => setShowPlayer(false)} />}
+      {showPlayer && (
+        <PlayerScreen onClose={() => setShowPlayer(false)} onOpenArtist={(name) => setArtistTarget({ name })} />
+      )}
+      {artistTarget && (
+        <ArtistScreen target={artistTarget} onClose={() => setArtistTarget(null)} nested={showPlayer} />
+      )}
+      <AddToPlaylistSheet />
     </ErrorBoundary>
   );
 }

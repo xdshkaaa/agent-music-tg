@@ -1,45 +1,44 @@
-import { CircleNotch, Pause, Play, SkipForward, WarningCircle } from "@phosphor-icons/react";
-import { usePlayer, type PlayerTrackInfo } from "../lib/player";
-
-/** Play/pause toggle for a track row; reflects the shared player's state. */
-export function TrackPlayButton({ track, queue, stopPropagation, onBeforePlay }: { track: PlayerTrackInfo; queue?: PlayerTrackInfo[]; stopPropagation?: boolean; onBeforePlay?: () => boolean | void }) {
-  const player = usePlayer();
-  const isActive = player.track?.uri === track.uri;
-  const status = isActive ? player.status : "idle";
-
-  const icon =
-    status === "loading" ? (
-      <CircleNotch size={18} weight="bold" className="spin" />
-    ) : status === "playing" ? (
-      <Pause size={18} weight="fill" />
-    ) : status === "error" ? (
-      <WarningCircle size={18} weight="bold" />
-    ) : (
-      <Play size={18} weight="fill" />
-    );
-
-  return (
-    <button
-      type="button"
-      className={`icon-btn play-btn${isActive ? " active" : ""}`}
-      aria-label={status === "playing" ? `Пауза: ${track.title}` : `Слушать: ${track.title}`}
-      onClick={(e) => {
-        if (stopPropagation) e.stopPropagation();
-        if (onBeforePlay?.() === false) return;
-        player.toggle(track, queue);
-      }}
-    >
-      {icon}
-    </button>
-  );
-}
+import { useEffect, useState } from "react";
+import { CircleNotch, Heart, Pause, Play, SkipForward, WarningCircle } from "@phosphor-icons/react";
+import { usePlayer } from "../lib/player";
+import { api } from "../lib/api";
 
 /** Global mini-player above the dock; rendered only while a track is loaded. */
 export function PlayerBar({ onOpen }: { onOpen?: () => void }) {
   const player = usePlayer();
-  if (!player.track) return null;
-  const { track, status } = player;
+  const track = player.track;
+  const [liked, setLiked] = useState(false);
+  const [liking, setLiking] = useState(false);
+
+  useEffect(() => {
+    setLiked(false);
+    if (!track) return;
+    api
+      .reactionStatus(track.uri)
+      .then(({ liked }) => setLiked(liked))
+      .catch(() => {});
+  }, [track?.uri]);
+
+  if (!track) return null;
+  const { status } = player;
   const hasNext = player.queueIndex >= 0 && player.queueIndex < player.queue.length - 1;
+
+  async function toggleLike(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!track || liking) return;
+    setLiking(true);
+    try {
+      if (liked) {
+        await api.removeMyMusic(track.uri);
+        setLiked(false);
+      } else {
+        await api.addMyMusic({ uri: track.uri, title: track.title, artist: track.artist, artwork: track.artwork });
+        setLiked(true);
+      }
+    } finally {
+      setLiking(false);
+    }
+  }
 
   const playIcon =
     status === "loading" ? (
@@ -71,6 +70,15 @@ export function PlayerBar({ onOpen }: { onOpen?: () => void }) {
             {status === "error" ? "Не удалось воспроизвести" : track.artist}
           </span>
         </span>
+      </button>
+      <button
+        type="button"
+        className={`player-bar-btn player-bar-like-btn${liked ? " active" : ""}`}
+        aria-label={liked ? "Убрать из избранного" : "Нравится"}
+        disabled={liking}
+        onClick={toggleLike}
+      >
+        <Heart size={18} weight={liked ? "fill" : "bold"} />
       </button>
       <button
         type="button"
