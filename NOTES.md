@@ -14,7 +14,7 @@ Raw notes on the user's world: tools, channels, terminology.
 
 - Bun, TypeScript, grammY, Hono
 - bun:sqlite
-- VPS: root@103.214.69.38
+- VPS: root@YOUR_VPS_IP
 - Cloudflare Tunnel, Caddy
 - Crypto Bot (@CryptoBot)
 

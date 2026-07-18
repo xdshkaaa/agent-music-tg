@@ -28,6 +28,6 @@
 
 - **New repo build-out**: this repo currently has no application code (only `openspec/` scaffolding) — this change defines the initial architecture and full implementation surface.
 - **External accounts/services**: Telegram Bot API (bot token provided by user — must be stored only in a server-side `.env`/systemd environment file, never committed), Spotify Web API + a Spotify Developer app (client ID, PKCE — no secret needed), optionally SoundCloud/YouTube Music resolution, one or more LLM provider credentials (Claude/OpenAI/OpenRouter/Ollama) supplied by the admin.
-- **DNS/infra prerequisite**: `miniapp.xdshka.party` must have an A record pointing at `103.214.69.38` before TLS issuance will succeed.
-- **VPS**: `root@103.214.69.38` — new systemd services, reverse proxy config, firewall rule for 80/443, deployed application directories.
+- **DNS/infra prerequisite**: `miniapp.xdshka.party` must have an A record pointing at `YOUR_VPS_IP` before TLS issuance will succeed.
+- **VPS**: `root@YOUR_VPS_IP` — new systemd services, reverse proxy config, firewall rule for 80/443, deployed application directories.
 - **Security-sensitive surfaces**: chat ID allowlist gate (must fail closed), admin-only provider/backend switch (must be unreachable by regular users at both bot-command and Mini App API level, not just hidden in UI), per-user OAuth token storage at rest.

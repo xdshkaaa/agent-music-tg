@@ -4,7 +4,7 @@
 The deployment SHALL serve the Mini App and its API over valid HTTPS at `miniapp.xdshka.party`, with certificates obtained and renewed automatically, and SHALL NOT rely on the bare VPS IP for the Mini App URL.
 
 #### Scenario: DNS is correctly pointed
-- **WHEN** `miniapp.xdshka.party` resolves to `103.214.69.38` and the reverse proxy starts
+- **WHEN** `miniapp.xdshka.party` resolves to `YOUR_VPS_IP` and the reverse proxy starts
 - **THEN** it obtains a valid TLS certificate and serves the Mini App over HTTPS
 
 #### Scenario: DNS is not yet pointed

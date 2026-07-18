@@ -10,7 +10,7 @@ set -euo pipefail
 CONFIG_FILE="$(dirname "$0")/deploy.conf"
 [ -f "$CONFIG_FILE" ] && source "$CONFIG_FILE"
 
-: ${HOST:="root@103.214.69.38"}
+: ${HOST:?"set HOST=root@<vps-ip>"}
 : ${API_DIR:="/opt/agent-music-tg"}
 : ${STATIC_DIR:="/srv/www/miniapp.xdshka.party"}
 : ${KEEP_RELEASES:=5}

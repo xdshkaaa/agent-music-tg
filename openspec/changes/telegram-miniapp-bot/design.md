@@ -3,9 +3,9 @@
 This is a greenfield build in an otherwise empty repo. It reuses the *concepts* proven in `spotify-harness-tui` (agentic LLM tool loop over a music-provider abstraction, multi-provider LLM axis) but the runtime target is completely different: a always-on Telegram bot + web-based Mini App on a single VPS, serving a small fixed set of chat IDs, instead of a single-user local TUI. None of `spotify-harness-tui`'s opentui/TUI code, local config-dir layout, or mpv-based local playback carries over as-is.
 
 Constraints fixed by the user up front:
-- VPS target: `root@103.214.69.38` (deploy over SSH).
+- VPS target: `root@YOUR_VPS_IP` (deploy over SSH).
 - Bot token already issued: `8841965774:AAEa...` (must never be committed; lives only in a server-side env file).
-- Mini App domain: `miniapp.xdshka.party` (user owns it; A record → `103.214.69.38` is a deploy prerequisite).
+- Mini App domain: `miniapp.xdshka.party` (user owns it; A record → `YOUR_VPS_IP` is a deploy prerequisite).
 - Chat ID allowlist gates all access; a subset of the allowlist are admins.
 - Only admins may change the active AI provider and active music backend; regular allowed users must not see that control at all (not just visually hidden — unreachable).
 - Each allowed chat links its own Spotify account (PKCE OAuth), playback via Spotify Connect on that user's own device.
@@ -63,7 +63,7 @@ Mini App is built into static assets locally (or in CI) and the server bundle + 
 - **Single VPS, single process** → one crash takes bot + Mini App + Spotify callback down together. Mitigation: systemd `Restart=on-failure`, plus Caddy staying up independently so static assets/health endpoint remain reachable.
 - **Admin control must be enforced server-side, not just hidden in the UI** → Mitigation: every admin-only Hono route re-checks the caller's chat ID against the admin table from `initData`/webhook update, independent of what the Mini App renders.
 - **SoundCloud/YouTube Music backends can't actually play anything on a VPS** (no local audio device tied to a "user") → Mitigation: explicitly scope them to resolve-only + deep-link behavior in the spec, not silently degraded UX.
-- **DNS not yet pointed at the VPS** → Caddy's automatic TLS issuance will fail until `miniapp.xdshka.party` resolves to `103.214.69.38`. This is a hard prerequisite the user must complete before/at deploy time.
+- **DNS not yet pointed at the VPS** → Caddy's automatic TLS issuance will fail until `miniapp.xdshka.party` resolves to `YOUR_VPS_IP`. This is a hard prerequisite the user must complete before/at deploy time.
 - **PKCE `state`/`code_verifier` must not leak across chats** → Mitigation: bind `state` to chat ID with a short TTL in SQLite, single-use.
 
 ## Migration Plan

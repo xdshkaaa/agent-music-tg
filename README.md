@@ -48,7 +48,7 @@ Infra on the VPS (already wired, only touch if changing ports/domains):
 Every deploy lands in a `releases/<ts>-<sha>` dir under both `/opt/agent-music-tg` and `/srv/www/miniapp.xdshka.party`, with `current` symlinked to the latest. Automatic rollback happens on health check failure. To manually roll back:
 
 ```bash
-ssh root@103.214.69.38
+ssh root@YOUR_VPS_IP
 ls /opt/agent-music-tg/releases          # pick the previous release
 ln -sfn /opt/agent-music-tg/releases/<previous> /opt/agent-music-tg/current
 ln -sfn /srv/www/miniapp.xdshka.party/releases/<previous> /srv/www/miniapp.xdshka.party/current

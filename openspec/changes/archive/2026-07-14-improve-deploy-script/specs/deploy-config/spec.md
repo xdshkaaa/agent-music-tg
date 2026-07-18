@@ -29,7 +29,7 @@
 
 | Переменная | Дефолт | Описание |
 |---|---|---|
-| `HOST` | `root@103.214.69.38` | SSH-таргет |
+| `HOST` | `root@YOUR_VPS_IP` | SSH-таргет |
 | `API_DIR` | `/opt/agent-music-tg` | Директория серверного кода на VPS |
 | `STATIC_DIR` | `/srv/www/miniapp.xdshka.party` | Директория статики Mini App на VPS |
 | `SSH_OPTS` | `-o ConnectTimeout=25 -o ConnectionAttempts=5 ...` | SSH флаги |

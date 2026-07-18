@@ -2,7 +2,7 @@
 
 ## Context
 
-Прод-инцидент: https://miniapp.xdshka.party/ отдаёт 404. Диагностика на VPS (103.214.69.38):
+Прод-инцидент: https://miniapp.xdshka.party/ отдаёт 404. Диагностика на VPS (YOUR_VPS_IP):
 
 - `systemctl is-active agent-music-tg` → active; `curl http://127.0.0.1:8787/healthz` → 200. API живой.
 - `readlink /srv/www/miniapp.xdshka.party/current` → `releases/20260714-105705-b5adc42` — **директории не существует**. То же для `/opt/agent-music-tg/current`.
