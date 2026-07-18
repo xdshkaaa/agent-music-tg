@@ -313,6 +313,10 @@ type ProfileTab = "Покупки" | "Библиотека";
 
 const MUSIC_BACKENDS = ["youtube-music", "soundcloud"] as const;
 type MusicBackendId = (typeof MUSIC_BACKENDS)[number];
+const MUSIC_BACKEND_LABELS: Record<MusicBackendId, string> = {
+  "youtube-music": "YouTube Music",
+  soundcloud: "SoundCloud",
+};
 
 function MusicBackendPicker({ me }: { me: MeResponse | null }) {
   const [backend, setBackend] = useState<MusicBackendId>(
@@ -350,6 +354,7 @@ function MusicBackendPicker({ me }: { me: MeResponse | null }) {
         role="radiogroup"
         fill
         options={MUSIC_BACKENDS}
+        labels={MUSIC_BACKEND_LABELS}
         value={backend}
         onChange={handleChange}
       />

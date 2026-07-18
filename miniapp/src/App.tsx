@@ -311,19 +311,21 @@ function AppInner() {
           {shopConfig?.headerTitle || "agent music"}
         </span>
         <span className="app-top-actions">
-          <button
-            type="button"
-            className="wallet-badge"
-            aria-label={`Генераций осталось: ${me?.credits ?? 0}`}
-            title="Генерации"
-            onClick={() => navigate({ kind: "profile" })}
-          >
-            <Wallet size={14} weight="bold" />
-            <span className="wallet-count">{me?.credits ?? 0}</span>
-            {me?.trial?.active && me.trial.creditsLeft > 0 ? (
-              <span className="wallet-trial">+{me.trial.creditsLeft}</span>
-            ) : null}
-          </button>
+          {tab !== "profile" && (
+            <button
+              type="button"
+              className="wallet-badge"
+              aria-label={`Генераций осталось: ${me?.credits ?? 0}`}
+              title="Генерации"
+              onClick={() => navigate({ kind: "profile" })}
+            >
+              <Wallet size={14} weight="bold" />
+              <span className="wallet-count">{me?.credits ?? 0}</span>
+              {me?.trial?.active && me.trial.creditsLeft > 0 ? (
+                <span className="wallet-trial">+{me.trial.creditsLeft}</span>
+              ) : null}
+            </button>
+          )}
           <button
             type="button"
             className="theme-toggle"
