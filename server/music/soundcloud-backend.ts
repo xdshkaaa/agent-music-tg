@@ -1,4 +1,4 @@
-import type { Album, MusicProvider, ProviderCapabilities, Track } from "./types";
+import type { Album, ArtistCard, MusicProvider, ProviderCapabilities, Track } from "./types";
 
 const API_BASE = "https://api-v2.soundcloud.com";
 
@@ -109,6 +109,22 @@ export class SoundCloudBackend implements MusicProvider {
     const data = await this.request(`/search/users?q=${q}&limit=1`);
     const item = (data.collection ?? [])[0];
     return item ? { id: String(item.id), name: item.username } : null;
+  }
+
+  async searchArtists(name: string, rawLimit = 5): Promise<ArtistCard[]> {
+    const q = encodeURIComponent(name);
+    const limit = clampLimit(rawLimit, 10);
+    const data = await this.request(`/search/users?q=${q}&limit=${limit}`);
+    return ((data.collection ?? []) as any[]).slice(0, limit).map((item) => ({
+      id: String(item.id),
+      name: item.username,
+      artwork: item.avatar_url ?? undefined,
+    }));
+  }
+
+  /** SoundCloud has no album/latest-releases concept surfaced here — omitted client-side. */
+  async getArtistAlbums(): Promise<Album[]> {
+    return [];
   }
 
   async getArtistTopTracks(artistId: string, rawLimit = 5): Promise<Track[]> {

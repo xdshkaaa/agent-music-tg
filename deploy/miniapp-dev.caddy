@@ -1,0 +1,32 @@
+# Site block for miniapp-dev.xdshka.party — the TEST-bot Mini App. Appended
+# to /etc/caddy/Caddyfile on the VPS as its own :PORT block, same convention
+# as miniapp.caddy but pointed at the test API (port 8788) and its own
+# static dir so initData signed by the TEST bot verifies against the TEST
+# bot's TELEGRAM_BOT_TOKEN instead of prod's.
+:8095 {
+	root * /srv/www/miniapp-dev.xdshka.party/current/dist
+	encode zstd gzip
+
+	@api path /api/*
+	handle @api {
+		reverse_proxy 127.0.0.1:8788
+	}
+
+	handle {
+		try_files {path} /index.html
+		file_server
+	}
+
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		-Server
+	}
+
+	log {
+		output file /var/log/caddy/miniapp-dev.xdshka.party.access.log
+		format console
+	}
+}

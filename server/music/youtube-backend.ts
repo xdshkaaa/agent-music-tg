@@ -1,4 +1,4 @@
-import type { Album, MusicProvider, ProviderCapabilities, Track } from "./types";
+import type { Album, ArtistCard, MusicProvider, ProviderCapabilities, Track } from "./types";
 import { withTimeout } from "../core/concurrency";
 
 const SEARCH_TIMEOUT_MS = 15_000;
@@ -7,6 +7,7 @@ interface YtmApi {
   searchSongs(query: string): Promise<any[]>;
   searchArtists(query: string): Promise<any[]>;
   getArtistSongs(artistId: string): Promise<any[]>;
+  getArtistAlbums(artistId: string): Promise<any[]>;
   searchAlbums(query: string): Promise<any[]>;
   getAlbum(albumId: string): Promise<any>;
 }
@@ -80,6 +81,28 @@ export class YouTubeMusicBackend implements MusicProvider {
     const api = await this.ensureApi();
     const songs = await api.getArtistSongs(artistId);
     return songs.slice(0, limit).map(toTrack);
+  }
+
+  async searchArtists(query: string, limit = 5): Promise<ArtistCard[]> {
+    const api = await this.ensureApi();
+    const artists = await withTimeout(api.searchArtists(query), SEARCH_TIMEOUT_MS, [] as any[]);
+    return artists.slice(0, limit).map((a: any) => ({
+      id: a.artistId,
+      name: a.name,
+      artwork: a.thumbnails?.at(-1)?.url,
+    }));
+  }
+
+  async getArtistAlbums(artistId: string, limit = 10): Promise<Album[]> {
+    const api = await this.ensureApi();
+    const albums = await withTimeout(api.getArtistAlbums(artistId), SEARCH_TIMEOUT_MS, [] as any[]);
+    return albums.slice(0, limit).map((a: any) => ({
+      uri: `ytm:album:${a.albumId}`,
+      title: a.name,
+      artist: a.artist?.name ?? "",
+      artwork: a.thumbnails?.at(-1)?.url,
+      deepLink: `https://music.youtube.com/browse/MPREb_${a.albumId}`,
+    }));
   }
 
   async searchAlbums(query: string, limit = 10): Promise<Album[]> {

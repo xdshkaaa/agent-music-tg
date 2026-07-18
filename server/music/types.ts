@@ -20,6 +20,13 @@ export interface Album {
   deepLink?: string;
 }
 
+export interface ArtistCard {
+  /** Provider-specific artist id (opaque; pass back verbatim to getArtistAlbums/getArtistTopTracks). */
+  id: string;
+  name: string;
+  artwork?: string;
+}
+
 export interface RemotePlaylist {
   id: string;
   uri: string;
@@ -45,6 +52,10 @@ export interface MusicProvider {
   searchTracks(query: string, limit?: number): Promise<Track[]>;
   searchArtist(name: string): Promise<{ id: string; name: string } | null>;
   getArtistTopTracks(artistId: string, limit?: number): Promise<Track[]>;
+  /** Free-text search returning up to `limit` candidate artist cards. */
+  searchArtists(query: string, limit?: number): Promise<ArtistCard[]>;
+  /** Latest albums for a resolved artist; empty when the backend has no such data. */
+  getArtistAlbums(artistId: string, limit?: number): Promise<Album[]>;
 
   /** Free-text search returning up to `limit` candidate albums for a phrase. */
   searchAlbums(query: string, limit?: number): Promise<Album[]>;

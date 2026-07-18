@@ -13,6 +13,8 @@ Telegram bot + Mini App that turns a mood/request into a playlist via an AI agen
   - `--no-typecheck` — Skip TypeScript type check
   - `--dirty` — Allow deploy with uncommitted changes or from non-main branch
 
+**Agent deploy rule**: always deploy via `./deploy/deploy-test.sh`, never `deploy.sh` or manual steps, unless user explicitly says otherwise.
+
 ## Setup
 
 ```bash

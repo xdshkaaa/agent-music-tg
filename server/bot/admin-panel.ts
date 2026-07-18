@@ -379,7 +379,7 @@ export async function handleAdminText(ctx: BotContext, db: AppDb, send: SendFn):
       return true;
     }
     setAdminFlow(db, chatId, { kind: "admin_issuance_credits_amount", targetId });
-    await ctx.reply("Сколько credits начислить? (отрицательное — списать)");
+    await ctx.reply("Сколько credits начислить? (отрицательное значение: списать)");
     return true;
   }
 
@@ -629,7 +629,7 @@ export async function handleAdminText(ctx: BotContext, db: AppDb, send: SendFn):
       const priceParts = [`${offer.amount} ${offer.asset}`];
       if (offer.starsAmount) priceParts.push(`${offer.starsAmount} Stars`);
       if (offer.rubAmount) priceParts.push(`${offer.rubAmount} ₽`);
-      await ctx.reply(`Пакет создан: ${offer.title} — ${priceParts.join(" / ")}.`);
+      await ctx.reply(`Пакет создан: ${offer.title} (${priceParts.join(" / ")}).`);
       return true;
     }
   }

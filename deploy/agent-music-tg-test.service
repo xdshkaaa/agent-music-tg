@@ -1,0 +1,17 @@
+[Unit]
+Description=Agent Music Telegram Bot (TEST) + API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/agent-music-tg-test/current
+# .env lives directly under /opt/agent-music-tg-test (not inside a release
+# dir) so it survives every deploy untouched.
+EnvironmentFile=/opt/agent-music-tg-test/.env
+ExecStart=/root/.bun/bin/bun run server/index.ts
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

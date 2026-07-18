@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { BookmarkSimple, CheckCircle, CircleNotch, DownloadSimple, PencilSimple, Plus, WarningCircle } from "@phosphor-icons/react";
+import { BookmarkSimple, CheckCircle, CircleNotch, DownloadSimple, ListPlus, PencilSimple, Plus, WarningCircle } from "@phosphor-icons/react";
 import { GlassPanel } from "../components/GlassPanel";
-import { TrackPlayButton } from "../components/PlayerBar";
+import { TrackOverflowMenu } from "../components/TrackOverflowMenu";
+import { requestAddToPlaylist } from "../components/AddToPlaylistButton";
 import { usePlayer } from "../lib/player";
 import { api, type FinalizedPlaylist, type Track, type TrackVerificationStatus } from "../lib/api";
 
 type DownloadState = { kind: "idle" } | { kind: "sending" } | { kind: "sent" } | { kind: "error"; message: string };
-type ToastState = { message: string } | null;
 
 export function ResultsScreen({
   playlist,
@@ -32,9 +32,13 @@ export function ResultsScreen({
   const [nameDraft, setNameDraft] = useState(playlist.name);
   const [renameBusy, setRenameBusy] = useState(false);
   const [verification, setVerification] = useState<Record<string, TrackVerificationStatus>>({});
-  const [toast] = useState<ToastState>(null);
+  const [savedTracks, setSavedTracks] = useState<Record<string, boolean>>({});
   const polling = useRef(false);
   const done = useRef(false);
+
+  useEffect(() => {
+    api.myMusic().then(({ tracks }) => setSavedTracks(Object.fromEntries(tracks.map((t) => [t.uri, true])))).catch(() => {});
+  }, []);
 
   const uris = current.tracks.map((t) => t.uri);
   const visibleTracks = current.tracks.filter((t) => verification[t.uri] !== "unavailable");
@@ -110,13 +114,19 @@ export function ResultsScreen({
     }
   }
 
-  async function handleTrackDownload(e: React.MouseEvent, track: Track) {
-    e.stopPropagation();
+  /** Merged action (screen-refinement D7): downloads the track to chat AND saves it to Favorites in one tap. */
+  async function handleTrackDownload(track: Track) {
     if (trackDownloads[track.uri]?.kind === "sending") return;
     setTrackDownloads((m) => ({ ...m, [track.uri]: { kind: "sending" } }));
     try {
-      await api.download(`${track.title} — ${track.artist}`, [track]);
+      await Promise.all([
+        api.download(`${track.title} — ${track.artist}`, [track]),
+        savedTracks[track.uri]
+          ? Promise.resolve()
+          : api.addMyMusic({ uri: track.uri, title: track.title, artist: track.artist, artwork: track.artwork }),
+      ]);
       downloadedUris.current.add(track.uri);
+      setSavedTracks((m) => ({ ...m, [track.uri]: true }));
       setTrackDownloads((m) => ({ ...m, [track.uri]: { kind: "sent" } }));
       window.dispatchEvent(new CustomEvent("download-created"));
     } catch (err) {
@@ -266,10 +276,10 @@ export function ResultsScreen({
               <div className="track-artwork" />
             )}
             <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              <p className="search-row-title">
                 {track.title}
               </p>
-              <p className="text-muted" style={{ fontSize: 13 }}>
+              <p className="text-muted fs-label">
                 {track.artist}
               </p>
             </div>
@@ -278,61 +288,59 @@ export function ResultsScreen({
               type="button"
               className="icon-btn track-download-btn"
               aria-label={
-                trackDownloads[track.uri]?.kind === "sending"
-                  ? "Отправляю…"
-                  : trackDownloads[track.uri]?.kind === "sent"
-                    ? "Отправлено в чат"
-                    : "Сохранить трек"
+                trackDownloads[track.uri]?.kind === "sent" || savedTracks[track.uri]
+                  ? "Отправлено в чат и в избранном"
+                  : "Скачать и добавить в избранное"
               }
               title={
-                trackDownloads[track.uri]?.kind === "sending"
-                  ? "Отправляю…"
-                  : trackDownloads[track.uri]?.kind === "sent"
-                    ? "Отправлено в чат"
-                    : "Сохранить трек"
+                trackDownloads[track.uri]?.kind === "sent" || savedTracks[track.uri]
+                  ? "Отправлено в чат и в избранном"
+                  : "Скачать и добавить в избранное"
               }
               disabled={trackDownloads[track.uri]?.kind === "sending"}
-              onClick={(e) => void handleTrackDownload(e, track)}
+              onClick={(e) => {
+                e.stopPropagation();
+                void handleTrackDownload(track);
+              }}
             >
               {trackDownloads[track.uri]?.kind === "sending" ? (
                 <CircleNotch size={18} className="spin" />
-              ) : trackDownloads[track.uri]?.kind === "sent" ? (
+              ) : trackDownloads[track.uri]?.kind === "sent" || savedTracks[track.uri] ? (
                 <CheckCircle size={18} weight="fill" />
               ) : (
                 <DownloadSimple size={18} />
               )}
             </button>
-            <TrackPlayButton
-              track={{ uri: track.uri, title: track.title, artist: track.artist, artwork: track.artwork }}
-              queue={current.tracks.map((t) => ({ uri: t.uri, title: t.title, artist: t.artist, artwork: t.artwork }))}
-              stopPropagation
+            <TrackOverflowMenu
+              actions={[
+                {
+                  key: "add-to-playlist",
+                  label: "Добавить в плейлист",
+                  icon: <ListPlus size={18} weight="bold" />,
+                  onClick: () =>
+                    requestAddToPlaylist({ uri: track.uri, title: track.title, artist: track.artist, artwork: track.artwork }),
+                },
+              ]}
             />
           </div>
         ))}
         </div>
       )}
-      {toast && (
-        <div className="mt-12" style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <p role="alert" style={{ flex: 1, minWidth: 0 }}>
-            <WarningCircle size={16} weight="bold" /> {toast.message}
-          </p>
-        </div>
-      )}
       {download.kind === "error" && (
-        <div className="error-row mt-12" style={{ fontSize: 13 }}>
+        <div className="error-row mt-12">
           <span className="error-row-icon">
             <WarningCircle size={16} weight="bold" />
           </span>
           <p role="alert" className="error-row-message">
             {download.message}
           </p>
-          <button className="glass-button" onClick={() => setDownload({ kind: "idle" })} style={{ padding: "6px 12px", fontSize: 13 }}>
+          <button className="glass-button" onClick={() => setDownload({ kind: "idle" })} style={{ padding: "6px 12px" }}>
             Повторить
           </button>
         </div>
       )}
       {extendError && (
-        <div className="error-row mt-12" style={{ fontSize: 13 }}>
+        <div className="error-row mt-12">
           <span className="error-row-icon">
             <WarningCircle size={16} weight="bold" />
           </span>

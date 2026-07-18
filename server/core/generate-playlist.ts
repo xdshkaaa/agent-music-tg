@@ -61,6 +61,10 @@ export interface GeneratePlaylistOptions {
   baseName?: string;
   /** Override the system prompt (used to inject extend-mode context). */
   systemPrompt?: string;
+  /** Capped "artist - title" list of tracks the user disliked; nudges the agent away from them. */
+  dislikedTracks?: string[];
+  /** Uris to hard-filter out of the finalized result even if the agent proposes them. */
+  dislikedUris?: Set<string>;
 }
 
 export interface GeneratePlaylistResult {
@@ -151,7 +155,7 @@ async function resolveAndFinalize(
   music: MusicProvider,
   args: FinalizeArgs,
   cache: Map<string, unknown>,
-  opts?: { baseProvided?: boolean },
+  opts?: { baseProvided?: boolean; dislikedUris?: Set<string> },
 ): Promise<FinalizedPlaylist> {
   const found = await mapWithConcurrency(args.tracks, SEARCH_CONCURRENCY, async (t) => {
     const key = callKey("searchTrack", { artist: t.artist, title: t.title });
@@ -162,7 +166,8 @@ async function resolveAndFinalize(
     }
     return track;
   });
-  const resolved = found.filter((t): t is Track => t != null);
+  const dislikedUris = opts?.dislikedUris;
+  const resolved = found.filter((t): t is Track => t != null && !(dislikedUris?.has(t.uri) ?? false));
   // In extend mode the base playlist may already contribute tracks, so an empty
   // addition is acceptable as long as the final list is non-empty.
   if (resolved.length === 0 && !opts?.baseProvided) throw new NoTracksResolvedError();
@@ -193,12 +198,22 @@ export async function generatePlaylist(opts: GeneratePlaylistOptions): Promise<G
   const baseTracks = opts.baseTracks ?? [];
   const addedTracks: { artist: string; title: string }[] = [];
   let messages: AgentMessage[] = opts.resumeMessages ?? [{ role: "user", content: opts.prompt }];
+  if (!opts.resumeMessages && opts.dislikedTracks && opts.dislikedTracks.length > 0) {
+    messages.push({
+      role: "user",
+      content: `Не предлагай эти треки — пользователю они не нравятся: ${opts.dislikedTracks.join(", ")}`,
+    });
+  }
   let clarifyCount = opts.resumeClarifyRound ?? 0;
   const seenCalls = new Map<string, unknown>();
   let consecutiveEmptyTurns = 0;
 
+  // Debug hook: force every AI search to error out on a post-clarify resume,
+  // so the error path after the clarify step is always exercised.
+  let forceSearchErrorAfterClarify = false;
   if (opts.resumeClarifyAnswer !== undefined) {
     messages = [...messages, { role: "user", content: opts.resumeClarifyAnswer }];
+    forceSearchErrorAfterClarify = true;
   }
 
   for (let i = 0; i < maxIterations; i++) {
@@ -293,6 +308,10 @@ export async function generatePlaylist(opts: GeneratePlaylistOptions): Promise<G
       dispatchable.push({ call, key, slot: slots.length - 1 });
     }
 
+    if (forceSearchErrorAfterClarify && dispatchable.some((d) => d.call.name !== "clarify")) {
+      throw new Error("forced search error after clarify (debug)");
+    }
+
     await mapWithConcurrency(dispatchable, SEARCH_CONCURRENCY, async ({ call, key, slot }) => {
       try {
         const dispatchResult = await dispatchTool(call.name, call.args, {
@@ -339,7 +358,7 @@ export async function generatePlaylist(opts: GeneratePlaylistOptions): Promise<G
           opts.music,
           { name, tracks: allTracks },
           seenCalls,
-          { baseProvided: isExtend && baseTracks.length > 0 },
+          { baseProvided: isExtend && baseTracks.length > 0, dislikedUris: opts.dislikedUris },
         );
         return { playlist, messages };
       } catch (e) {
@@ -379,7 +398,7 @@ export async function generatePlaylist(opts: GeneratePlaylistOptions): Promise<G
         opts.music,
         { name: opts.baseName || "Playlist", tracks: fallbackTracks },
         seenCalls,
-        { baseProvided: isExtend && baseTracks.length > 0 },
+        { baseProvided: isExtend && baseTracks.length > 0, dislikedUris: opts.dislikedUris },
       );
       return { playlist, messages };
     } catch (e) {

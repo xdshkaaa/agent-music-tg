@@ -4,6 +4,8 @@ import {
   CheckCircle,
   CircleNotch,
   DownloadSimple,
+  HeartStraight,
+  ListPlus,
   MagnifyingGlass,
   CaretRightIcon,
   Sparkle,
@@ -12,8 +14,10 @@ import {
 } from "@phosphor-icons/react";
 import { GlassPanel } from "../components/GlassPanel";
 import { ReasoningTranscript } from "../components/ReasoningTranscript";
-import { TrackPlayButton } from "../components/PlayerBar";
-import { api, type Album, type Track } from "../lib/api";
+import { TrackOverflowMenu } from "../components/TrackOverflowMenu";
+import { requestAddToPlaylist } from "../components/AddToPlaylistButton";
+import { api, type Album, type ArtistCard, type Track } from "../lib/api";
+import { usePlayer } from "../lib/player";
 import type { AgentEvent } from "../lib/reasoning";
 import { useTextScramble } from "../lib/useTextScramble";
 
@@ -109,24 +113,61 @@ export function PromptScreen({
   busy,
   events,
   isAdmin,
+  onOpenArtist,
 }: {
   onSubmit: (prompt: string) => void;
   busy: boolean;
   events: AgentEvent[];
   isAdmin?: boolean;
+  onOpenArtist: (target: { id?: string; name?: string }) => void;
 }) {
+  const player = usePlayer();
   const [prompt, setPrompt] = useState("");
-  const [mode, setMode] = useState<Mode>("ai");
+  const [mode, setMode] = useState<Mode>(() =>
+    new URLSearchParams(window.location.search).get("mode") === "search" ? "search" : "ai",
+  );
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const [tracks, setTracks] = useState<Track[]>([]);
+  const [serverArtists, setServerArtists] = useState<ArtistCard[]>([]);
   const [albums, setAlbums] = useState<Album[]>([]);
   const [searchStatus, setSearchStatus] = useState<"idle" | "loading" | "error">("idle");
   const [searchError, setSearchError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Record<string, AlbumState>>({});
   const [trackDownloads, setTrackDownloads] = useState<Record<string, DownloadState>>({});
+  const [savedTracks, setSavedTracks] = useState<Record<string, boolean>>({});
+  const [savingTracks, setSavingTracks] = useState<Record<string, boolean>>({});
   const [recent, setRecent] = useState<string[]>(() => loadRecent());
   const requestId = useRef(0);
+
+  useEffect(() => {
+    api
+      .myMusic()
+      .then(({ tracks }) => {
+        setSavedTracks(Object.fromEntries(tracks.map((t) => [t.uri, true])));
+      })
+      .catch(() => {
+        // leave saved-state empty; toggling still works, just without prior hydration
+      });
+  }, []);
+
+  async function toggleMyMusic(track: Track) {
+    const isSaved = !!savedTracks[track.uri];
+    setSavingTracks((prev) => ({ ...prev, [track.uri]: true }));
+    try {
+      if (isSaved) {
+        await api.removeMyMusic(track.uri);
+        setSavedTracks((prev) => ({ ...prev, [track.uri]: false }));
+      } else {
+        await api.addMyMusic({ uri: track.uri, title: track.title, artist: track.artist, artwork: track.artwork });
+        setSavedTracks((prev) => ({ ...prev, [track.uri]: true }));
+      }
+    } catch {
+      // leave state unchanged on failure; user can retry
+    } finally {
+      setSavingTracks((prev) => ({ ...prev, [track.uri]: false }));
+    }
+  }
 
   const canSubmit = mode === "ai" && !busy && prompt.trim().length > 0;
 
@@ -136,10 +177,16 @@ export function PromptScreen({
   const heroFull = `${heroPhrase.before}${heroPhrase.accent}${heroPhrase.after}`;
   const { displayText: heroDisplay, isComplete: heroComplete } = useTextScramble(heroFull, heroTrigger, 500);
 
-  const artists = useMemo(
-    () => (mode === "search" && prompt.trim() ? deriveArtists(prompt, tracks, albums) : []),
-    [mode, prompt, tracks, albums],
-  );
+  // Prefer real artist cards from the backend (carry an id, so tapping opens
+  // ArtistScreen directly); fall back to names derived from track/album hits
+  // when the backend has none (still openable, resolved by name server-side).
+  const artists: (ArtistHit & { id?: string })[] = useMemo(() => {
+    if (mode !== "search" || !prompt.trim()) return [];
+    if (serverArtists.length > 0) {
+      return serverArtists.map((a) => ({ id: a.id, name: a.name, artwork: a.artwork ?? null }));
+    }
+    return deriveArtists(prompt, tracks, albums);
+  }, [mode, prompt, tracks, albums, serverArtists]);
 
   const hasResults = tracks.length > 0 || albums.length > 0 || artists.length > 0;
   const queryActive = mode === "search" && prompt.trim().length > 0;
@@ -190,6 +237,7 @@ export function PromptScreen({
           const nextAlbums = albumRes.status === "fulfilled" ? albumRes.value.albums : [];
           setTracks(nextTracks);
           setAlbums(nextAlbums);
+          setServerArtists(trackRes.status === "fulfilled" ? (trackRes.value.artists ?? []) : []);
           if (trackRes.status === "rejected" && albumRes.status === "rejected") {
             const err = trackRes.reason;
             setSearchError(err instanceof Error ? err.message : String(err));
@@ -261,21 +309,12 @@ export function PromptScreen({
     });
   }
 
-  function pickArtist(name: string) {
-    setPrompt(name);
-    requestAnimationFrame(() => {
-      autoGrow();
-      inputRef.current?.focus();
-    });
-  }
-
   const MODES: { id: Mode; label: string; icon: typeof Sparkle }[] = [
     { id: "ai", label: "AI", icon: Sparkle },
     { id: "search", label: "Поиск", icon: MagnifyingGlass },
   ];
 
-  async function handleTrackDownload(e: React.MouseEvent, track: Track) {
-    e.stopPropagation();
+  async function handleTrackDownload(track: Track) {
     if (trackDownloads[track.uri]?.kind === "sending") return;
     setTrackDownloads((m) => ({ ...m, [track.uri]: { kind: "sending" } }));
     try {
@@ -384,7 +423,7 @@ export function PromptScreen({
           )}
 
           {searchStatus === "error" && (
-            <div className="error-row search-status" style={{ fontSize: 13 }}>
+            <div className="error-row search-status">
               <span className="error-row-icon">
                 <WarningCircle size={16} weight="bold" />
               </span>
@@ -410,13 +449,13 @@ export function PromptScreen({
             <section className="search-section">
               <h2 className="search-section-title">Исполнители</h2>
               <div className="stack reveal-stagger">
-                {artists.map(({ name, artwork }, i) => (
+                {artists.map(({ id, name, artwork }, i) => (
                   <button
-                    key={name}
+                    key={id ?? name}
                     type="button"
                     className="track-row search-artist-row"
                     style={{ ["--i" as string]: i }}
-                    onClick={() => pickArtist(name)}
+                    onClick={() => onOpenArtist(id ? { id } : { name })}
                   >
                     <span className="search-artist-avatar" aria-hidden>
                       {artwork ? <img src={artwork} alt="" /> : <User size={18} weight="bold" />}
@@ -511,16 +550,57 @@ export function PromptScreen({
                             <p className="text-muted" style={{ padding: "4px 8px" }}>Пусто</p>
                           )}
                           {open.tracks.map((track) => (
-                            <div className="track-row track-sub" key={track.uri}>
+                            <div
+                              className="track-row track-sub"
+                              key={track.uri}
+                              role="button"
+                              tabIndex={0}
+                              onClick={() =>
+                                player.toggle(
+                                  { uri: track.uri, title: track.title, artist: track.artist, artwork: track.artwork },
+                                  open.tracks.map((t) => ({ uri: t.uri, title: t.title, artist: t.artist, artwork: t.artwork })),
+                                )
+                              }
+                              onKeyDown={(e) => {
+                                if (e.key !== "Enter" && e.key !== " ") return;
+                                e.preventDefault();
+                                player.toggle(
+                                  { uri: track.uri, title: track.title, artist: track.artist, artwork: track.artwork },
+                                  open.tracks.map((t) => ({ uri: t.uri, title: t.title, artist: t.artist, artwork: t.artwork })),
+                                );
+                              }}
+                            >
                               <div style={{ width: 44, flex: "0 0 auto" }} />
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <p className="search-row-title">{track.title}</p>
                                 <p className="text-muted search-row-meta">{track.artist}</p>
                               </div>
-                              <TrackPlayButton
-                                track={{ uri: track.uri, title: track.title, artist: track.artist, artwork: track.artwork }}
-                                queue={open.tracks.map((t) => ({ uri: t.uri, title: t.title, artist: t.artist, artwork: t.artwork }))}
-                                stopPropagation
+                              <button
+                                type="button"
+                                className="icon-btn"
+                                aria-label={savedTracks[track.uri] ? "Убрать из моей музыки" : "Добавить в мою музыку"}
+                                title={savedTracks[track.uri] ? "Убрать из моей музыки" : "Добавить в мою музыку"}
+                                disabled={!!savingTracks[track.uri]}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void toggleMyMusic(track);
+                                }}
+                              >
+                                <HeartStraight
+                                  size={18}
+                                  weight={savedTracks[track.uri] ? "fill" : "bold"}
+                                  style={savedTracks[track.uri] ? { color: "var(--accent)" } : undefined}
+                                />
+                              </button>
+                              <TrackOverflowMenu
+                                actions={[
+                                  {
+                                    key: "add-to-playlist",
+                                    label: "Добавить в плейлист",
+                                    icon: <ListPlus size={18} weight="bold" />,
+                                    onClick: () => requestAddToPlaylist(track),
+                                  },
+                                ]}
                               />
                             </div>
                           ))}
@@ -538,7 +618,27 @@ export function PromptScreen({
               <h2 className="search-section-title">Треки</h2>
               <div className="stack reveal-stagger">
                 {tracks.map((track, i) => (
-                  <div className="track-row" key={track.uri} style={{ ["--i" as string]: i }}>
+                  <div
+                    className="track-row"
+                    key={track.uri}
+                    style={{ ["--i" as string]: i }}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() =>
+                      player.toggle(
+                        { uri: track.uri, title: track.title, artist: track.artist, artwork: track.artwork },
+                        tracks.map((t) => ({ uri: t.uri, title: t.title, artist: t.artist, artwork: t.artwork })),
+                      )
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key !== "Enter" && e.key !== " ") return;
+                      e.preventDefault();
+                      player.toggle(
+                        { uri: track.uri, title: track.title, artist: track.artist, artwork: track.artwork },
+                        tracks.map((t) => ({ uri: t.uri, title: t.title, artist: t.artist, artwork: t.artwork })),
+                      );
+                    }}
+                  >
                     {track.artwork ? (
                       <img className="track-artwork" src={track.artwork} alt="" />
                     ) : (
@@ -548,38 +648,40 @@ export function PromptScreen({
                       <p className="search-row-title">{track.title}</p>
                       <p className="text-muted search-row-meta">{track.artist}</p>
                     </div>
-                    <button
-                      type="button"
-                      className="icon-btn track-download-btn"
-                      aria-label={
-                        trackDownloads[track.uri]?.kind === "sending"
-                          ? "Отправляю…"
-                          : trackDownloads[track.uri]?.kind === "sent"
-                            ? "Отправлено в чат"
-                            : "Сохранить трек"
-                      }
-                      title={
-                        trackDownloads[track.uri]?.kind === "sending"
-                          ? "Отправляю…"
-                          : trackDownloads[track.uri]?.kind === "sent"
-                            ? "Отправлено в чат"
-                            : "Сохранить трек"
-                      }
-                      disabled={trackDownloads[track.uri]?.kind === "sending"}
-                      onClick={(e) => void handleTrackDownload(e, track)}
-                    >
-                      {trackDownloads[track.uri]?.kind === "sending" ? (
-                        <CircleNotch size={18} className="spin" />
-                      ) : trackDownloads[track.uri]?.kind === "sent" ? (
-                        <CheckCircle size={18} weight="fill" />
-                      ) : (
-                        <DownloadSimple size={18} />
-                      )}
-                    </button>
-                    <TrackPlayButton
-                      track={{ uri: track.uri, title: track.title, artist: track.artist, artwork: track.artwork }}
-                      queue={tracks.map((t) => ({ uri: t.uri, title: t.title, artist: t.artist, artwork: t.artwork }))}
-                      stopPropagation
+                    {(trackDownloads[track.uri]?.kind === "sent" || savedTracks[track.uri]) && (
+                      <CheckCircle size={16} weight="fill" style={{ color: "var(--accent)" }} />
+                    )}
+                    {trackDownloads[track.uri]?.kind === "sending" && (
+                      <CircleNotch size={16} className="spin" style={{ color: "var(--text-muted)" }} />
+                    )}
+                    <TrackOverflowMenu
+                      actions={[
+                        {
+                          key: "save",
+                          label: savedTracks[track.uri] ? "Убрать из моей музыки" : "Добавить в мою музыку",
+                          icon: <HeartStraight size={18} weight={savedTracks[track.uri] ? "fill" : "bold"} />,
+                          disabled: !!savingTracks[track.uri],
+                          onClick: () => void toggleMyMusic(track),
+                        },
+                        {
+                          key: "download",
+                          label: trackDownloads[track.uri]?.kind === "sent" ? "Отправлено в чат" : "Скачать",
+                          icon:
+                            trackDownloads[track.uri]?.kind === "sent" ? (
+                              <CheckCircle size={18} weight="fill" />
+                            ) : (
+                              <DownloadSimple size={18} />
+                            ),
+                          disabled: trackDownloads[track.uri]?.kind === "sending",
+                          onClick: () => void handleTrackDownload(track),
+                        },
+                        {
+                          key: "add-to-playlist",
+                          label: "Добавить в плейлист",
+                          icon: <ListPlus size={18} weight="bold" />,
+                          onClick: () => requestAddToPlaylist(track),
+                        },
+                      ]}
                     />
                   </div>
                 ))}

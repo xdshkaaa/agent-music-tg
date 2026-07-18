@@ -5,6 +5,7 @@ import { getActiveProviderId, getActiveBackendId, getProviderOverrides } from ".
 import { hasAccess, consumeAccess, checkSubscriptionRateLimit } from "../access/entitlements";
 import { insertGeneration, getGeneration, appendTracksToGeneration, incrementExtendCount } from "../access/generations-store";
 import { getUserMusicBackend } from "../access/users-store";
+import { listDislikedForPrompt, listDislikedUris } from "../access/reactions-store";
 import {
   ClarifyNeededError,
   MaxIterationsExceededError,
@@ -59,6 +60,11 @@ async function buildRunInputs(db: AppDb, chatId: number) {
   return { provider, music };
 }
 
+/** Disliked tracks are excluded from every generation: nudged in the prompt, hard-filtered from results. */
+function buildDislikeOpts(db: AppDb, chatId: number): { dislikedTracks: string[]; dislikedUris: Set<string> } {
+  return { dislikedTracks: listDislikedForPrompt(db, chatId), dislikedUris: listDislikedUris(db, chatId) };
+}
+
 type RunResult = { status: "ok"; playlist: FinalizedPlaylist } | Exclude<GenerationOutcome, { status: "ok" }>;
 
 async function toOutcome(run: () => Promise<GeneratePlaylistResult>): Promise<RunResult> {
@@ -105,7 +111,7 @@ export async function startGeneration(
 
   const outcome = await toOutcome(async () => {
     const { provider, music } = await buildRunInputs(db, chatId);
-    const opts: GeneratePlaylistOptions = { provider, music, prompt, onEvent };
+    const opts: GeneratePlaylistOptions = { provider, music, prompt, onEvent, ...buildDislikeOpts(db, chatId) };
     return generatePlaylist(opts);
   });
   if (outcome.status === "ok") {
@@ -145,6 +151,7 @@ export async function resumeGeneration(
       resumeClarifyAnswer: clarifyAnswer,
       resumeClarifyRound: priorRound,
       onEvent,
+      ...buildDislikeOpts(db, chatId),
     });
   });
   if (outcome.status === "ok") {
@@ -199,6 +206,7 @@ export async function extendGeneration(
       baseName: existing.playlistName ?? undefined,
       systemPrompt: buildExtendSystemPrompt(existing.playlistName ?? "Playlist", baseTracks),
       onEvent,
+      ...buildDislikeOpts(db, chatId),
     });
   });
   if (outcome.status === "ok") {

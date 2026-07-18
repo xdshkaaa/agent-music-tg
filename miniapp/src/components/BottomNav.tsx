@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef } from "react";
-import { Sparkle, Storefront, User, Shield } from "@phosphor-icons/react";
+import { Sparkle, Storefront, MusicNotes, User, Shield } from "@phosphor-icons/react";
 
-type Tab = "create" | "shop" | "profile" | "admin";
+type Tab = "create" | "shop" | "playlists" | "profile" | "admin";
 
 const TABS: { key: Tab; icon: typeof Sparkle; label: string }[] = [
   { key: "create", icon: Sparkle, label: "Создать" },
   { key: "shop", icon: Storefront, label: "Магазин" },
+  { key: "playlists", icon: MusicNotes, label: "Музыка" },
   { key: "profile", icon: User, label: "Профиль" },
 ];
 

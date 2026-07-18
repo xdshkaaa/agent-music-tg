@@ -14,7 +14,7 @@ export function registerCredits(bot: Bot<BotContext>, db: AppDb): void {
     const subActive = user?.subscriptionUntil != null && user.subscriptionUntil > Math.floor(Date.now() / 1000);
     if (!user || (user.credits <= 0 && !trialActive(user) && !subActive)) {
       const wallet = accent("wallet");
-      const text = `${wallet ? wallet + " " : ""}Нет доступа.\n/buy — купить генерации или подписку`;
+      const text = `${wallet ? wallet + " " : ""}Нет доступа.\n/buy: купить генерации или подписку`;
       await ctx.reply(text, { parse_mode: "HTML" });
       return;
     }

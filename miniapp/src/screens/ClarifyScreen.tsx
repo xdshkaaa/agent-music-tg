@@ -30,7 +30,7 @@ export function ClarifyScreen({
 
   return (
     <GlassPanel className="reveal">
-      <h1>Уточним детали</h1>
+      <h1 className="screen-title">Уточним детали</h1>
       <p style={{ marginBottom: 16 }}>{question}</p>
       <div className="stack">
         {options.map((option) => (
