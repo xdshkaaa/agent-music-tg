@@ -101,7 +101,7 @@ async function resendDownload(ctx: BotContext, db: AppDb, chatId: number, id: nu
     db,
     chatId,
     record.playlistName,
-    record.tracks.map(({ uri, title, artist, durationMs }) => ({ uri, title, artist, durationMs })),
+    record.tracks.map(({ uri, title, artist, durationMs, artwork }) => ({ uri, title, artist, durationMs, artwork })),
   );
 
   void processDownload(db, fresh, {

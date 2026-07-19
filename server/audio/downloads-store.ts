@@ -16,6 +16,7 @@ export interface DownloadTrack {
   title: string;
   artist: string;
   durationMs?: number;
+  artwork?: string;
   status: TrackStatus;
   /** Short failure reason, present when status = failed. */
   error?: string;

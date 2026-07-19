@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, ArrowsClockwise, CaretRightIcon, CircleNotch, HeartStraight, ListPlus, User, WarningCircle } from "@phosphor-icons/react";
+import { TrackRow } from "../components/TrackRow";
 import { TrackOverflowMenu } from "../components/TrackOverflowMenu";
 import { requestAddToPlaylist } from "../components/AddToPlaylistButton";
 import { api, type Album, type ArtistDetail, type Track } from "../lib/api";
@@ -123,47 +124,37 @@ export function ArtistScreen({
                 <h2 className="search-section-title">Популярные треки</h2>
                 <div className="stack reveal-stagger">
                   {state.data.topTracks.map((track, i) => (
-                    <div
-                      className="track-row"
+                    <TrackRow
                       key={track.uri}
                       style={{ ["--i" as string]: i }}
-                      role="button"
-                      tabIndex={0}
                       onClick={() => player.toggle(track, queue)}
-                      onKeyDown={(e) => {
-                        if (e.key !== "Enter" && e.key !== " ") return;
-                        e.preventDefault();
-                        player.toggle(track, queue);
-                      }}
-                    >
-                      {track.artwork ? (
-                        <img className="track-artwork" src={track.artwork} alt="" />
-                      ) : (
-                        <div className="track-artwork" />
-                      )}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p className="search-row-title">{track.title}</p>
-                        <p className="text-muted search-row-meta">{track.artist}</p>
-                      </div>
-                      {savedTracks[track.uri] && <HeartStraight size={16} weight="fill" style={{ color: "var(--accent)" }} />}
-                      <TrackOverflowMenu
-                        actions={[
-                          {
-                            key: "save",
-                            label: savedTracks[track.uri] ? "Убрать из моей музыки" : "Добавить в мою музыку",
-                            icon: <HeartStraight size={18} weight={savedTracks[track.uri] ? "fill" : "bold"} />,
-                            disabled: !!saving[track.uri],
-                            onClick: () => void toggleSaved(track),
-                          },
-                          {
-                            key: "add-to-playlist",
-                            label: "Добавить в плейлист",
-                            icon: <ListPlus size={18} weight="bold" />,
-                            onClick: () => requestAddToPlaylist(track),
-                          },
-                        ]}
-                      />
-                    </div>
+                      artwork={track.artwork}
+                      title={track.title}
+                      meta={track.artist}
+                      metaClassName="search-row-meta"
+                      trailing={
+                        <>
+                          {savedTracks[track.uri] && <HeartStraight size={16} weight="fill" style={{ color: "var(--accent)" }} />}
+                          <TrackOverflowMenu
+                            actions={[
+                              {
+                                key: "save",
+                                label: savedTracks[track.uri] ? "Убрать из моей музыки" : "Добавить в мою музыку",
+                                icon: <HeartStraight size={18} weight={savedTracks[track.uri] ? "fill" : "bold"} />,
+                                disabled: !!saving[track.uri],
+                                onClick: () => void toggleSaved(track),
+                              },
+                              {
+                                key: "add-to-playlist",
+                                label: "Добавить в плейлист",
+                                icon: <ListPlus size={18} weight="bold" />,
+                                onClick: () => requestAddToPlaylist(track),
+                              },
+                            ]}
+                          />
+                        </>
+                      }
+                    />
                   ))}
                 </div>
               </section>
@@ -177,31 +168,19 @@ export function ArtistScreen({
                     const open = expanded[album.uri];
                     return (
                       <div className="album-block" key={album.uri} style={{ ["--i" as string]: i }}>
-                        <div
-                          className="track-row album-head"
-                          role="button"
-                          tabIndex={0}
+                        <TrackRow
+                          className="album-head"
                           onClick={() => void toggleAlbum(album)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              void toggleAlbum(album);
-                            }
-                          }}
-                        >
-                          {album.artwork ? (
-                            <img className="track-artwork" src={album.artwork} alt="" />
-                          ) : (
-                            <div className="track-artwork" />
-                          )}
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <p className="search-row-title">{album.title}</p>
-                            <p className="text-muted search-row-meta">{album.artist}</p>
-                          </div>
-                          <span className={`album-chevron${open ? " open" : ""}`} aria-hidden>
-                            <CaretRightIcon size={16} />
-                          </span>
-                        </div>
+                          artwork={album.artwork}
+                          title={album.title}
+                          meta={album.artist}
+                          metaClassName="search-row-meta"
+                          trailing={
+                            <span className={`album-chevron${open ? " open" : ""}`} aria-hidden>
+                              <CaretRightIcon size={16} />
+                            </span>
+                          }
+                        />
                         {open && (
                           <div className="album-tracks">
                             {open.status === "loading" && (
@@ -213,54 +192,42 @@ export function ArtistScreen({
                               <p className="text-muted" style={{ padding: "4px 8px" }}>Не удалось загрузить</p>
                             )}
                             {open.tracks.map((track) => (
-                              <div
-                                className="track-row track-sub"
+                              <TrackRow
                                 key={track.uri}
-                                role="button"
-                                tabIndex={0}
+                                className="track-sub"
                                 onClick={() =>
                                   player.toggle(
                                     track,
                                     open.tracks.map((t) => ({ uri: t.uri, title: t.title, artist: t.artist, artwork: t.artwork })),
                                   )
                                 }
-                                onKeyDown={(e) => {
-                                  if (e.key !== "Enter" && e.key !== " ") return;
-                                  e.preventDefault();
-                                  player.toggle(
-                                    track,
-                                    open.tracks.map((t) => ({ uri: t.uri, title: t.title, artist: t.artist, artwork: t.artwork })),
-                                  );
-                                }}
-                              >
-                                {track.artwork || album.artwork ? (
-                                  <img className="track-artwork" src={track.artwork || album.artwork} alt="" />
-                                ) : (
-                                  <div className="track-artwork" />
-                                )}
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <p className="search-row-title">{track.title}</p>
-                                  <p className="text-muted search-row-meta">{track.artist}</p>
-                                </div>
-                                {savedTracks[track.uri] && <HeartStraight size={16} weight="fill" style={{ color: "var(--accent)" }} />}
-                                <TrackOverflowMenu
-                                  actions={[
-                                    {
-                                      key: "save",
-                                      label: savedTracks[track.uri] ? "Убрать из моей музыки" : "Добавить в мою музыку",
-                                      icon: <HeartStraight size={18} weight={savedTracks[track.uri] ? "fill" : "bold"} />,
-                                      disabled: !!saving[track.uri],
-                                      onClick: () => void toggleSaved(track),
-                                    },
-                                    {
-                                      key: "add-to-playlist",
-                                      label: "Добавить в плейлист",
-                                      icon: <ListPlus size={18} weight="bold" />,
-                                      onClick: () => requestAddToPlaylist(track),
-                                    },
-                                  ]}
-                                />
-                              </div>
+                                artwork={track.artwork || album.artwork}
+                                title={track.title}
+                                meta={track.artist}
+                                metaClassName="search-row-meta"
+                                trailing={
+                                  <>
+                                    {savedTracks[track.uri] && <HeartStraight size={16} weight="fill" style={{ color: "var(--accent)" }} />}
+                                    <TrackOverflowMenu
+                                      actions={[
+                                        {
+                                          key: "save",
+                                          label: savedTracks[track.uri] ? "Убрать из моей музыки" : "Добавить в мою музыку",
+                                          icon: <HeartStraight size={18} weight={savedTracks[track.uri] ? "fill" : "bold"} />,
+                                          disabled: !!saving[track.uri],
+                                          onClick: () => void toggleSaved(track),
+                                        },
+                                        {
+                                          key: "add-to-playlist",
+                                          label: "Добавить в плейлист",
+                                          icon: <ListPlus size={18} weight="bold" />,
+                                          onClick: () => requestAddToPlaylist(track),
+                                        },
+                                      ]}
+                                    />
+                                  </>
+                                }
+                              />
                             ))}
                           </div>
                         )}

@@ -88,7 +88,12 @@ function AppInner() {
   const screen = history[history.length - 1];
   const [transitionDir, setTransitionDir] = useState<"forward" | "back">("forward");
   const [showPlayer, setShowPlayer] = useState(false);
-  const [artistTarget, setArtistTarget] = useState<{ id?: string; name?: string } | null>(null);
+  // `fromPlayer` is fixed at open time (not derived from the live `showPlayer`
+  // flag) so the artist screen only sits above the full player when it was
+  // actually opened from within it. Otherwise, opening the player later while
+  // an artist card is already up (e.g. from search) would silently jump the
+  // card above the player and block it with no way back in.
+  const [artistTarget, setArtistTarget] = useState<{ id?: string; name?: string; fromPlayer?: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   const [events, setEvents] = useState<AgentEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -223,6 +228,11 @@ function AppInner() {
   }
 
   function navigate(target: Screen, dir?: "forward" | "back") {
+    // Any real navigation (tab switch, screen push, back) must drop overlays
+    // sitting on top — otherwise the artist card / full player stays mounted
+    // above the newly-navigated screen with no way to reach it.
+    setArtistTarget(null);
+    setShowPlayer(false);
     if (dir === "back") {
       setTransitionDir("back");
       setHistory([target]);
@@ -407,10 +417,10 @@ function AppInner() {
       />
     </main>
       {showPlayer && (
-        <PlayerScreen onClose={() => setShowPlayer(false)} onOpenArtist={(name) => setArtistTarget({ name })} />
+        <PlayerScreen onClose={() => setShowPlayer(false)} onOpenArtist={(name) => setArtistTarget({ name, fromPlayer: true })} />
       )}
       {artistTarget && (
-        <ArtistScreen target={artistTarget} onClose={() => setArtistTarget(null)} nested={showPlayer} />
+        <ArtistScreen target={artistTarget} onClose={() => setArtistTarget(null)} nested={!!artistTarget.fromPlayer} />
       )}
       <AddToPlaylistSheet />
     </ErrorBoundary>

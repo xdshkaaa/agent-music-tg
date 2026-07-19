@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { BookmarkSimple, CheckCircle, CircleNotch, DownloadSimple, ListPlus, PencilSimple, Plus, WarningCircle } from "@phosphor-icons/react";
 import { GlassPanel } from "../components/GlassPanel";
+import { TrackRow } from "../components/TrackRow";
 import { TrackOverflowMenu } from "../components/TrackOverflowMenu";
 import { requestAddToPlaylist } from "../components/AddToPlaylistButton";
 import { usePlayer } from "../lib/player";
@@ -256,73 +257,57 @@ export function ResultsScreen({
       ) : (
         <div className="stack mt-16 reveal-stagger">
           {visibleTracks.map((track, i) => (
-          <div
-            className="track-row"
+          <TrackRow
             key={track.uri}
             style={{ ["--i" as string]: i }}
-            role="button"
-            tabIndex={0}
             onClick={() => handleTrackClick(track)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                handleTrackClick(track);
-              }
-            }}
-          >
-            {track.artwork ? (
-              <img className="track-artwork" src={track.artwork} alt="" />
-            ) : (
-              <div className="track-artwork" />
-            )}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <p className="search-row-title">
-                {track.title}
-              </p>
-              <p className="text-muted fs-label">
-                {track.artist}
-              </p>
-            </div>
-            {verificationIcon(track.uri)}
-            <button
-              type="button"
-              className="icon-btn track-download-btn"
-              aria-label={
-                trackDownloads[track.uri]?.kind === "sent" || savedTracks[track.uri]
-                  ? "Отправлено в чат и в избранном"
-                  : "Скачать и добавить в избранное"
-              }
-              title={
-                trackDownloads[track.uri]?.kind === "sent" || savedTracks[track.uri]
-                  ? "Отправлено в чат и в избранном"
-                  : "Скачать и добавить в избранное"
-              }
-              disabled={trackDownloads[track.uri]?.kind === "sending"}
-              onClick={(e) => {
-                e.stopPropagation();
-                void handleTrackDownload(track);
-              }}
-            >
-              {trackDownloads[track.uri]?.kind === "sending" ? (
-                <CircleNotch size={18} className="spin" />
-              ) : trackDownloads[track.uri]?.kind === "sent" || savedTracks[track.uri] ? (
-                <CheckCircle size={18} weight="fill" />
-              ) : (
-                <DownloadSimple size={18} />
-              )}
-            </button>
-            <TrackOverflowMenu
-              actions={[
-                {
-                  key: "add-to-playlist",
-                  label: "Добавить в плейлист",
-                  icon: <ListPlus size={18} weight="bold" />,
-                  onClick: () =>
-                    requestAddToPlaylist({ uri: track.uri, title: track.title, artist: track.artist, artwork: track.artwork }),
-                },
-              ]}
-            />
-          </div>
+            artwork={track.artwork}
+            title={track.title}
+            meta={track.artist}
+            trailing={
+              <>
+                {verificationIcon(track.uri)}
+                <button
+                  type="button"
+                  className="icon-btn track-download-btn"
+                  aria-label={
+                    trackDownloads[track.uri]?.kind === "sent" || savedTracks[track.uri]
+                      ? "Отправлено в чат и в избранном"
+                      : "Скачать и добавить в избранное"
+                  }
+                  title={
+                    trackDownloads[track.uri]?.kind === "sent" || savedTracks[track.uri]
+                      ? "Отправлено в чат и в избранном"
+                      : "Скачать и добавить в избранное"
+                  }
+                  disabled={trackDownloads[track.uri]?.kind === "sending"}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void handleTrackDownload(track);
+                  }}
+                >
+                  {trackDownloads[track.uri]?.kind === "sending" ? (
+                    <CircleNotch size={18} className="spin" />
+                  ) : trackDownloads[track.uri]?.kind === "sent" || savedTracks[track.uri] ? (
+                    <CheckCircle size={18} weight="fill" />
+                  ) : (
+                    <DownloadSimple size={18} />
+                  )}
+                </button>
+                <TrackOverflowMenu
+                  actions={[
+                    {
+                      key: "add-to-playlist",
+                      label: "Добавить в плейлист",
+                      icon: <ListPlus size={18} weight="bold" />,
+                      onClick: () =>
+                        requestAddToPlaylist({ uri: track.uri, title: track.title, artist: track.artist, artwork: track.artwork }),
+                    },
+                  ]}
+                />
+              </>
+            }
+          />
         ))}
         </div>
       )}

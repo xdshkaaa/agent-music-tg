@@ -2833,6 +2833,7 @@ div.player-bar-thumbnail::after {
   align-items: center;
   justify-content: space-between;
   gap: 20px;
+  overflow-y: auto;
   animation: player-fade-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
@@ -2869,9 +2870,9 @@ div.player-bar-thumbnail::after {
 
 .player-screen-artwork {
   position: relative;
-  width: 100%;
+  width: min(100%, 380px, calc(100dvh - 470px));
   aspect-ratio: 1;
-  max-width: 380px;
+  flex-shrink: 0;
   border-radius: 24px;
   overflow: hidden;
   background: var(--lg-v2-chip);
@@ -3046,6 +3047,7 @@ div.player-bar-thumbnail::after {
   gap: 20px;
   width: 100%;
   max-width: 280px;
+  flex-shrink: 0;
 }
 
 .player-screen-controls-row {
@@ -3300,14 +3302,27 @@ div.player-bar-thumbnail::after {
 }
 
 .profile-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  align-items: start;
+  gap: 4px;
+}
+
+.profile-stats-col {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 0 14px;
+  border-left: 1px solid var(--hairline);
+}
+
+.profile-stats-col:first-child {
+  padding-left: 0;
+  border-left: none;
 }
 
 .profile-topup-btn {
-  align-self: center;
   flex-shrink: 0;
   font-size: var(--fs-label);
   padding: 14px 16px;

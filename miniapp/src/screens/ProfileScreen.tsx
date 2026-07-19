@@ -4,11 +4,12 @@ import {
   CircleNotch, WarningCircle, Gift, Star,
   MusicNotes,
   ChartBar,
+  UsersThree, Copy, Check,
 } from "@phosphor-icons/react";
 import { GlassPanel } from "../components/GlassPanel";
 import { Segmented } from "../components/Segmented";
 import { EmptyState } from "../components/EmptyState";
-import { getTelegramUserFirstName } from "../lib/telegram";
+import { getTelegramUserFirstName, getTelegramWebApp } from "../lib/telegram";
 import { api, type MeResponse, type Invoice } from "../lib/api";
 import { ACCENT_PRESETS } from "../lib/accent";
 
@@ -118,6 +119,66 @@ function AccentPicker({ accent, onChange }: { accent: string; onChange: (value: 
   );
 }
 
+function ReferralCard() {
+  const [data, setData] = useState<{ link: string; invitedCount: number; creditsEarned: number } | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    api.referral()
+      .then(setData)
+      .catch(() => setError(true));
+  }, []);
+
+  function handleCopy() {
+    if (!data) return;
+    navigator.clipboard.writeText(data.link).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }).catch(() => {});
+  }
+
+  function handleShare() {
+    if (!data) return;
+    const webApp = getTelegramWebApp();
+    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(data.link)}`;
+    if (webApp) webApp.openTelegramLink(shareUrl);
+    else window.open(shareUrl, "_blank");
+  }
+
+  if (error || !data) return null;
+
+  return (
+    <GlassPanel className="reveal">
+      <h2 className="screen-title" style={{ marginBottom: 14 }}>Реферальная программа</h2>
+      <div className="profile-stats">
+        <div className="profile-stats-col">
+          <span className="text-muted icon-row fs-micro">
+            <UsersThree size={13} weight="bold" /> Приглашено
+          </span>
+          <span className="fs-label" style={{ fontWeight: 700 }}>{data.invitedCount}</span>
+        </div>
+        <div className="profile-stats-col">
+          <span className="text-muted icon-row fs-micro">
+            <Gift size={13} weight="bold" /> Начислено
+          </span>
+          <span className="fs-label" style={{ fontWeight: 700 }}>{data.creditsEarned} ген</span>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+        <button type="button" className="glass-button" style={{ flex: 1 }} onClick={handleCopy}>
+          {copied ? <Check size={16} weight="bold" /> : <Copy size={16} weight="bold" />}
+          {copied ? "Скопировано" : "Копировать ссылку"}
+        </button>
+        <button type="button" className="glass-button primary" style={{ flex: 1 }} onClick={handleShare}>
+          <UsersThree size={16} weight="bold" />
+          Пригласить
+        </button>
+      </div>
+    </GlassPanel>
+  );
+}
+
 export default function ProfileScreen({
   me,
   onGoShop,
@@ -142,49 +203,58 @@ export default function ProfileScreen({
   return (
     <div className="stack">
       <GlassPanel className="reveal">
-        <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 18 }}>
-          {me?.photoUrl ? (
-            <img src={me.photoUrl} alt="" className="profile-avatar" />
-          ) : (
-            <span className="profile-avatar-placeholder" aria-hidden="true">
-              <User size={20} weight="bold" style={{ color: "var(--text-muted-dark)" }} />
-            </span>
-          )}
-          <div>
-            <p className="fs-title" style={{ fontWeight: 800, margin: 0 }}>
-              {firstName ?? displayName(me)}
-            </p>
-            {firstName && me?.username && (
-              <p className="text-muted fs-label" style={{ margin: "2px 0 0" }}>@{me.username}</p>
-            )}
-          </div>
-        </div>
-
-        <div className="profile-stats">
-          <div className="stack" style={{ gap: 4 }}>
-            <span className="text-muted icon-row fs-micro">
-              <Wallet size={13} weight="bold" /> Баланс
-            </span>
-            <span style={{ fontSize: 38, fontWeight: 800, fontFamily: "var(--font-display)", letterSpacing: "var(--ls-display)", lineHeight: 1.05 }}>
-              {me?.credits ?? 0} <span style={{ fontSize: 18, fontWeight: 700 }}>ген</span>
-            </span>
-            {me?.trial.active && (
-              <span className="text-muted fs-micro" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                <Gift size={12} weight="bold" /> {me.trial.creditsLeft} ген. до{" "}
-                {new Date((me.trial.until ?? 0) * 1000).toLocaleDateString("ru-RU")}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, marginBottom: 22 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
+            {me?.photoUrl ? (
+              <img src={me.photoUrl} alt="" className="profile-avatar" />
+            ) : (
+              <span className="profile-avatar-placeholder" aria-hidden="true">
+                <User size={20} weight="bold" style={{ color: "var(--text-muted-dark)" }} />
               </span>
             )}
-            <span className="text-muted icon-row fs-micro">
-              <ChartBar size={13} weight="bold" /> Потрачено: {me?.generationsUsed ?? 0} ген
-            </span>
-            <span className="text-muted icon-row fs-micro">
-              <Calendar size={13} weight="bold" /> Подписка: {formatSubscription(me?.subscriptionUntil ?? null)}
-            </span>
+            <div style={{ minWidth: 0 }}>
+              <p className="fs-title" style={{ fontWeight: 800, margin: 0 }}>
+                {firstName ?? displayName(me)}
+              </p>
+              {firstName && me?.username && (
+                <p className="text-muted fs-label" style={{ margin: "2px 0 0" }}>@{me.username}</p>
+              )}
+            </div>
           </div>
           <button type="button" className="glass-button primary profile-topup-btn" onClick={onGoShop}>
             <Plus size={18} weight="bold" />
             Пополнить
           </button>
+        </div>
+
+        <div className="profile-stats">
+          <div className="profile-stats-col">
+            <span className="text-muted icon-row fs-micro">
+              <Wallet size={13} weight="bold" /> Баланс
+            </span>
+            <span style={{ fontSize: 34, fontWeight: 800, fontFamily: "var(--font-display)", letterSpacing: "var(--ls-display)", lineHeight: 1.05 }}>
+              {(me?.credits ?? 0) + (me?.trial.active ? me.trial.creditsLeft : 0)}{" "}
+              <span style={{ fontSize: 16, fontWeight: 700 }}>ген</span>
+            </span>
+            {me?.trial.active && (
+              <span className="text-muted fs-micro" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <Gift size={12} weight="bold" /> вкл. {me.trial.creditsLeft} до{" "}
+                {new Date((me.trial.until ?? 0) * 1000).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" })}
+              </span>
+            )}
+          </div>
+          <div className="profile-stats-col">
+            <span className="text-muted icon-row fs-micro">
+              <ChartBar size={13} weight="bold" /> Потрачено
+            </span>
+            <span className="fs-label" style={{ fontWeight: 700 }}>{me?.generationsUsed ?? 0} ген</span>
+          </div>
+          <div className="profile-stats-col">
+            <span className="text-muted icon-row fs-micro">
+              <Calendar size={13} weight="bold" /> Подписка
+            </span>
+            <span className="fs-label" style={{ fontWeight: 700 }}>{formatSubscription(me?.subscriptionUntil ?? null)}</span>
+          </div>
         </div>
 
         <div className="admin-settings-bar" style={{ marginTop: 14, padding: "14px 0 0" }}>
@@ -193,6 +263,8 @@ export default function ProfileScreen({
 
         <AccentPicker accent={accent} onChange={onChangeAccent} />
       </GlassPanel>
+
+      <ReferralCard />
 
       <GlassPanel className="reveal">
         <h2 className="screen-title" style={{ marginBottom: 14 }}>Покупки</h2>

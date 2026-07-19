@@ -14,6 +14,7 @@ import {
 } from "@phosphor-icons/react";
 import { GlassPanel } from "../components/GlassPanel";
 import { ReasoningTranscript } from "../components/ReasoningTranscript";
+import { TrackRow } from "../components/TrackRow";
 import { TrackOverflowMenu } from "../components/TrackOverflowMenu";
 import { requestAddToPlaylist } from "../components/AddToPlaylistButton";
 import { api, type Album, type ArtistCard, type Track } from "../lib/api";
@@ -480,62 +481,52 @@ export function PromptScreen({
                   const dl = trackDownloads[dlKey];
                   return (
                     <div className="album-block" key={album.uri} style={{ ["--i" as string]: i }}>
-                      <div
-                        className="track-row album-head"
-                        role="button"
-                        tabIndex={0}
+                      <TrackRow
+                        className="album-head"
                         onClick={() => void toggleAlbum(album)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            void toggleAlbum(album);
-                          }
-                        }}
-                      >
-                        {album.artwork ? (
-                          <img className="track-artwork" src={album.artwork} alt="" />
-                        ) : (
-                          <div className="track-artwork" />
-                        )}
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <p className="search-row-title">{album.title}</p>
-                          <p className="text-muted search-row-meta">{album.artist}</p>
-                        </div>
-                        <button
-                          type="button"
-                          className="icon-btn track-download-btn"
-                          aria-label={
-                            dl?.kind === "sending"
-                              ? "Отправляю альбом…"
-                              : dl?.kind === "sent"
-                                ? "Отправлено в чат"
-                                : "Сохранить альбом"
-                          }
-                          title={
-                            dl?.kind === "sending"
-                              ? "Отправляю альбом…"
-                              : dl?.kind === "sent"
-                                ? "Отправлено в чат"
-                                : "Сохранить альбом"
-                          }
-                          disabled={dl?.kind === "sending"}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            void downloadAlbumTracks(album, open?.tracks ?? []);
-                          }}
-                        >
-                          {dl?.kind === "sending" ? (
-                            <CircleNotch size={18} className="spin" />
-                          ) : dl?.kind === "sent" ? (
-                            <CheckCircle size={18} weight="fill" />
-                          ) : (
-                            <DownloadSimple size={18} />
-                          )}
-                        </button>
-                        <span className={`album-chevron${open ? " open" : ""}`} aria-hidden>
-                          <CaretRightIcon size={16} />
-                        </span>
-                      </div>
+                        artwork={album.artwork}
+                        title={album.title}
+                        meta={album.artist}
+                        metaClassName="search-row-meta"
+                        trailing={
+                          <>
+                            <button
+                              type="button"
+                              className="icon-btn track-download-btn"
+                              aria-label={
+                                dl?.kind === "sending"
+                                  ? "Отправляю альбом…"
+                                  : dl?.kind === "sent"
+                                    ? "Отправлено в чат"
+                                    : "Сохранить альбом"
+                              }
+                              title={
+                                dl?.kind === "sending"
+                                  ? "Отправляю альбом…"
+                                  : dl?.kind === "sent"
+                                    ? "Отправлено в чат"
+                                    : "Сохранить альбом"
+                              }
+                              disabled={dl?.kind === "sending"}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void downloadAlbumTracks(album, open?.tracks ?? []);
+                              }}
+                            >
+                              {dl?.kind === "sending" ? (
+                                <CircleNotch size={18} className="spin" />
+                              ) : dl?.kind === "sent" ? (
+                                <CheckCircle size={18} weight="fill" />
+                              ) : (
+                                <DownloadSimple size={18} />
+                              )}
+                            </button>
+                            <span className={`album-chevron${open ? " open" : ""}`} aria-hidden>
+                              <CaretRightIcon size={16} />
+                            </span>
+                          </>
+                        }
+                      />
                       {open && (
                         <div className="album-tracks">
                           {open.status === "loading" && (
@@ -570,7 +561,11 @@ export function PromptScreen({
                                 );
                               }}
                             >
-                              <div style={{ width: 44, flex: "0 0 auto" }} />
+                              {track.artwork || album.artwork ? (
+                                <img className="track-artwork" src={track.artwork || album.artwork} alt="" />
+                              ) : (
+                                <div className="track-artwork" />
+                              )}
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <p className="search-row-title">{track.title}</p>
                                 <p className="text-muted search-row-meta">{track.artist}</p>
@@ -618,72 +613,59 @@ export function PromptScreen({
               <h2 className="search-section-title">Треки</h2>
               <div className="stack reveal-stagger">
                 {tracks.map((track, i) => (
-                  <div
-                    className="track-row"
+                  <TrackRow
                     key={track.uri}
                     style={{ ["--i" as string]: i }}
-                    role="button"
-                    tabIndex={0}
                     onClick={() =>
                       player.toggle(
                         { uri: track.uri, title: track.title, artist: track.artist, artwork: track.artwork },
                         tracks.map((t) => ({ uri: t.uri, title: t.title, artist: t.artist, artwork: t.artwork })),
                       )
                     }
-                    onKeyDown={(e) => {
-                      if (e.key !== "Enter" && e.key !== " ") return;
-                      e.preventDefault();
-                      player.toggle(
-                        { uri: track.uri, title: track.title, artist: track.artist, artwork: track.artwork },
-                        tracks.map((t) => ({ uri: t.uri, title: t.title, artist: t.artist, artwork: t.artwork })),
-                      );
-                    }}
-                  >
-                    {track.artwork ? (
-                      <img className="track-artwork" src={track.artwork} alt="" />
-                    ) : (
-                      <div className="track-artwork" />
-                    )}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p className="search-row-title">{track.title}</p>
-                      <p className="text-muted search-row-meta">{track.artist}</p>
-                    </div>
-                    {(trackDownloads[track.uri]?.kind === "sent" || savedTracks[track.uri]) && (
-                      <CheckCircle size={16} weight="fill" style={{ color: "var(--accent)" }} />
-                    )}
-                    {trackDownloads[track.uri]?.kind === "sending" && (
-                      <CircleNotch size={16} className="spin" style={{ color: "var(--text-muted)" }} />
-                    )}
-                    <TrackOverflowMenu
-                      actions={[
-                        {
-                          key: "save",
-                          label: savedTracks[track.uri] ? "Убрать из моей музыки" : "Добавить в мою музыку",
-                          icon: <HeartStraight size={18} weight={savedTracks[track.uri] ? "fill" : "bold"} />,
-                          disabled: !!savingTracks[track.uri],
-                          onClick: () => void toggleMyMusic(track),
-                        },
-                        {
-                          key: "download",
-                          label: trackDownloads[track.uri]?.kind === "sent" ? "Отправлено в чат" : "Скачать",
-                          icon:
-                            trackDownloads[track.uri]?.kind === "sent" ? (
-                              <CheckCircle size={18} weight="fill" />
-                            ) : (
-                              <DownloadSimple size={18} />
-                            ),
-                          disabled: trackDownloads[track.uri]?.kind === "sending",
-                          onClick: () => void handleTrackDownload(track),
-                        },
-                        {
-                          key: "add-to-playlist",
-                          label: "Добавить в плейлист",
-                          icon: <ListPlus size={18} weight="bold" />,
-                          onClick: () => requestAddToPlaylist(track),
-                        },
-                      ]}
-                    />
-                  </div>
+                    artwork={track.artwork}
+                    title={track.title}
+                    meta={track.artist}
+                    metaClassName="search-row-meta"
+                    trailing={
+                      <>
+                        {(trackDownloads[track.uri]?.kind === "sent" || savedTracks[track.uri]) && (
+                          <CheckCircle size={16} weight="fill" style={{ color: "var(--accent)" }} />
+                        )}
+                        {trackDownloads[track.uri]?.kind === "sending" && (
+                          <CircleNotch size={16} className="spin" style={{ color: "var(--text-muted)" }} />
+                        )}
+                        <TrackOverflowMenu
+                          actions={[
+                            {
+                              key: "save",
+                              label: savedTracks[track.uri] ? "Убрать из моей музыки" : "Добавить в мою музыку",
+                              icon: <HeartStraight size={18} weight={savedTracks[track.uri] ? "fill" : "bold"} />,
+                              disabled: !!savingTracks[track.uri],
+                              onClick: () => void toggleMyMusic(track),
+                            },
+                            {
+                              key: "download",
+                              label: trackDownloads[track.uri]?.kind === "sent" ? "Отправлено в чат" : "Скачать",
+                              icon:
+                                trackDownloads[track.uri]?.kind === "sent" ? (
+                                  <CheckCircle size={18} weight="fill" />
+                                ) : (
+                                  <DownloadSimple size={18} />
+                                ),
+                              disabled: trackDownloads[track.uri]?.kind === "sending",
+                              onClick: () => void handleTrackDownload(track),
+                            },
+                            {
+                              key: "add-to-playlist",
+                              label: "Добавить в плейлист",
+                              icon: <ListPlus size={18} weight="bold" />,
+                              onClick: () => requestAddToPlaylist(track),
+                            },
+                          ]}
+                        />
+                      </>
+                    }
+                  />
                 ))}
               </div>
             </section>
