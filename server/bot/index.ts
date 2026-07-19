@@ -8,12 +8,14 @@ import { AVAILABLE_PROVIDERS, isProviderId } from "../agent/registry";
 import { AVAILABLE_BACKENDS, isMusicBackend } from "../music/registry";
 import { getActiveProviderId, setActiveProviderId, getActiveBackendId, setActiveBackendId, getShopSettings } from "../lib/settings";
 import { upsertUser, setPhotoFileId } from "../access/users-store";
+import { alertNewUser } from "../payments/alerts";
 import { registerShop, buildProfileView, buildBuyView, type ShopView } from "./shop";
 import { registerAdminPanel, handleAdminText, menuKeyboard } from "./admin-panel";
 import { registerCredits } from "./credits";
 import { registerModel } from "./model";
 import { registerReset } from "./reset";
 import { registerHistory, buildHistoryView } from "./history";
+import { registerReferral, buildReferralView, applyReferral } from "./referral";
 import { btnText, heading } from "./emoji";
 import { grantPlaylistSlotsForPayment } from "../access/stars-payments-store";
 
@@ -41,6 +43,7 @@ export function createBot(db: AppDb): Bot<BotContext> {
       .text(btnText("Купить", "money"), "nav:buy")
       .text(btnText("Профиль", "profile"), "nav:profile")
       .text(btnText("История", "history"), "nav:history").row()
+      .text(btnText("Пригласить друга", "gift"), "nav:referral")
       .text(btnText("Поддержка", "info"), "nav:support").row();
     if (ctx.isAdmin) {
       kb.text(btnText("Админка", "gear"), "nav:admin");
@@ -53,8 +56,8 @@ export function createBot(db: AppDb): Bot<BotContext> {
     const header = `${heading("info", `<b>AGENT MUSIC</b>`)}`;
     const features = [
       `${heading("music", "<b>Генерация</b> плейлиста под настроение")}`,
-      `${heading("search", "<b>Поиск</b> треков и альбомов — прямо в Telegram")}`,
-      `${heading("money", "<b>Оплата</b>: СБП, QR, Telegram Stars")}`,
+      `${heading("search", "<b>Поиск</b> треков и альбомов")}`,
+      `${heading("money", "<b>Жми</b>: кнопку ниже чтобы начать пользоваться")}`,
     ].join("\n");
     const body = `${shop.shopName}\n\n<i>${shop.aboutText}</i>`;
     return { text: `${header}\n\n${features}\n\n${body}`, keyboard: buildStartKeyboard(ctx) };
@@ -68,7 +71,17 @@ export function createBot(db: AppDb): Bot<BotContext> {
   }
 
   bot.command("start", async (ctx) => {
-    upsertUser(db, ctx.chat.id, ctx.from?.username ?? null);
+    const isNewUser = upsertUser(db, ctx.chat.id, ctx.from?.username ?? null);
+    if (isNewUser) {
+      alertNewUser(ctx.chat.id, ctx.from?.username).catch(() => {});
+    }
+    const refMatch = /^ref_(\d+)$/.exec(ctx.match ?? "");
+    if (isNewUser && refMatch) {
+      const referrerChatId = Number(refMatch[1]);
+      if (applyReferral(db, referrerChatId, ctx.chat.id)) {
+        bot.api.sendMessage(referrerChatId, `${heading("gift", "Новый реферал!")} Вам начислены генерации — /referral для подробностей.`, { parse_mode: "HTML" }).catch(() => {});
+      }
+    }
     try {
       const photos = await bot.api.getUserProfilePhotos(ctx.chat.id, { limit: 1 });
       const first = photos.photos[0];
@@ -115,6 +128,7 @@ export function createBot(db: AppDb): Bot<BotContext> {
   registerModel(bot, db);
   registerReset(bot, db);
   registerHistory(bot, db);
+  registerReferral(bot, db);
 
   async function editOrReply(ctx: BotContext, view: ShopView): Promise<void> {
     try {
@@ -145,6 +159,9 @@ export function createBot(db: AppDb): Bot<BotContext> {
         break;
       case "history":
         await editOrReply(ctx, buildHistoryView(db, chatId));
+        break;
+      case "referral":
+        await editOrReply(ctx, await buildReferralView(bot, db, chatId));
         break;
       case "support":
         await editOrReply(ctx, buildSupportView());
@@ -231,7 +248,9 @@ export function createBot(db: AppDb): Bot<BotContext> {
     const text = ctx.message.text.trim();
     if (text.startsWith("/")) return; // unknown commands: ignore
 
-    upsertUser(db, chatId, ctx.from?.username ?? null);
+    if (upsertUser(db, chatId, ctx.from?.username ?? null)) {
+      alertNewUser(chatId, ctx.from?.username).catch(() => {});
+    }
 
     // Admin multi-step flows (add offer / broadcast / settings) consume text first.
     if (await handleAdminText(ctx, db, send)) return;

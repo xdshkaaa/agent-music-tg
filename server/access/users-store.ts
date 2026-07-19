@@ -52,14 +52,44 @@ function toUser(row: UserRow): User {
  */
 export const SIGNUP_BONUS_CREDITS = 10;
 
-/** Records the chat as a known user and refreshes username/last_seen. */
-export function upsertUser(db: AppDb, chatId: number, username?: string | null): void {
+// Every authenticated API request calls upsertUser with no username, purely
+// to bump last_seen. Throttle that write per chat so a burst of requests from
+// one active chat doesn't turn into a write per request. Keyed per-db (not
+// just chatId) so separate AppDb instances — as in tests, each opening its
+// own :memory: db and reusing the same chat ids — never share throttle state.
+const LAST_SEEN_THROTTLE_MS = 60_000;
+const LAST_SEEN_MAX_CHATS = 10_000;
+const recentlySeenByDb = new WeakMap<AppDb, Map<number, number>>();
+
+/**
+ * Records the chat as a known user and refreshes username/last_seen.
+ * Returns true the first time a chat_id is ever recorded, so callers can
+ * fire new-user side effects (e.g. admin alerts) exactly once.
+ */
+export function upsertUser(db: AppDb, chatId: number, username?: string | null): boolean {
+  if (username == null) {
+    let recentlySeen = recentlySeenByDb.get(db);
+    if (!recentlySeen) {
+      recentlySeen = new Map();
+      recentlySeenByDb.set(db, recentlySeen);
+    }
+    const last = recentlySeen.get(chatId);
+    const now = Date.now();
+    if (last !== undefined && now - last < LAST_SEEN_THROTTLE_MS) return false;
+    if (recentlySeen.size >= LAST_SEEN_MAX_CHATS) {
+      const oldestKey = recentlySeen.keys().next().value;
+      if (oldestKey !== undefined) recentlySeen.delete(oldestKey);
+    }
+    recentlySeen.set(chatId, now);
+  }
+  const isNew = getUser(db, chatId) === null;
   db.query(
     `INSERT INTO users (chat_id, username, credits, last_seen) VALUES (?, ?, ?, unixepoch())
      ON CONFLICT(chat_id) DO UPDATE SET
        username = COALESCE(excluded.username, users.username),
        last_seen = unixepoch()`,
   ).run(chatId, username ?? null, SIGNUP_BONUS_CREDITS);
+  return isNew;
 }
 
 export function getUser(db: AppDb, chatId: number): User | null {

@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { existsSync, mkdirSync, unlinkSync } from "node:fs";
+import { existsSync, mkdirSync, unlinkSync, renameSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -48,6 +48,16 @@ export async function downloadToTemp(url: string): Promise<string> {
   ensureAvatarDir();
   await writeFile(tmp, buf);
   return tmp;
+}
+
+/** Download a static (non-animated) profile photo into the avatar cache, keyed by file_unique_id. */
+export async function cacheStaticAvatar(url: string, fileUniqueId: string): Promise<string> {
+  ensureAvatarDir();
+  const outputPath = path.join(AVATAR_DIR, `${fileUniqueId}.jpg`);
+  if (existsSync(outputPath)) return outputPath;
+  const tmp = await downloadToTemp(url);
+  renameSync(tmp, outputPath);
+  return outputPath;
 }
 
 /** Convert a local animated file to a static JPEG. Returns the output path on success. */

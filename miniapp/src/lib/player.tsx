@@ -24,7 +24,17 @@ interface PlayerState {
   queueIndex: number;
 }
 
-interface PlayerApi extends PlayerState {
+/** progress/currentTime/duration update at ~4Hz during playback; split out
+ * into their own context so components that only need track/status/queue
+ * (the vast majority of usePlayer() callers) don't re-render every tick. */
+interface PlayerTimeInfo {
+  /** 0..1; NaN-safe (0 until duration is known). */
+  progress: number;
+  currentTime: number;
+  duration: number;
+}
+
+interface PlayerApi extends Omit<PlayerState, "progress" | "currentTime" | "duration"> {
   /** Toggle playback; pass `queue` (the playlist's tracks) so next/prev work within it. */
   toggle(track: PlayerTrackInfo, queue?: PlayerTrackInfo[]): void;
   seek(fraction: number): void;
@@ -52,6 +62,7 @@ const FALLBACK_ARTWORK_SVG =
 const FALLBACK_ARTWORK = `data:image/svg+xml,${encodeURIComponent(FALLBACK_ARTWORK_SVG)}`;
 
 const PlayerContext = createContext<PlayerApi | null>(null);
+const PlayerTimeContext = createContext<PlayerTimeInfo | null>(null);
 
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -192,9 +203,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     });
   }
 
+  const { track, status, volume, muted, queue, queueIndex } = state;
+
   const api = useMemo<PlayerApi>(() => {
     return {
-      ...state,
+      track,
+      status,
+      volume,
+      muted,
+      queue,
+      queueIndex,
       toggle(track, queue) {
         const audio = ensureAudio();
         if (state.track?.uri === track.uri) {
@@ -242,9 +260,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       },
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state]);
+  }, [track, status, volume, muted, queue, queueIndex]);
 
   apiRef.current = api;
+
+  const timeInfo = useMemo<PlayerTimeInfo>(
+    () => ({ progress: state.progress, currentTime: state.currentTime, duration: state.duration }),
+    [state.progress, state.currentTime, state.duration],
+  );
 
   const artworkObjectUrlRef = useRef<string | null>(null);
 
@@ -327,11 +350,24 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     };
   }, [state.track?.uri, state.status, state.track]);
 
-  return <PlayerContext.Provider value={api}>{children}</PlayerContext.Provider>;
+  return (
+    <PlayerContext.Provider value={api}>
+      <PlayerTimeContext.Provider value={timeInfo}>{children}</PlayerTimeContext.Provider>
+    </PlayerContext.Provider>
+  );
 }
 
 export function usePlayer(): PlayerApi {
   const ctx = useContext(PlayerContext);
   if (!ctx) throw new Error("usePlayer must be used inside PlayerProvider");
+  return ctx;
+}
+
+/** Progress/currentTime/duration, updating at ~4Hz during playback. Subscribe
+ * only where that's actually rendered (the fullscreen player's scrubber) —
+ * everywhere else, usePlayer() alone avoids re-rendering on every tick. */
+export function usePlayerTime(): PlayerTimeInfo {
+  const ctx = useContext(PlayerTimeContext);
+  if (!ctx) throw new Error("usePlayerTime must be used inside PlayerProvider");
   return ctx;
 }

@@ -357,7 +357,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify({
         playlistName,
-        tracks: tracks.map(({ uri, title, artist, durationMs }) => ({ uri, title, artist, durationMs })),
+        tracks: tracks.map(({ uri, title, artist, durationMs, artwork }) => ({ uri, title, artist, durationMs, artwork })),
       }),
     }),
   downloads: () => request<{ downloads: DownloadRecord[] }>("/api/downloads"),
@@ -462,6 +462,10 @@ export const api = {
       method: "POST",
     }),
   purchases: () => request<{ purchases: Invoice[] }>("/api/me/purchases"),
+  referral: () =>
+    request<{ link: string; invitedCount: number; creditsEarned: number; rewardCredits: number; maxPerUser: number }>(
+      "/api/referral",
+    ),
   claimTrial: () => request<{ trial: TrialStatus }>("/api/trial/claim", { method: "POST" }),
 
   // --- Playlist history ---

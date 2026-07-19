@@ -208,12 +208,8 @@ export async function generatePlaylist(opts: GeneratePlaylistOptions): Promise<G
   const seenCalls = new Map<string, unknown>();
   let consecutiveEmptyTurns = 0;
 
-  // Debug hook: force every AI search to error out on a post-clarify resume,
-  // so the error path after the clarify step is always exercised.
-  let forceSearchErrorAfterClarify = false;
   if (opts.resumeClarifyAnswer !== undefined) {
     messages = [...messages, { role: "user", content: opts.resumeClarifyAnswer }];
-    forceSearchErrorAfterClarify = true;
   }
 
   for (let i = 0; i < maxIterations; i++) {
@@ -306,10 +302,6 @@ export async function generatePlaylist(opts: GeneratePlaylistOptions): Promise<G
       }
       slots.push(null);
       dispatchable.push({ call, key, slot: slots.length - 1 });
-    }
-
-    if (forceSearchErrorAfterClarify && dispatchable.some((d) => d.call.name !== "clarify")) {
-      throw new Error("forced search error after clarify (debug)");
     }
 
     await mapWithConcurrency(dispatchable, SEARCH_CONCURRENCY, async ({ call, key, slot }) => {

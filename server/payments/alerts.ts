@@ -19,6 +19,31 @@ function grantLabel(kind: string | undefined, amount: number | undefined): strin
  * unless fulfillment succeeded and the alert bot is configured. Never throws —
  * a failed alert must not block the payment path that triggered it.
  */
+/**
+ * Notifies admins of a brand-new user via the alert bot. No-op unless the
+ * alert bot is configured. Never throws.
+ */
+export async function alertNewUser(chatId: number, username?: string | null): Promise<void> {
+  if (!env.alertBotToken || env.alertChatIds.length === 0) return;
+
+  try {
+    const who = username ? `@${username} (${chatId})` : `${chatId}`;
+    const text = `🆕 <b>Новый пользователь</b>\n${who}`;
+
+    await Promise.all(
+      env.alertChatIds.map((alertChatId) =>
+        fetch(`https://api.telegram.org/bot${env.alertBotToken}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chat_id: alertChatId, text, parse_mode: "HTML" }),
+        }).catch(() => {}),
+      ),
+    );
+  } catch {
+    // Alerts must never break the request path that triggered them.
+  }
+}
+
 export async function alertPaymentFulfilled(db: AppDb, result: FulfillResult): Promise<void> {
   if (!result.fulfilled || !result.chatId) return;
   if (!env.alertBotToken || env.alertChatIds.length === 0) return;

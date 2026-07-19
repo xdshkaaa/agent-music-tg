@@ -39,6 +39,30 @@ export function setActiveBackendId(db: AppDb, backendId: string): void {
   setSetting(db, ACTIVE_BACKEND_KEY, backendId);
 }
 
+// --- Referral settings (editable by admins) ---
+
+const REFERRAL_REWARD_CREDITS_KEY = "referral_reward_credits";
+const REFERRAL_MAX_PER_USER_KEY = "referral_max_per_user";
+
+export interface ReferralSettings {
+  rewardCredits: number;
+  maxPerUser: number; // 0 = unlimited
+}
+
+export function getReferralSettings(db: AppDb): ReferralSettings {
+  const reward = Number(getSetting(db, REFERRAL_REWARD_CREDITS_KEY));
+  const max = Number(getSetting(db, REFERRAL_MAX_PER_USER_KEY));
+  return {
+    rewardCredits: Number.isInteger(reward) && reward >= 0 ? reward : 1,
+    maxPerUser: Number.isInteger(max) && max >= 0 ? max : 0,
+  };
+}
+
+export function setReferralSettings(db: AppDb, patch: Partial<ReferralSettings>): void {
+  if (patch.rewardCredits !== undefined) setSetting(db, REFERRAL_REWARD_CREDITS_KEY, String(patch.rewardCredits));
+  if (patch.maxPerUser !== undefined) setSetting(db, REFERRAL_MAX_PER_USER_KEY, String(patch.maxPerUser));
+}
+
 // --- Shop settings (editable by admins, used in user-facing bot text) ---
 
 export interface ShopSettings {

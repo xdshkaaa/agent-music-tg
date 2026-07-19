@@ -89,14 +89,24 @@ async function toOutcome(run: () => Promise<GeneratePlaylistResult>): Promise<Ru
 }
 
 function fireVerification(playlist: FinalizedPlaylist): void {
-  if (_extractor) {
-    verifyTracks(playlist.tracks, _extractor, verificationStore).catch(() => {});
-  }
   // Prewarm the stream cache in the background so the first play of any track
-  // hits a cached file instead of waiting out a live yt-dlp extraction.
+  // hits a cached file instead of waiting out a live yt-dlp extraction. Its
+  // success/failure doubles as the availability check, so when it's running
+  // there's no need for a separate probe — that would be a second yt-dlp
+  // invocation per track for the same answer.
   if (_streamCache) {
     const cache = _streamCache;
-    void mapWithConcurrency(playlist.tracks, 2, (t) => cache.getFile(t.uri).then(() => {}).catch(() => {}));
+    void mapWithConcurrency(playlist.tracks, 2, async (t) => {
+      verificationStore.set(t.uri, "checking");
+      try {
+        await cache.getFile(t.uri);
+        verificationStore.set(t.uri, "verified");
+      } catch {
+        verificationStore.set(t.uri, "unavailable");
+      }
+    });
+  } else if (_extractor) {
+    verifyTracks(playlist.tracks, _extractor, verificationStore).catch(() => {});
   }
 }
 

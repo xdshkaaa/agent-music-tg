@@ -7,6 +7,7 @@ import {
 } from "@phosphor-icons/react";
 import { GlassPanel } from "../components/GlassPanel";
 import { EmptyState } from "../components/EmptyState";
+import { TrackRow } from "../components/TrackRow";
 import { TrackOverflowMenu } from "../components/TrackOverflowMenu";
 import { requestAddToPlaylist } from "../components/AddToPlaylistButton";
 import { usePlayer } from "../lib/player";
@@ -50,25 +51,15 @@ function DownloadEntry({
 
   return (
     <li style={{ listStyle: "none" }}>
-      <div
-        className="track-row"
+      <TrackRow
         style={style}
-        role="button"
-        tabIndex={0}
-        aria-expanded={expanded}
+        ariaExpanded={expanded}
         onClick={() => setExpanded((v) => !v)}
-        onKeyDown={(e) => {
-          if (e.key !== "Enter" && e.key !== " ") return;
-          e.preventDefault();
-          setExpanded((v) => !v);
-        }}
-      >
-        <div className="track-artwork track-artwork--icon">
-          <MusicNotes size={20} weight="bold" />
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <p className="search-row-title">{record.playlistName}</p>
-          <p className="text-muted search-row-meta">
+        fallbackIcon={<MusicNotes size={20} weight="bold" />}
+        title={record.playlistName}
+        metaClassName="search-row-meta"
+        meta={
+          <>
             {new Date(record.createdAt * 1000).toLocaleDateString("ru-RU")} · {record.tracks.length} тр. ·{" "}
             <span
               className={
@@ -81,41 +72,45 @@ function DownloadEntry({
             >
               {DOWNLOAD_STATUS_LABEL[record.status]}
             </span>
-          </p>
-        </div>
-        {busy !== null && <CircleNotch size={16} className="spin" style={{ color: "var(--text-muted)" }} />}
-        <button
-          type="button"
-          className="icon-btn track-download-btn"
-          aria-label={expanded ? "Свернуть" : "Показать треки"}
-          title={expanded ? "Свернуть" : "Показать треки"}
-          onClick={(e) => {
-            e.stopPropagation();
-            setExpanded((v) => !v);
-          }}
-        >
-          {expanded ? <CaretUp size={18} /> : <CaretDown size={18} />}
-        </button>
-        <TrackOverflowMenu
-          actions={[
-            {
-              key: "resend",
-              label: "Скачать ещё раз",
-              icon: <ArrowsClockwise size={18} />,
-              disabled: busy !== null || active,
-              onClick: onResend,
-            },
-            {
-              key: "delete",
-              label: "Удалить из истории",
-              icon: <Trash size={18} />,
-              disabled: busy !== null,
-              destructive: true,
-              onClick: onDelete,
-            },
-          ]}
-        />
-      </div>
+          </>
+        }
+        trailing={
+          <>
+            {busy !== null && <CircleNotch size={16} className="spin" style={{ color: "var(--text-muted)" }} />}
+            <button
+              type="button"
+              className="icon-btn track-download-btn"
+              aria-label={expanded ? "Свернуть" : "Показать треки"}
+              title={expanded ? "Свернуть" : "Показать треки"}
+              onClick={(e) => {
+                e.stopPropagation();
+                setExpanded((v) => !v);
+              }}
+            >
+              {expanded ? <CaretUp size={18} /> : <CaretDown size={18} />}
+            </button>
+            <TrackOverflowMenu
+              actions={[
+                {
+                  key: "resend",
+                  label: "Скачать ещё раз",
+                  icon: <ArrowsClockwise size={18} />,
+                  disabled: busy !== null || active,
+                  onClick: onResend,
+                },
+                {
+                  key: "delete",
+                  label: "Удалить из истории",
+                  icon: <Trash size={18} />,
+                  disabled: busy !== null,
+                  destructive: true,
+                  onClick: onDelete,
+                },
+              ]}
+            />
+          </>
+        }
+      />
       {expanded && (
         <ul className="download-entry-tracks">
           {record.tracks.map((t) => {
@@ -172,32 +167,15 @@ function HistoryItem({
   const artwork = entry.tracks.find((t) => t.artwork)?.artwork;
   return (
     <li style={{ listStyle: "none" }}>
-      <div
-        className="track-row"
+      <TrackRow
         style={style}
-        role="button"
-        tabIndex={0}
         onClick={() => onOpen(entry)}
-        onKeyDown={(e) => {
-          if (e.key !== "Enter" && e.key !== " ") return;
-          e.preventDefault();
-          onOpen(entry);
-        }}
-      >
-        {artwork ? (
-          <img className="track-artwork" src={artwork} alt="" />
-        ) : (
-          <div className="track-artwork track-artwork--icon">
-            <BookmarkSimple size={20} weight="bold" />
-          </div>
-        )}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <p className="search-row-title">{entry.playlistName ?? entry.prompt}</p>
-          <p className="text-muted search-row-meta">
-            {new Date(entry.createdAt * 1000).toLocaleDateString("ru-RU")} · {entry.trackCount ?? entry.tracks.length} тр.
-          </p>
-        </div>
-      </div>
+        artwork={artwork}
+        fallbackIcon={<BookmarkSimple size={20} weight="bold" />}
+        title={entry.playlistName ?? entry.prompt}
+        metaClassName="search-row-meta"
+        meta={`${new Date(entry.createdAt * 1000).toLocaleDateString("ru-RU")} · ${entry.trackCount ?? entry.tracks.length} тр.`}
+      />
     </li>
   );
 }
@@ -446,6 +424,7 @@ function PlaylistDetailView({ id, onBack }: { id: number; onBack: () => void }) 
   const [removing, setRemoving] = useState<Record<string, boolean>>({});
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [trackDownloads, setTrackDownloads] = useState<Record<string, "sending" | "sent">>({});
+  const [downloadingAll, setDownloadingAll] = useState(false);
 
   useEffect(() => {
     api.playlist(id).then((r) => setPlaylist(r.playlist)).catch(() => setPlaylist(null));
@@ -482,6 +461,20 @@ function PlaylistDetailView({ id, onBack }: { id: number; onBack: () => void }) 
     }
   }
 
+  async function handleDownloadAll() {
+    if (!playlist || playlist.tracks.length === 0 || downloadingAll) return;
+    setDownloadingAll(true);
+    try {
+      await api.download(
+        playlist.name,
+        playlist.tracks.map((t) => ({ uri: t.uri, title: t.title, artist: t.artist, artwork: t.artwork ?? undefined })),
+      );
+      window.dispatchEvent(new CustomEvent("download-created"));
+    } finally {
+      setDownloadingAll(false);
+    }
+  }
+
   async function handleTrackDownload(track: PlaylistDetail["tracks"][number]) {
     if (trackDownloads[track.uri] === "sending") return;
     setTrackDownloads((m) => ({ ...m, [track.uri]: "sending" }));
@@ -508,6 +501,18 @@ function PlaylistDetailView({ id, onBack }: { id: number; onBack: () => void }) 
         </button>
         {playlist && !confirmDelete && (
           <div className="row" style={{ gap: 6 }}>
+            {playlist.tracks.length > 0 && (
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Скачать всё"
+                title="Скачать всё"
+                disabled={downloadingAll}
+                onClick={() => void handleDownloadAll()}
+              >
+                {downloadingAll ? <CircleNotch size={18} className="spin" /> : <DownloadSimple size={18} />}
+              </button>
+            )}
             <button type="button" className="icon-btn" aria-label="Удалить плейлист" onClick={() => setConfirmDelete(true)}>
               <Trash size={18} />
             </button>
@@ -571,65 +576,56 @@ function PlaylistDetailView({ id, onBack }: { id: number; onBack: () => void }) 
           ) : (
             <div className="stack reveal-stagger mt-12">
               {playlist.tracks.map((track, i) => (
-                <div
-                  className="track-row"
+                <TrackRow
                   key={track.uri}
                   style={{ ["--i" as string]: i }}
-                  role="button"
-                  tabIndex={0}
                   onClick={() =>
                     player.toggle(
                       { uri: track.uri, title: track.title, artist: track.artist, artwork: track.artwork ?? undefined },
                       queue,
                     )
                   }
-                  onKeyDown={(e) => {
-                    if (e.key !== "Enter" && e.key !== " ") return;
-                    e.preventDefault();
-                    player.toggle(
-                      { uri: track.uri, title: track.title, artist: track.artist, artwork: track.artwork ?? undefined },
-                      queue,
-                    );
-                  }}
-                >
-                  {track.artwork ? <img className="track-artwork" src={track.artwork} alt="" /> : <div className="track-artwork" />}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p className="search-row-title">{track.title}</p>
-                    <p className="text-muted search-row-meta">{track.artist}</p>
-                  </div>
-                  {removing[track.uri] && <CircleNotch size={16} className="spin" style={{ color: "var(--text-muted)" }} />}
-                  <button
-                    type="button"
-                    className="icon-btn track-download-btn"
-                    aria-label={trackDownloads[track.uri] === "sent" ? "Отправлено в чат" : "Скачать"}
-                    title={trackDownloads[track.uri] === "sent" ? "Отправлено в чат" : "Скачать"}
-                    disabled={trackDownloads[track.uri] === "sending"}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void handleTrackDownload(track);
-                    }}
-                  >
-                    {trackDownloads[track.uri] === "sending" ? (
-                      <CircleNotch size={18} className="spin" />
-                    ) : trackDownloads[track.uri] === "sent" ? (
-                      <Check size={18} weight="bold" />
-                    ) : (
-                      <DownloadSimple size={18} />
-                    )}
-                  </button>
-                  <TrackOverflowMenu
-                    actions={[
-                      {
-                        key: "remove",
-                        label: "Убрать из плейлиста",
-                        icon: <Trash size={18} />,
-                        disabled: removing[track.uri],
-                        destructive: true,
-                        onClick: () => void handleRemoveTrack(track.uri),
-                      },
-                    ]}
-                  />
-                </div>
+                  artwork={track.artwork}
+                  title={track.title}
+                  meta={track.artist}
+                  metaClassName="search-row-meta"
+                  trailing={
+                    <>
+                      {removing[track.uri] && <CircleNotch size={16} className="spin" style={{ color: "var(--text-muted)" }} />}
+                      <button
+                        type="button"
+                        className="icon-btn track-download-btn"
+                        aria-label={trackDownloads[track.uri] === "sent" ? "Отправлено в чат" : "Скачать"}
+                        title={trackDownloads[track.uri] === "sent" ? "Отправлено в чат" : "Скачать"}
+                        disabled={trackDownloads[track.uri] === "sending"}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void handleTrackDownload(track);
+                        }}
+                      >
+                        {trackDownloads[track.uri] === "sending" ? (
+                          <CircleNotch size={18} className="spin" />
+                        ) : trackDownloads[track.uri] === "sent" ? (
+                          <Check size={18} weight="bold" />
+                        ) : (
+                          <DownloadSimple size={18} />
+                        )}
+                      </button>
+                      <TrackOverflowMenu
+                        actions={[
+                          {
+                            key: "remove",
+                            label: "Убрать из плейлиста",
+                            icon: <Trash size={18} />,
+                            disabled: removing[track.uri],
+                            destructive: true,
+                            onClick: () => void handleRemoveTrack(track.uri),
+                          },
+                        ]}
+                      />
+                    </>
+                  }
+                />
               ))}
             </div>
           )}
@@ -707,76 +703,63 @@ export default function PlaylistsScreen({ onOpenHistory }: { onOpenHistory: (ent
         {tracks !== null && tracks.length > 0 && (
           <div className="stack reveal-stagger">
             {tracks.map((track, i) => (
-              <div
-                className="track-row"
+              <TrackRow
                 key={track.uri}
                 style={{ ["--i" as string]: i }}
-                role="button"
-                tabIndex={0}
                 onClick={() =>
                   player.toggle(
                     { uri: track.uri, title: track.title, artist: track.artist, artwork: track.artwork ?? undefined },
                     queue,
                   )
                 }
-                onKeyDown={(e) => {
-                  if (e.key !== "Enter" && e.key !== " ") return;
-                  e.preventDefault();
-                  player.toggle(
-                    { uri: track.uri, title: track.title, artist: track.artist, artwork: track.artwork ?? undefined },
-                    queue,
-                  );
-                }}
-              >
-                {track.artwork ? (
-                  <img className="track-artwork" src={track.artwork} alt="" />
-                ) : (
-                  <div className="track-artwork" />
-                )}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p className="search-row-title">{track.title}</p>
-                  <p className="text-muted search-row-meta">{track.artist}</p>
-                </div>
-                {removing[track.uri] && <CircleNotch size={16} className="spin" style={{ color: "var(--text-muted)" }} />}
-                <button
-                  type="button"
-                  className="icon-btn track-download-btn"
-                  aria-label={trackDownloads[track.uri] === "sent" ? "Отправлено в чат" : "Скачать"}
-                  title={trackDownloads[track.uri] === "sent" ? "Отправлено в чат" : "Скачать"}
-                  disabled={trackDownloads[track.uri] === "sending"}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void handleTrackDownload(track);
-                  }}
-                >
-                  {trackDownloads[track.uri] === "sending" ? (
-                    <CircleNotch size={18} className="spin" />
-                  ) : trackDownloads[track.uri] === "sent" ? (
-                    <Check size={18} weight="bold" />
-                  ) : (
-                    <DownloadSimple size={18} />
-                  )}
-                </button>
-                <TrackOverflowMenu
-                  actions={[
-                    {
-                      key: "add-to-playlist",
-                      label: "Добавить в плейлист",
-                      icon: <ListPlus size={18} weight="bold" />,
-                      onClick: () =>
-                        requestAddToPlaylist({ uri: track.uri, title: track.title, artist: track.artist, artwork: track.artwork ?? undefined }),
-                    },
-                    {
-                      key: "remove",
-                      label: "Убрать из избранного",
-                      icon: <Trash size={18} />,
-                      disabled: removing[track.uri],
-                      destructive: true,
-                      onClick: () => void handleRemove(track.uri),
-                    },
-                  ]}
-                />
-              </div>
+                artwork={track.artwork}
+                title={track.title}
+                meta={track.artist}
+                metaClassName="search-row-meta"
+                trailing={
+                  <>
+                    {removing[track.uri] && <CircleNotch size={16} className="spin" style={{ color: "var(--text-muted)" }} />}
+                    <button
+                      type="button"
+                      className="icon-btn track-download-btn"
+                      aria-label={trackDownloads[track.uri] === "sent" ? "Отправлено в чат" : "Скачать"}
+                      title={trackDownloads[track.uri] === "sent" ? "Отправлено в чат" : "Скачать"}
+                      disabled={trackDownloads[track.uri] === "sending"}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handleTrackDownload(track);
+                      }}
+                    >
+                      {trackDownloads[track.uri] === "sending" ? (
+                        <CircleNotch size={18} className="spin" />
+                      ) : trackDownloads[track.uri] === "sent" ? (
+                        <Check size={18} weight="bold" />
+                      ) : (
+                        <DownloadSimple size={18} />
+                      )}
+                    </button>
+                    <TrackOverflowMenu
+                      actions={[
+                        {
+                          key: "add-to-playlist",
+                          label: "Добавить в плейлист",
+                          icon: <ListPlus size={18} weight="bold" />,
+                          onClick: () =>
+                            requestAddToPlaylist({ uri: track.uri, title: track.title, artist: track.artist, artwork: track.artwork ?? undefined }),
+                        },
+                        {
+                          key: "remove",
+                          label: "Убрать из избранного",
+                          icon: <Trash size={18} />,
+                          disabled: removing[track.uri],
+                          destructive: true,
+                          onClick: () => void handleRemove(track.uri),
+                        },
+                      ]}
+                    />
+                  </>
+                }
+              />
             ))}
           </div>
         )}

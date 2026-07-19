@@ -11,7 +11,7 @@ import {
   WarningCircle,
   CircleNotch,
 } from "@phosphor-icons/react";
-import { usePlayer } from "../lib/player";
+import { usePlayer, usePlayerTime } from "../lib/player";
 import { VolumeControl } from "../components/VolumeControl";
 import { LyricsScreen } from "./LyricsScreen";
 import { api } from "../lib/api";
@@ -47,7 +47,8 @@ export function PlayerScreen({
 }) {
   const player = usePlayer();
   const track = player.track;
-  const { status, progress, volume, muted, currentTime, duration } = player;
+  const { status, volume, muted } = player;
+  const { progress, currentTime, duration } = usePlayerTime();
   const [artworkError, setArtworkError] = useState(false);
   const [showLyrics, setShowLyrics] = useState(false);
   const [liked, setLiked] = useState(false);
@@ -348,7 +349,7 @@ export function PlayerScreen({
 
       {showLyrics && track && (
         <LyricsScreen
-          track={{ title: track.title, artist: track.artist }}
+          track={{ title: track.title, artist: track.artist, artwork: track.artwork }}
           currentTime={currentTime}
           duration={duration}
           onSeek={(fraction) => player.seek(fraction)}

@@ -18,6 +18,7 @@ export interface AudioMeta {
   title: string;
   performer: string;
   durationSeconds?: number;
+  artworkUrl?: string;
 }
 
 /** Thin seam over grammY so delivery is testable without a live bot. */
@@ -57,6 +58,7 @@ function metaFor(track: DownloadTrack): AudioMeta {
     title: track.title,
     performer: track.artist,
     durationSeconds: track.durationMs != null ? Math.round(track.durationMs / 1000) : undefined,
+    artworkUrl: track.artwork,
   };
 }
 
