@@ -23,12 +23,14 @@ export interface AudioDeps {
 
 interface DownloadBody {
   playlistName?: string;
-  tracks?: { uri?: string; title?: string; artist?: string; durationMs?: number }[];
+  tracks?: { uri?: string; title?: string; artist?: string; durationMs?: number; artwork?: string }[];
 }
 
 const MAX_TRACKS = 50;
 
-function parseTracks(body: DownloadBody): { uri: string; title: string; artist: string; durationMs?: number }[] | null {
+function parseTracks(
+  body: DownloadBody,
+): { uri: string; title: string; artist: string; durationMs?: number; artwork?: string }[] | null {
   if (!Array.isArray(body.tracks) || body.tracks.length === 0 || body.tracks.length > MAX_TRACKS) return null;
   const tracks = [];
   for (const t of body.tracks) {
@@ -38,6 +40,7 @@ function parseTracks(body: DownloadBody): { uri: string; title: string; artist: 
       title: typeof t.title === "string" ? t.title : t.uri,
       artist: typeof t.artist === "string" ? t.artist : "",
       durationMs: typeof t.durationMs === "number" ? t.durationMs : undefined,
+      artwork: typeof t.artwork === "string" ? t.artwork : undefined,
     });
   }
   return tracks;
@@ -94,7 +97,7 @@ export function createAudioRoutes(db: AppDb, deps: AudioDeps): Hono<AppEnv> {
 
     // Re-send as a fresh job over the same tracks: cached file_ids make this
     // near-instant; previously failed tracks get another attempt.
-    const fresh = startJob(chatId, record.playlistName, record.tracks.map(({ uri, title, artist, durationMs }) => ({ uri, title, artist, durationMs })));
+    const fresh = startJob(chatId, record.playlistName, record.tracks.map(({ uri, title, artist, durationMs, artwork }) => ({ uri, title, artist, durationMs, artwork })));
     return c.json({ downloadId: fresh.id }, 202);
   });
 

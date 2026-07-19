@@ -4,6 +4,7 @@ import { createHmac } from "node:crypto";
 // env.ts throws without a bot token at import time; set one before the
 // dynamic imports below pull it in.
 process.env.TELEGRAM_BOT_TOKEN ??= "test-token";
+process.env.CRYPTOBOT_TOKEN ??= "test-crypto-token";
 
 const { env } = await import("../env");
 const { openDb } = await import("../db");
@@ -12,7 +13,8 @@ const { insertPendingInvoice, getInvoice, listInvoicesForChat } = await import("
 const { fulfillInvoice } = await import("./fulfillment");
 const { fulfillStarsPayment } = await import("./stars");
 const { pollOnce } = await import("./poller");
-const { getUser, upsertUser } = await import("../access/users-store");
+const { getUser, upsertUser, reserveCredits } = await import("../access/users-store");
+const { purchaseOffer } = await import("./purchase");
 const { hasAccess } = await import("../access/entitlements");
 const { createApiRoutes } = await import("../api/routes");
 import type { CryptoInvoice } from "./crypto-pay";
@@ -144,6 +146,77 @@ describe("stars purchase grants subscription", () => {
     expect(hasAccess(db, CHAT)).toBe(true);
     // subscription grant does not touch credits
     expect(getUser(db, CHAT)!.credits).toBe(0);
+  });
+});
+
+describe("bug repro: invoice created + abandoned (never paid)", () => {
+  test("credits held at invoice creation are refunded once the invoice goes stale/expired", async () => {
+    const db = freshDb();
+    upsertUser(db, CHAT);
+    db.query(`UPDATE users SET credits = 67 WHERE chat_id = ?`).run(CHAT);
+    const offer = createOffer(db, {
+      title: "67 генераций", amount: "5", asset: "USDT", starsAmount: 100, grantKind: "credits", grantAmount: 67,
+    });
+
+    let nextInvoiceId = 3001;
+    const stub = ((input: string | URL | Request) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url.includes("createInvoice")) {
+        return Promise.resolve(
+          Response.json({ ok: true, result: { invoice_id: nextInvoiceId, status: "active", pay_url: "https://t.me/pay" } }),
+        );
+      }
+      return realFetch(input as never);
+    }) as typeof fetch;
+    globalThis.fetch = stub;
+
+    // User taps "buy" — bot's /buy flow reserves credits at invoice creation
+    // (server/bot/shop.ts → purchaseOffer), same as the reported bug.
+    const result = await purchaseOffer(db, CHAT, offer.id);
+    expect(result.invoiceId).toBe(nextInvoiceId);
+
+    // Credits vanish immediately, exactly as reported ("package 67/67" gone).
+    expect(getUser(db, CHAT)!.credits).toBe(0);
+
+    // User never pays. Backdate the invoice past the staleness window so the
+    // poller's fallback cancellation fires without waiting an hour.
+    db.query(`UPDATE invoices SET created_at = ? WHERE external_id = ?`).run(
+      Math.floor(Date.now() / 1000) - 61 * 60,
+      String(nextInvoiceId),
+    );
+
+    globalThis.fetch = realFetch;
+    const remote = async (): Promise<CryptoInvoice[]> => [];
+    await pollOnce(db, undefined, remote);
+
+    // Credits are restored — the abandoned invoice no longer holds them.
+    expect(getUser(db, CHAT)!.credits).toBe(67);
+    expect(getInvoice(db, "crypto", String(nextInvoiceId))?.status).toBe("canceled");
+  });
+
+  test("credits are refunded immediately when Crypto Pay reports the invoice expired", async () => {
+    const db = freshDb();
+    upsertUser(db, CHAT);
+    db.query(`UPDATE users SET credits = 67 WHERE chat_id = ?`).run(CHAT);
+    const offer = createOffer(db, {
+      title: "67 генераций", amount: "5", asset: "USDT", starsAmount: 100, grantKind: "credits", grantAmount: 67,
+    });
+
+    const invoiceId = 3002;
+    // Mirrors reserveForOffer() in purchase.ts: credits are deducted up front,
+    // then the invoice row records how much to give back on cancel.
+    reserveCredits(db, CHAT, 67);
+    insertPendingInvoice(db, {
+      provider: "crypto", externalId: String(invoiceId), chatId: CHAT, offerId: offer.id,
+      amount: "5", asset: "USDT", reservedCredits: 67,
+    });
+    expect(getUser(db, CHAT)!.credits).toBe(0);
+
+    const remote = async (): Promise<CryptoInvoice[]> => [{ invoice_id: invoiceId, status: "expired" } as CryptoInvoice];
+    await pollOnce(db, undefined, remote);
+
+    expect(getUser(db, CHAT)!.credits).toBe(67);
+    expect(getInvoice(db, "crypto", String(invoiceId))?.status).toBe("canceled");
   });
 });
 

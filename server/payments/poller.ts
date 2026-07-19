@@ -8,6 +8,7 @@ import { cancelInvoiceAndRefund } from "./cancel";
 
 const POLL_INTERVAL_MS = 60_000;
 const PLATEGA_STALE_MS = 60 * 60 * 1000;
+const CRYPTO_STALE_MS = 60 * 60 * 1000;
 
 export type OnFulfilled = (result: FulfillResult) => void | Promise<void>;
 
@@ -20,8 +21,22 @@ export async function pollOnce(
 ): Promise<void> {
   const pending = listPendingInvoices(db, "crypto");
   if (pending.length === 0) return;
-  const remote = await fetchInvoices(pending.map((i) => Number(i.externalId)));
+  const now = Date.now();
+  const stillPending: typeof pending = [];
+  for (const inv of pending) {
+    if (now - inv.createdAt * 1000 > CRYPTO_STALE_MS) {
+      cancelInvoiceAndRefund(db, "crypto", inv.externalId);
+    } else {
+      stillPending.push(inv);
+    }
+  }
+  if (stillPending.length === 0) return;
+  const remote = await fetchInvoices(stillPending.map((i) => Number(i.externalId)));
   for (const inv of remote) {
+    if (inv.status === "expired") {
+      cancelInvoiceAndRefund(db, "crypto", String(inv.invoice_id));
+      continue;
+    }
     if (inv.status !== "paid") continue;
     const result = fulfillInvoice(db, inv.invoice_id);
     if (result.fulfilled && result.offerTitle && onFulfilled) await onFulfilled(result);

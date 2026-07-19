@@ -36,15 +36,28 @@ export interface Extractor {
   probe(uri: string): Promise<ProbeResult>;
 }
 
+const PROBE_TIMEOUT_MS = 15_000;
+const EXTRACT_TIMEOUT_MS = 45_000;
+
+/** Kills proc if it doesn't exit within timeoutMs; returns its exit code either way. */
+async function waitWithTimeout(proc: { exited: Promise<number>; kill: () => void }, timeoutMs: number): Promise<number> {
+  const timer = setTimeout(() => proc.kill(), timeoutMs);
+  try {
+    return await proc.exited;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function runProbe(uri: string): Promise<ProbeResult> {
   const url = sourceUrlForUri(uri);
   const proc = Bun.spawn(
-    ["yt-dlp", "--no-playlist", "--quiet", "--dump-json", url],
+    ["yt-dlp", "--no-playlist", "--quiet", "--js-runtimes", "node", "-f", "bestaudio/best", "--dump-json", url],
     { stdout: "pipe", stderr: "pipe" },
   );
   const stdout = await new Response(proc.stdout).text();
   const stderr = await new Response(proc.stderr).text();
-  const code = await proc.exited;
+  const code = await waitWithTimeout(proc, PROBE_TIMEOUT_MS);
 
   if (code !== 0) {
     const msg = stderr.trim().slice(0, 300);
@@ -89,18 +102,25 @@ export class YtDlpExtractor implements Extractor {
         "yt-dlp",
         "--no-playlist",
         "--quiet",
+        "--js-runtimes", "node",
+        "-f", "bestaudio/best",
         "-x",
         "--audio-format", "mp3",
         "--audio-quality", "192K",
+        "--embed-thumbnail",
+        "--embed-metadata",
+        "--convert-thumbnails", "jpg",
         "-o", filePath.replace(/\.mp3$/, ".%(ext)s"),
         url,
       ],
       { stdout: "ignore", stderr: "pipe" },
     );
     const stderr = await new Response(proc.stderr).text();
-    const code = await proc.exited;
+    const code = await waitWithTimeout(proc, EXTRACT_TIMEOUT_MS);
     if (code !== 0) {
-      throw new Error(`yt-dlp failed for ${uri} (exit ${code}): ${stderr.trim().slice(0, 500)}`);
+      const timedOut = proc.killed;
+      const detail = timedOut ? "timed out" : stderr.trim().slice(0, 500);
+      throw new Error(`yt-dlp failed for ${uri} (exit ${code}): ${detail}`);
     }
 
     const file = Bun.file(filePath);
