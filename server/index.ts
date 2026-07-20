@@ -18,6 +18,7 @@ import { YtDlpStreamResolver } from "./audio/stream-resolver";
 import { createTelegramAudioSender } from "./audio/telegram-sender";
 import type { AudioDeps } from "./api/audio-routes";
 import { reconcileStaleDownloads } from "./audio/downloads-store";
+import { createTelegramBroadcastSender } from "./admin/telegram-broadcast";
 
 const db = openDb(env.dbPath);
 bootstrapAllowlist(db);
@@ -36,16 +37,18 @@ const bot = createBot(db);
 // and bot replies fall back to clean text. See server/bot/emoji.ts.
 void loadCustomEmojis(bot);
 
-const send = async (chatId: number, text: string): Promise<void> => {
-  await bot.api.sendMessage(chatId, text, { parse_mode: "HTML" });
-};
+const send = createTelegramBroadcastSender(bot, env.publicOrigin);
 
 async function notifyFulfilled(result: FulfillResult): Promise<void> {
   await alertPaymentFulfilled(db, result);
   if (!result.fulfilled || !result.chatId || !result.offerTitle) return;
   const check = accent("check");
   try {
-    await send(result.chatId, `${check ? check + " " : ""}Оплата получена: «${result.offerTitle}». Доступ активирован.`);
+    await bot.api.sendMessage(
+      result.chatId,
+      `${check ? check + " " : ""}Оплата получена: «${result.offerTitle}». Доступ активирован.`,
+      { parse_mode: "HTML" },
+    );
   } catch {
     // user may have blocked the bot — ignore
   }

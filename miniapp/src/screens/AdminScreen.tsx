@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   WarningCircle, Circle, Key, XCircle, Plus, Minus, Star,
-  Calendar, Prohibit, Crown, User, PencilSimple,
+  Calendar, Prohibit, Crown, User, PencilSimple, Paperclip, X,
 } from "@phosphor-icons/react";
 import { GlassPanel } from "../components/GlassPanel";
 import { AdminSettingsBar } from "../components/AdminSettingsBar";
@@ -19,6 +19,7 @@ import type {
   SettingEntry,
   PaymentsConfig,
   StatsPeriod,
+  AdminBroadcastButtonPreset,
 } from "../lib/api";
 import { api } from "../lib/api";
 import { useScrollFade } from "../lib/useScrollFade";
@@ -298,19 +299,76 @@ function OffersPanel() {
 
 function BroadcastPanel() {
   const [text, setText] = useState("");
+  const [media, setMedia] = useState<File | null>(null);
+  const [buttons, setButtons] = useState<AdminBroadcastButtonPreset[]>(["open_app"]);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [confirmSend, setConfirmSend] = useState(false);
+  const mediaInputRef = useRef<HTMLInputElement>(null);
 
-  async function send(e: FormEvent) {
-    e.preventDefault();
+  const buttonPresets: Array<{ id: AdminBroadcastButtonPreset; label: string }> = [
+    { id: "open_app", label: "Открыть приложение" },
+    { id: "search", label: "Поиск" },
+    { id: "playlists", label: "Мои плейлисты" },
+    { id: "profile", label: "Профиль" },
+  ];
+
+  function toggleButton(id: AdminBroadcastButtonPreset) {
+    setButtons((current) =>
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
+    );
+    setConfirmSend(false);
+  }
+
+  function mediaKind(file: File): "Изображение" | "GIF" | "Видео" | "Файл" {
+    const name = file.name.toLowerCase();
+    if (file.type === "image/gif" || name.endsWith(".gif")) return "GIF";
+    if (
+      ["image/jpeg", "image/png", "image/webp"].includes(file.type)
+      || /\.(jpe?g|png|webp)$/.test(name)
+    ) return "Изображение";
+    if (file.type === "video/mp4" || name.endsWith(".mp4")) return "Видео";
+    return "Файл";
+  }
+
+  function selectMedia(file: File | null) {
+    setResult(null);
+    setConfirmSend(false);
+    if (!file) {
+      setMedia(null);
+      return;
+    }
+    const maxBytes = mediaKind(file) === "Изображение" ? 10 * 1024 * 1024 : 50 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      setMedia(null);
+      setResult(
+        `Ошибка: ${mediaKind(file) === "Изображение"
+          ? "изображение должно быть не больше 10 МБ"
+          : "вложение должно быть не больше 50 МБ"}`,
+      );
+      if (mediaInputRef.current) mediaInputRef.current.value = "";
+      return;
+    }
+    setMedia(file);
+  }
+
+  function removeMedia() {
+    setMedia(null);
+    setConfirmSend(false);
+    if (mediaInputRef.current) mediaInputRef.current.value = "";
+  }
+
+  async function send(e?: FormEvent) {
+    e?.preventDefault();
     setBusy(true);
     setResult(null);
     setConfirmSend(false);
     try {
-      const r = await api.adminBroadcast(text.trim());
+      const r = await api.adminBroadcast({ text: text.trim(), buttons, media });
       setResult(`Доставлено: ${r.sent}, не доставлено: ${r.failed}`);
       setText("");
+      setMedia(null);
+      if (mediaInputRef.current) mediaInputRef.current.value = "";
     } catch (err) {
       setResult(`Ошибка: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
@@ -322,14 +380,95 @@ function BroadcastPanel() {
     <GlassPanel className="reveal">
       <h2>Рассылка</h2>
       <form className="stack mt-12" onSubmit={send}>
-        <textarea className="glass-input" rows={4} placeholder="Текст сообщения" value={text} onChange={(e) => setText(e.target.value)} required />
+        <textarea
+          className="glass-input"
+          rows={5}
+          placeholder={media
+            ? "Подпись к вложению (необязательно, поддерживается HTML)"
+            : "Текст сообщения (поддерживается HTML)"}
+          value={text}
+          maxLength={media ? 1024 : 4096}
+          onChange={(e) => {
+            setText(e.target.value);
+            setConfirmSend(false);
+          }}
+        />
+
+        <div className="stack">
+          <strong>Вложение</strong>
+          <label
+            className="glass-button"
+            style={{ alignSelf: "flex-start", display: "inline-flex", alignItems: "center", gap: 8 }}
+          >
+            <Paperclip size={18} weight="bold" />
+            {media ? "Заменить вложение" : "Прикрепить изображение, GIF, видео или файл"}
+            <input
+              ref={mediaInputRef}
+              type="file"
+              hidden
+              onChange={(e) => selectMedia(e.target.files?.[0] ?? null)}
+            />
+          </label>
+          {media && (
+            <div className="row" style={{ justifyContent: "space-between", gap: 8 }}>
+              <span>
+                {mediaKind(media)} · {media.name} · {(media.size / 1024 / 1024).toFixed(1)} МБ
+              </span>
+              <button type="button" className="glass-button" aria-label="Убрать вложение" onClick={removeMedia}>
+                <X size={16} weight="bold" />
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="stack">
+          <strong>Готовые inline-кнопки</strong>
+          <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+            {buttonPresets.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                className={`glass-button${buttons.includes(preset.id) ? " primary" : ""}`}
+                aria-pressed={buttons.includes(preset.id)}
+                onClick={() => toggleButton(preset.id)}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {confirmSend ? (
-          <div className="row">
-            <button type="button" className="glass-button primary" onClick={send} disabled={busy}>✓ Подтвердить</button>
-            <button type="button" className="glass-button" onClick={() => setConfirmSend(false)}>Отмена</button>
+          <div className="stack">
+            <small>
+              Всем пользователям уйдёт {media
+                ? `${mediaKind(media).toLowerCase()}${text.trim() ? " с подписью" : ""}`
+                : "текстовое сообщение"}
+              {buttons.length ? ` и кнопок: ${buttons.length}` : " без кнопок"}.
+            </small>
+            <div className="row">
+              <button
+                type="button"
+                className="glass-button primary"
+                onClick={() => void send()}
+                disabled={busy}
+              >
+                Подтвердить отправку
+              </button>
+              <button type="button" className="glass-button" onClick={() => setConfirmSend(false)}>
+                Отмена
+              </button>
+            </div>
           </div>
         ) : (
-          <button type="button" className="glass-button primary" disabled={busy || text.trim().length === 0} onClick={() => setConfirmSend(true)}>Отправить всем</button>
+          <button
+            type="button"
+            className="glass-button primary"
+            disabled={busy || (!text.trim() && !media)}
+            onClick={() => setConfirmSend(true)}
+          >
+            Отправить всем
+          </button>
         )}
         {result && <p role="status">{result}</p>}
       </form>

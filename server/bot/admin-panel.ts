@@ -329,7 +329,7 @@ export async function handleAdminText(ctx: BotContext, db: AppDb, send: SendFn):
   if (flow.kind === "admin_broadcast") {
     clearSession(db, chatId);
     await ctx.reply("Отправляю рассылку…");
-    const res = await broadcast(db, text, send);
+    const res = await broadcast(db, { text, buttons: [] }, send);
     await ctx.reply(`Готово. Доставлено: ${res.sent}, ошибок: ${res.failed}.`);
     return true;
   }

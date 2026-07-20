@@ -2,10 +2,11 @@ import { getInitData } from "./telegram";
 import type { AgentEvent } from "./reasoning";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const isFormData = init?.body instanceof FormData;
   const res = await fetch(path, {
     ...init,
     headers: {
-      "content-type": "application/json",
+      ...(isFormData ? {} : { "content-type": "application/json" }),
       "X-Telegram-Init-Data": getInitData(),
       ...init?.headers,
     },
@@ -211,6 +212,14 @@ export interface GrantHistoryRecord {
 export interface GrantHistoryResponse {
   history: GrantHistoryRecord[];
   total?: number;
+}
+
+export type AdminBroadcastButtonPreset = "open_app" | "search" | "playlists" | "profile";
+
+export interface AdminBroadcastInput {
+  text: string;
+  buttons: AdminBroadcastButtonPreset[];
+  media: File | null;
 }
 
 export type DownloadTrackStatus = "pending" | "sent" | "failed";
@@ -491,8 +500,13 @@ export const api = {
     request<{ offer: Offer }>(`/api/admin/offers/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   adminDeleteOffer: (id: number) =>
     request<{ ok: boolean }>(`/api/admin/offers/${id}`, { method: "DELETE" }),
-  adminBroadcast: (text: string) =>
-    request<{ sent: number; failed: number }>("/api/admin/broadcast", { method: "POST", body: JSON.stringify({ text }) }),
+  adminBroadcast: (input: AdminBroadcastInput) => {
+    const body = new FormData();
+    body.set("text", input.text);
+    body.set("buttons", JSON.stringify(input.buttons));
+    if (input.media) body.set("media", input.media, input.media.name);
+    return request<{ sent: number; failed: number }>("/api/admin/broadcast", { method: "POST", body });
+  },
   adminShopSettings: () => request<ShopSettings>("/api/admin/shop-settings"),
   adminSetShopSettings: (patch: Partial<ShopSettings>) =>
     request<ShopSettings>("/api/admin/shop-settings", { method: "POST", body: JSON.stringify(patch) }),

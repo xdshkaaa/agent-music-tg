@@ -24,7 +24,16 @@ import {
 } from "../payments/offers-store";
 import { isSupportedAsset, SUPPORTED_ASSETS } from "../payments/crypto-pay";
 import { getAdminStats } from "../admin/stats";
-import { broadcast } from "../admin/broadcast";
+import {
+  broadcast,
+  parseBroadcastButtonPresets,
+  resolveBroadcastMediaKind,
+  validateBroadcastMessage,
+  MAX_BROADCAST_FILE_BYTES,
+  MAX_BROADCAST_PHOTO_BYTES,
+  type BroadcastButtonPreset,
+  type BroadcastMedia,
+} from "../admin/broadcast";
 import { getGrantHistoryForUser, getAllGrantHistory, countGrantHistory } from "../admin/grant-history";
 import { getAllowlist, addToAllowlist, removeFromAllowlist, setChatAdminRole } from "../lib/access-control";
 import { env } from "../env";
@@ -200,10 +209,63 @@ export function createAdminRoutes(db: AppDb, deps: ApiDeps): Hono<AppEnv> {
   });
 
   app.post("/admin/broadcast", requireAdmin, async (c) => {
-    const b = await readJsonBody<{ text: string }>(c.req.raw);
-    if (!b.text || b.text.trim().length === 0) return c.json({ error: "text is required" }, 400);
     if (!deps.send) return c.json({ error: "broadcast unavailable" }, 503);
-    const result = await broadcast(db, b.text.trim(), deps.send);
+    let text = "";
+    let buttons: BroadcastButtonPreset[] | null = [];
+    let media: BroadcastMedia | undefined;
+
+    if ((c.req.header("content-type") ?? "").toLowerCase().includes("multipart/form-data")) {
+      let form: FormData;
+      try {
+        form = await c.req.formData();
+      } catch {
+        return c.json({ error: "Не удалось прочитать форму рассылки." }, 400);
+      }
+      const textValue = form.get("text");
+      text = typeof textValue === "string" ? textValue.trim() : "";
+      const buttonsValue = form.get("buttons");
+      try {
+        buttons = parseBroadcastButtonPresets(
+          typeof buttonsValue === "string" && buttonsValue.length > 0 ? JSON.parse(buttonsValue) : [],
+        );
+      } catch {
+        buttons = null;
+      }
+
+      const mediaValue = form.get("media");
+      if (mediaValue instanceof File) {
+        const filename = (mediaValue.name.split(/[\\/]/).pop() || "attachment").slice(0, 255);
+        const mimeType = mediaValue.type || "application/octet-stream";
+        const kind = resolveBroadcastMediaKind(filename, mimeType);
+        const maxBytes = kind === "photo" ? MAX_BROADCAST_PHOTO_BYTES : MAX_BROADCAST_FILE_BYTES;
+        if (mediaValue.size > maxBytes) {
+          return c.json(
+            {
+              error: kind === "photo"
+                ? "Изображение должно быть не больше 10 МБ."
+                : "Вложение должно быть не больше 50 МБ.",
+            },
+            400,
+          );
+        }
+        media = {
+          kind,
+          data: new Uint8Array(await mediaValue.arrayBuffer()),
+          filename,
+          mimeType,
+        };
+      }
+    } else {
+      const body = await readJsonBody<{ text?: string; buttons?: unknown }>(c.req.raw);
+      text = typeof body.text === "string" ? body.text.trim() : "";
+      buttons = parseBroadcastButtonPresets(body.buttons ?? []);
+    }
+
+    if (!buttons) return c.json({ error: "Выбран неизвестный шаблон кнопки." }, 400);
+    const message = { text, buttons, media };
+    const validationError = validateBroadcastMessage(message);
+    if (validationError) return c.json({ error: validationError }, 400);
+    const result = await broadcast(db, message, deps.send);
     return c.json(result);
   });
 

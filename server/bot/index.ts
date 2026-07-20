@@ -18,6 +18,7 @@ import { registerHistory, buildHistoryView } from "./history";
 import { registerReferral, buildReferralView, applyReferral, formatGenerationCount } from "./referral";
 import { btnText, heading } from "./emoji";
 import { grantPlaylistSlotsForPayment } from "../access/stars-payments-store";
+import { createTelegramBroadcastSender } from "../admin/telegram-broadcast";
 
 export function createBot(db: AppDb): Bot<BotContext> {
   const bot = new Bot<BotContext>(env.telegramBotToken);
@@ -27,9 +28,7 @@ export function createBot(db: AppDb): Bot<BotContext> {
   bot.use(allowlistGate(db));
   bot.use(channelSubscriptionGate(db));
 
-  const send = async (chatId: number, text: string): Promise<void> => {
-    await bot.api.sendMessage(chatId, text);
-  };
+  const send = createTelegramBroadcastSender(bot, env.publicOrigin);
 
   function buildStartKeyboard(ctx: BotContext): InlineKeyboard {
     const kb = new InlineKeyboard()
