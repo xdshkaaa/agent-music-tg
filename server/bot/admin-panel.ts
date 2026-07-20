@@ -2,7 +2,7 @@ import { Bot, InlineKeyboard } from "grammy";
 import type { AppDb } from "../db";
 import type { BotContext } from "./context";
 import { getAdminStats, type StatsPeriod } from "../admin/stats";
-import { broadcast, type SendFn } from "../admin/broadcast";
+import { broadcast, type BroadcastSendFn } from "../admin/broadcast";
 import { listOffers, createOffer, setOfferActive, deleteOffer, type GrantKind } from "../payments/offers-store";
 import { isSupportedAsset, SUPPORTED_ASSETS as SUPPORTED_CRYPTO_ASSETS } from "../payments/crypto-pay";
 import {
@@ -319,7 +319,7 @@ function chunk<T>(arr: T[], size: number): T[][] {
  * Handles free-text input while an admin FSM flow is active. Returns true if
  * the message was consumed (caller must not treat it as a generation prompt).
  */
-export async function handleAdminText(ctx: BotContext, db: AppDb, send: SendFn): Promise<boolean> {
+export async function handleAdminText(ctx: BotContext, db: AppDb, send: BroadcastSendFn): Promise<boolean> {
   if (!ctx.isAdmin) return false;
   const chatId = ctx.chat!.id;
   const flow = getAdminFlow(db, chatId);

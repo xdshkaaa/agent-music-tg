@@ -43,6 +43,7 @@ describe("broadcast message validation", () => {
     expect(resolveBroadcastMediaKind("clip.mp4", "video/mp4")).toBe("video");
     expect(resolveBroadcastMediaKind("clip.mov", "video/quicktime")).toBe("document");
     expect(resolveBroadcastMediaKind("poster.svg", "image/svg+xml")).toBe("document");
+    expect(resolveBroadcastMediaKind("renamed.gif", "application/pdf")).toBe("document");
   });
 
   test("accepts only known button presets and removes duplicates", () => {
@@ -115,6 +116,27 @@ describe("broadcast delivery", () => {
 
     expect(typeof sources[0]).not.toBe("string");
     expect(sources[1]).toBe("photo-file-id");
+  });
+
+  test("keeps legacy bot-admin text plain while Mini App broadcasts can opt into HTML", async () => {
+    const options: unknown[] = [];
+    const bot = {
+      api: {
+        async sendMessage(_chatId: number, _text: string, sendOptions: unknown) {
+          options.push(sendOptions);
+          return {};
+        },
+      },
+    } as unknown as Parameters<typeof createTelegramBroadcastSender>[0];
+    const send = createTelegramBroadcastSender(bot, "https://miniapp.xdshka.party");
+
+    await send(101, { text: "1 < 2", buttons: [] });
+    await send(202, { text: "<b>Новость</b>", buttons: [], parseMode: "HTML" });
+
+    expect(options).toEqual([
+      { reply_markup: undefined },
+      { parse_mode: "HTML", reply_markup: undefined },
+    ]);
   });
 
   test("sends the same prepared message to every known user and tolerates failures", async () => {

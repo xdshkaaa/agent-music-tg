@@ -234,7 +234,7 @@ export function createAdminRoutes(db: AppDb, deps: ApiDeps): Hono<AppEnv> {
 
       const mediaValue = form.get("media");
       if (mediaValue instanceof File) {
-        const filename = (mediaValue.name.split(/[\\/]/).pop() || "attachment").slice(0, 255);
+        const filename = (mediaValue.name.split(/[\\/]/).pop() || "вложение").slice(0, 255);
         const mimeType = mediaValue.type || "application/octet-stream";
         const kind = resolveBroadcastMediaKind(filename, mimeType);
         const maxBytes = kind === "photo" ? MAX_BROADCAST_PHOTO_BYTES : MAX_BROADCAST_FILE_BYTES;
@@ -262,7 +262,7 @@ export function createAdminRoutes(db: AppDb, deps: ApiDeps): Hono<AppEnv> {
     }
 
     if (!buttons) return c.json({ error: "Выбран неизвестный шаблон кнопки." }, 400);
-    const message = { text, buttons, media };
+    const message = { text, buttons, media, parseMode: "HTML" as const };
     const validationError = validateBroadcastMessage(message);
     if (validationError) return c.json({ error: validationError }, 400);
     const result = await broadcast(db, message, deps.send);

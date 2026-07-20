@@ -1,6 +1,11 @@
 import { Bot, InlineKeyboard, InputFile } from "grammy";
 import type { InputFile as InputFileType } from "grammy";
-import type { BroadcastButtonPreset, BroadcastMedia, BroadcastMessage, SendFn } from "./broadcast";
+import type {
+  BroadcastButtonPreset,
+  BroadcastMedia,
+  BroadcastMessage,
+  BroadcastSendFn,
+} from "./broadcast";
 import type { BotContext } from "../bot/context";
 import { btnText } from "../bot/emoji";
 
@@ -50,14 +55,14 @@ function uploadedFileId(message: SentMediaMessage, kind: BroadcastMedia["kind"])
  * Once the first recipient accepts an upload, later recipients reuse its
  * Telegram file_id instead of uploading the same bytes for every user.
  */
-export function createTelegramBroadcastSender(bot: Bot<BotContext>, publicOrigin: string): SendFn {
+export function createTelegramBroadcastSender(bot: Bot<BotContext>, publicOrigin: string): BroadcastSendFn {
   const uploadedMedia = new WeakMap<BroadcastMedia, string>();
 
   return async (chatId: number, message: BroadcastMessage): Promise<void> => {
     const replyMarkup = buildBroadcastKeyboard(message.buttons, publicOrigin);
     if (!message.media) {
       await bot.api.sendMessage(chatId, message.text, {
-        parse_mode: "HTML",
+        ...(message.parseMode === "HTML" ? { parse_mode: "HTML" as const } : {}),
         reply_markup: replyMarkup,
       });
       return;
@@ -68,7 +73,7 @@ export function createTelegramBroadcastSender(bot: Bot<BotContext>, publicOrigin
     const source: string | InputFileType = cachedFileId ?? new InputFile(media.data, media.filename);
     const options = {
       caption: message.text || undefined,
-      parse_mode: "HTML" as const,
+      ...(message.parseMode === "HTML" ? { parse_mode: "HTML" as const } : {}),
       reply_markup: replyMarkup,
     };
     let sent: SentMediaMessage;

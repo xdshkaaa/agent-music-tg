@@ -21,9 +21,10 @@ export interface BroadcastMessage {
   text: string;
   buttons: readonly BroadcastButtonPreset[];
   media?: BroadcastMedia;
+  parseMode?: "HTML";
 }
 
-export type SendFn = (chatId: number, message: BroadcastMessage) => Promise<void>;
+export type BroadcastSendFn = (chatId: number, message: BroadcastMessage) => Promise<void>;
 
 export const MAX_BROADCAST_PHOTO_BYTES = 10 * 1024 * 1024;
 export const MAX_BROADCAST_FILE_BYTES = 50 * 1024 * 1024;
@@ -50,16 +51,15 @@ export function parseBroadcastButtonPresets(value: unknown): BroadcastButtonPres
 export function resolveBroadcastMediaKind(filename: string, mimeType: string): BroadcastMediaKind {
   const lowerName = filename.toLowerCase();
   const lowerType = mimeType.toLowerCase();
-  if (lowerType === "image/gif" || lowerName.endsWith(".gif")) return "animation";
-  if (
-    lowerType === "image/jpeg" ||
-    lowerType === "image/png" ||
-    lowerType === "image/webp" ||
-    /\.(jpe?g|png|webp)$/.test(lowerName)
-  ) {
-    return "photo";
+  if (lowerType && lowerType !== "application/octet-stream") {
+    if (lowerType === "image/gif") return "animation";
+    if (["image/jpeg", "image/png", "image/webp"].includes(lowerType)) return "photo";
+    if (lowerType === "video/mp4") return "video";
+    return "document";
   }
-  if (lowerType === "video/mp4" || lowerName.endsWith(".mp4")) return "video";
+  if (lowerName.endsWith(".gif")) return "animation";
+  if (/\.(jpe?g|png|webp)$/.test(lowerName)) return "photo";
+  if (lowerName.endsWith(".mp4")) return "video";
   return "document";
 }
 
@@ -87,7 +87,7 @@ export function validateBroadcastMessage(message: BroadcastMessage): string | nu
 export async function broadcast(
   db: AppDb,
   message: BroadcastMessage,
-  send: SendFn,
+  send: BroadcastSendFn,
 ): Promise<BroadcastResult> {
   const users = listUsers(db);
   let sent = 0;
