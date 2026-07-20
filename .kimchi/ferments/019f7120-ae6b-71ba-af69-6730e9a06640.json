@@ -1,0 +1,17 @@
+{
+  "id": "019f7120-ae6b-71ba-af69-6730e9a06640",
+  "name": "/model",
+  "description": "/model",
+  "status": "draft",
+  "worktree": {
+    "path": "/Users/xdshka/Desktop/Projects/spotify-harness-tg",
+    "branch": "fix-miniapp-ui-polish",
+    "commit": "732b1ceb51a232634af189a9f76a1801150dd67b"
+  },
+  "scoping": {},
+  "phases": [],
+  "decisions": [],
+  "memories": [],
+  "createdAt": "2026-07-17T17:29:55.051Z",
+  "updatedAt": "2026-07-17T17:29:55.051Z"
+}

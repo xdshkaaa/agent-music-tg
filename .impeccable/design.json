@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-15T00:00:00Z",
+  "title": "Design System: agent-music-tg Mini App",
+  "extensions": {
+    "colorMeta": {
+      "electric-violet": { "role": "primary", "displayName": "Electric Violet", "canonical": "#a855f7", "tonalRamp": ["#2c1140", "#3f1861", "#5a1f8c", "#7C3AED", "#a855f7", "#c084fc", "#dab8fb", "#f0e0fd"] },
+      "night-bg": { "role": "neutral", "displayName": "Night", "canonical": "#050508", "tonalRamp": ["#000000", "#0a0a0d", "#131318", "#1a1c24", "#2a2c36", "#4a4c58", "#7a7c88", "#f2f3f5"] },
+      "day-bg": { "role": "neutral", "displayName": "Day", "canonical": "#EEEEF3", "tonalRamp": ["#0d0d10", "#3a3a40", "#6a6a72", "#9a9aa2", "#c8c8cf", "#e0e0e6", "#EEEEF3", "#ffffff"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "One hero heading per screen (prompt screen only)." },
+      "body": { "displayName": "Body", "purpose": "System font stack; carries nearly all UI text." }
+    },
+    "shadows": [
+      { "name": "glass-shadow-sm", "value": "inset 0 1px 0 rgba(255,255,255,.12), inset 0 -1px 0 rgba(0,0,0,.15), 0 2px 8px rgba(0,0,0,.2)", "purpose": "Chips, small controls." },
+      { "name": "glass-shadow-md", "value": "inset 0 1px 0 rgba(255,255,255,.12), inset 0 -1px 0 rgba(0,0,0,.15), 0 4px 16px rgba(0,0,0,.3), 0 1px 3px rgba(0,0,0,.15)", "purpose": "Panels, cards." },
+      { "name": "glass-shadow-lg", "value": "inset 0 1px 0 rgba(255,255,255,.12), inset 0 -1px 0 rgba(0,0,0,.15), 0 8px 32px rgba(0,0,0,.4), 0 2px 8px rgba(0,0,0,.2)", "purpose": "Dock, player bar, floating chrome." },
+      { "name": "glass-shadow-active", "value": "inset 0 1px 2px rgba(0,0,0,.25), inset 0 -1px 0 rgba(255,255,255,.05), 0 2px 8px rgba(0,0,0,.2)", "purpose": "Pressed state." }
+    ],
+    "motion": [
+      { "name": "glass-transition", "value": "0.18s ease", "purpose": "Default state transitions." },
+      { "name": "glass-transition-morph", "value": "0.35s cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "Layout/position morphs (dock indicator, panel resize)." }
+    ],
+    "breakpoints": []
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Main call-to-action pill (e.g. Generate).",
+      "html": "<button class=\"ds-btn-primary\">Сгенерировать</button>",
+      "css": ".ds-btn-primary { background: #a855f7; color: #fff; border: none; border-radius: 999px; padding: 14px 28px; font-weight: 600; font-size: 16px; transition: background 0.18s ease, box-shadow 0.18s ease; box-shadow: inset 0 1px 0 rgba(255,255,255,.12), inset 0 -1px 0 rgba(0,0,0,.15), 0 4px 16px rgba(0,0,0,.3); } .ds-btn-primary:hover { background: #7C3AED; } .ds-btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(168,85,247,.5); } .ds-btn-primary:active { box-shadow: inset 0 1px 2px rgba(0,0,0,.25); }"
+    },
+    {
+      "name": "Glass Panel",
+      "kind": "card",
+      "refersTo": "glass-panel",
+      "description": "Frosted card container for content sections.",
+      "html": "<div class=\"ds-panel\">Панель</div>",
+      "css": ".ds-panel { background: rgba(26,28,36,.4); backdrop-filter: blur(22px) saturate(130%); -webkit-backdrop-filter: blur(22px) saturate(130%); border: 1px solid rgba(255,255,255,.08); border-radius: 28px; padding: 16px; color: #f2f3f5; box-shadow: inset 0 1px 0 rgba(255,255,255,.14), inset 0 -1px 0 rgba(0,0,0,.12), 0 6px 20px rgba(0,0,0,.3); }"
+    },
+    {
+      "name": "Glass Input",
+      "kind": "input",
+      "refersTo": "input-glass",
+      "description": "Prompt text field.",
+      "html": "<input class=\"ds-input\" placeholder=\"Опиши настроение…\" />",
+      "css": ".ds-input { background: rgba(255,255,255,.05); color: #f2f3f5; border: 1px solid rgba(255,255,255,.1); border-radius: 20px; padding: 12px 16px; font-size: 16px; transition: box-shadow 0.18s ease, border-color 0.18s ease; } .ds-input::placeholder { color: rgba(242,243,245,.62); } .ds-input:focus-visible { outline: none; border-color: #a855f7; box-shadow: 0 0 0 3px rgba(168,85,247,.35); }"
+    },
+    {
+      "name": "Dock Nav Item",
+      "kind": "nav",
+      "refersTo": "nav-row",
+      "description": "Bottom dock tab, active state in Electric Violet.",
+      "html": "<button class=\"ds-nav-item ds-nav-item--active\">Профиль</button>",
+      "css": ".ds-nav-item { background: transparent; border: none; color: rgba(242,243,245,.62); font-size: 13px; font-weight: 500; padding: 8px 12px; border-radius: 999px; transition: color 0.18s ease, background 0.18s ease; } .ds-nav-item--active { color: #a855f7; background: rgba(168,85,247,.15); }"
+    },
+    {
+      "name": "Suggestion Chip",
+      "kind": "chip",
+      "refersTo": "prompt-pill",
+      "description": "Prompt suggestion pill.",
+      "html": "<button class=\"ds-chip\">Для тренировки 💪</button>",
+      "css": ".ds-chip { background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.09); color: #f2f3f5; border-radius: 999px; padding: 8px 14px; font-size: 14px; transition: background 0.18s ease; } .ds-chip:hover { background: rgba(255,255,255,.12); } .ds-chip:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(168,85,247,.35); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Quiet Glass",
+    "overview": "Glass exists but recedes. The app is a calm, near-black room inside Telegram where frosted panels float just enough to organize content — the prompt, the tracks, the player — and never enough to become the show. Blur, specular insets, and translucency are structural material, not decoration: every glass surface earns its place by separating a layer of hierarchy. The personality is calm minimal utility: fast, direct, unceremonious, Russian-language voice. The system explicitly rejects the Spotify-clone look (green-on-black, browsing-first density) and the cheap default-Telegram-bot look (unstyled lists, emoji-as-design).",
+    "keyCharacteristics": [
+      "Near-black base (#050508) with dual light scheme (#EEEEF3), driven by Telegram theme.",
+      "One accent — Electric Violet — reserved for primary actions and active state.",
+      "Glass panels with structural blur (22–24px) and specular top-edge insets.",
+      "System fonts for UI; Golos Text only for display headings.",
+      "Short, state-conveying motion (0.18s ease; 0.35s morph for layout shifts)."
+    ],
+    "rules": [
+      { "name": "The Signal Rule", "body": "Violet appears only on interactive or active elements — never as ambient decoration, background wash, or gradient text.", "section": "colors" },
+      { "name": "The One Room Rule", "body": "All surfaces derive from the scheme's base plus white/black alpha. No third hue family enters the neutral stack.", "section": "colors" },
+      { "name": "The One Headline Rule", "body": "At most one display-size heading per screen; everything else stays in the body/title band.", "section": "typography" },
+      { "name": "The Three Layers Rule", "body": "A screen has at most three depth tiers: background, panels, floating chrome (dock/player). Nothing floats above the chrome except the OS.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do reserve Electric Violet (#a855f7) for interactive/active elements (The Signal Rule).",
+      "Do ship opaque fallbacks for every glass surface (prefers-reduced-transparency, missing backdrop-filter).",
+      "Do honor prefers-reduced-motion on every transition — crossfade or instant.",
+      "Do keep body text ≥4.5:1 against the effective glass background in both schemes.",
+      "Do keep transitions at 0.18s ease; 0.35s only for layout morphs."
+    ],
+    "donts": [
+      "Don't imitate Spotify — no green-on-black identity, no browsing-first layouts.",
+      "Don't regress to a cheap Telegram bot UI — no unstyled lists, no emoji-as-design.",
+      "Don't add glass-on-glass nesting (a glass card inside a glass panel) — one glass layer per depth tier.",
+      "Don't use violet as ambient decoration, gradient text, or background wash.",
+      "Don't exceed three depth tiers on a screen."
+    ]
+  }
+}

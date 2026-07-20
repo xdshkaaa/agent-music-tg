@@ -6,7 +6,7 @@ import { allowlistGate } from "./middleware";
 import { channelSubscriptionGate } from "./channel-subscription-gate";
 import { AVAILABLE_PROVIDERS, isProviderId } from "../agent/registry";
 import { AVAILABLE_BACKENDS, isMusicBackend } from "../music/registry";
-import { getActiveProviderId, setActiveProviderId, getActiveBackendId, setActiveBackendId, getShopSettings } from "../lib/settings";
+import { getActiveProviderId, setActiveProviderId, getActiveBackendId, setActiveBackendId, getShopSettings, getReferralSettings } from "../lib/settings";
 import { upsertUser, setPhotoFileId } from "../access/users-store";
 import { alertNewUser } from "../payments/alerts";
 import { registerShop, buildProfileView, buildBuyView, type ShopView } from "./shop";
@@ -15,7 +15,7 @@ import { registerCredits } from "./credits";
 import { registerModel } from "./model";
 import { registerReset } from "./reset";
 import { registerHistory, buildHistoryView } from "./history";
-import { registerReferral, buildReferralView, applyReferral } from "./referral";
+import { registerReferral, buildReferralView, applyReferral, formatGenerationCount } from "./referral";
 import { btnText, heading } from "./emoji";
 import { grantPlaylistSlotsForPayment } from "../access/stars-payments-store";
 
@@ -79,7 +79,8 @@ export function createBot(db: AppDb): Bot<BotContext> {
     if (isNewUser && refMatch) {
       const referrerChatId = Number(refMatch[1]);
       if (applyReferral(db, referrerChatId, ctx.chat.id)) {
-        bot.api.sendMessage(referrerChatId, `${heading("gift", "Новый реферал!")} Вам начислены генерации — /referral для подробностей.`, { parse_mode: "HTML" }).catch(() => {});
+        const reward = formatGenerationCount(getReferralSettings(db).rewardCredits);
+        bot.api.sendMessage(referrerChatId, `${heading("gift", "Новый реферал!")} Вам начислено ${reward} — /referral для подробностей.`, { parse_mode: "HTML" }).catch(() => {});
       }
     }
     try {

@@ -1,0 +1,6 @@
+{
+  "files": ["miniapp/index.html"],
+  "insertBefore": "</head>",
+  "commentSyntax": "html",
+  "cspChecked": false
+}
