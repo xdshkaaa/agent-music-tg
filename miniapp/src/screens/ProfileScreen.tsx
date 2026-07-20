@@ -5,6 +5,7 @@ import {
   MusicNotes,
   ChartBar,
   UsersThree, Copy, Check,
+  Question, CaretRight,
 } from "@phosphor-icons/react";
 import { GlassPanel } from "../components/GlassPanel";
 import { Segmented } from "../components/Segmented";
@@ -257,11 +258,13 @@ function ReferralCard() {
 export default function ProfileScreen({
   me,
   onGoShop,
+  onOpenHelp,
   accent,
   onChangeAccent,
 }: {
   me: MeResponse | null;
   onGoShop: () => void;
+  onOpenHelp: () => void;
   accent: string;
   onChangeAccent: (value: string) => void;
 }) {
@@ -355,6 +358,19 @@ export default function ProfileScreen({
       </GlassPanel>
 
       <ReferralCard />
+
+      <GlassPanel className="reveal profile-help-panel">
+        <button type="button" className="profile-help-link" onClick={onOpenHelp}>
+          <span className="profile-help-icon" aria-hidden="true">
+            <Question size={20} weight="bold" />
+          </span>
+          <span>
+            <strong>Помощь и FAQ</strong>
+            <small>Быстрый старт, ответы и поддержка</small>
+          </span>
+          <CaretRight size={18} weight="bold" aria-hidden="true" />
+        </button>
+      </GlassPanel>
 
       <GlassPanel className="reveal">
         <h2 className="screen-title" style={{ marginBottom: 14 }}>История покупок</h2>

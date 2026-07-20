@@ -231,6 +231,22 @@ describe("processDownload", () => {
     expect(sent.at(-1)?.value).toContain("1 из 2");
   });
 
+  test("summary keeps playlist and track metadata safe for Telegram HTML", async () => {
+    const db = openDb(":memory:");
+    const extractor = fakeExtractor({ failUris: ["ytm:bad"] });
+    const { sender, sent } = fakeSender();
+    const record = insertDownload(db, CHAT, "Focus <Flow> & Friends", [
+      { uri: "ytm:bad", title: "A < B", artist: "C & D" },
+    ]);
+
+    await processDownload(db, record, { sender, extractor, scratchDir: scratch() });
+
+    const summary = String(sent.at(-1)?.value);
+    expect(summary).toContain("Focus &lt;Flow&gt; &amp; Friends");
+    expect(summary).toContain("C &amp; D — A &lt; B");
+    expect(summary).not.toContain("Focus <Flow>");
+  });
+
   test("finalizes status even when the summary sendText throws", async () => {
     const db = openDb(":memory:");
     const extractor = fakeExtractor();

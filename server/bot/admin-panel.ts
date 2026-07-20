@@ -2,7 +2,7 @@ import { Bot, InlineKeyboard } from "grammy";
 import type { AppDb } from "../db";
 import type { BotContext } from "./context";
 import { getAdminStats, type StatsPeriod } from "../admin/stats";
-import { broadcast, type BroadcastSendFn } from "../admin/broadcast";
+import { BROADCAST_NAME_PLACEHOLDER, broadcast, type BroadcastSendFn } from "../admin/broadcast";
 import { listOffers, createOffer, setOfferActive, deleteOffer, type GrantKind } from "../payments/offers-store";
 import { isSupportedAsset, SUPPORTED_ASSETS as SUPPORTED_CRYPTO_ASSETS } from "../payments/crypto-pay";
 import {
@@ -745,7 +745,9 @@ export function registerAdminPanel(bot: Bot<BotContext>, db: AppDb): void {
     if (!ctx.isAdmin) return ctx.answerCallbackQuery();
     await ctx.answerCallbackQuery();
     setAdminFlow(db, ctx.chat!.id, { kind: "admin_broadcast" });
-    await ctx.reply("Пришлите текст рассылки:");
+    await ctx.reply(
+      `Пришлите текст рассылки. Для личного обращения используйте ${BROADCAST_NAME_PLACEHOLDER}, например: «Привет, ${BROADCAST_NAME_PLACEHOLDER}!».`,
+    );
   });
 
   bot.callbackQuery(/^admin:set:(shopName|supportContact|aboutText)$/, async (ctx) => {

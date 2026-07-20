@@ -26,12 +26,12 @@ import { isSupportedAsset, SUPPORTED_ASSETS } from "../payments/crypto-pay";
 import { getAdminStats } from "../admin/stats";
 import {
   broadcast,
-  parseBroadcastButtonPresets,
+  parseBroadcastButtons,
   resolveBroadcastMediaKind,
   validateBroadcastMessage,
   MAX_BROADCAST_FILE_BYTES,
   MAX_BROADCAST_PHOTO_BYTES,
-  type BroadcastButtonPreset,
+  type BroadcastButton,
   type BroadcastMedia,
 } from "../admin/broadcast";
 import { getGrantHistoryForUser, getAllGrantHistory, countGrantHistory } from "../admin/grant-history";
@@ -211,7 +211,7 @@ export function createAdminRoutes(db: AppDb, deps: ApiDeps): Hono<AppEnv> {
   app.post("/admin/broadcast", requireAdmin, async (c) => {
     if (!deps.send) return c.json({ error: "broadcast unavailable" }, 503);
     let text = "";
-    let buttons: BroadcastButtonPreset[] | null = [];
+    let buttons: BroadcastButton[] | null = [];
     let media: BroadcastMedia | undefined;
 
     if ((c.req.header("content-type") ?? "").toLowerCase().includes("multipart/form-data")) {
@@ -225,7 +225,7 @@ export function createAdminRoutes(db: AppDb, deps: ApiDeps): Hono<AppEnv> {
       text = typeof textValue === "string" ? textValue.trim() : "";
       const buttonsValue = form.get("buttons");
       try {
-        buttons = parseBroadcastButtonPresets(
+        buttons = parseBroadcastButtons(
           typeof buttonsValue === "string" && buttonsValue.length > 0 ? JSON.parse(buttonsValue) : [],
         );
       } catch {
@@ -258,10 +258,10 @@ export function createAdminRoutes(db: AppDb, deps: ApiDeps): Hono<AppEnv> {
     } else {
       const body = await readJsonBody<{ text?: string; buttons?: unknown }>(c.req.raw);
       text = typeof body.text === "string" ? body.text.trim() : "";
-      buttons = parseBroadcastButtonPresets(body.buttons ?? []);
+      buttons = parseBroadcastButtons(body.buttons ?? []);
     }
 
-    if (!buttons) return c.json({ error: "Выбран неизвестный шаблон кнопки." }, 400);
+    if (!buttons) return c.json({ error: "Проверьте название, ссылку и цвет inline-кнопок." }, 400);
     const message = { text, buttons, media, parseMode: "HTML" as const };
     const validationError = validateBroadcastMessage(message);
     if (validationError) return c.json({ error: validationError }, 400);

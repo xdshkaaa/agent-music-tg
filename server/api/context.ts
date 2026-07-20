@@ -1,11 +1,13 @@
 import type { Context } from "hono";
 import type { AudioDeps } from "./audio-routes";
 import type { BroadcastSendFn } from "../admin/broadcast";
+import type { TelegramInitDataUser } from "../lib/telegram-init-data";
 
 export interface AuthVariables {
   chatId: number;
   isAdmin: boolean;
   startParam: string | null;
+  telegramUser: TelegramInitDataUser;
 }
 
 export type AppEnv = { Variables: AuthVariables };

@@ -94,6 +94,28 @@ export function parseStartAttribution(raw: string | null | undefined): Attributi
 
 /** Records immutable first-touch attribution. Returns true only on insert. */
 export function recordFirstTouch(db: AppDb, chatId: number, input: AttributionInput): boolean {
+  const existing = db.query<{ source: string; medium: string | null }, [number]>(
+    `SELECT source, medium FROM user_attribution WHERE chat_id = ?`,
+  ).get(chatId);
+  // Migration-created legacy rows are placeholders, not observed touches. A
+  // real tagged launch may safely replace them while established attribution
+  // remains immutable.
+  if (existing?.source === "unknown" && existing.medium === "legacy" && input.startParam) {
+    const result = db.query(
+      `UPDATE user_attribution
+       SET source = ?, medium = ?, campaign = ?, content = ?, term = ?, start_param = ?, created_at = unixepoch()
+       WHERE chat_id = ? AND source = 'unknown' AND medium = 'legacy'`,
+    ).run(
+      cleanTag(input.source) ?? "unknown",
+      cleanTag(input.medium),
+      cleanTag(input.campaign),
+      cleanTag(input.content),
+      cleanTag(input.term),
+      input.startParam.slice(0, MAX_START_PARAM_LENGTH),
+      chatId,
+    );
+    return result.changes === 1;
+  }
   const result = db.query(
     `INSERT OR IGNORE INTO user_attribution
        (chat_id, source, medium, campaign, content, term, start_param)
@@ -106,6 +128,28 @@ export function recordFirstTouch(db: AppDb, chatId: number, input: AttributionIn
     cleanTag(input.content),
     cleanTag(input.term),
     input.startParam?.slice(0, MAX_START_PARAM_LENGTH) ?? null,
+  );
+  return result.changes === 1;
+}
+
+/** Records a tagged campaign visit even when the visitor is not a new user. */
+export function recordAttributionTouch(db: AppDb, chatId: number, input: AttributionInput): boolean {
+  if (!input.startParam) return false;
+  const result = db.query(
+    `INSERT INTO attribution_touches
+       (chat_id, source, medium, campaign, content, term, start_param)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(chat_id, start_param) DO UPDATE SET
+       last_seen = unixepoch(),
+       touch_count = attribution_touches.touch_count + 1`,
+  ).run(
+    chatId,
+    cleanTag(input.source) ?? "unknown",
+    cleanTag(input.medium),
+    cleanTag(input.campaign),
+    cleanTag(input.content),
+    cleanTag(input.term),
+    input.startParam.slice(0, MAX_START_PARAM_LENGTH),
   );
   return result.changes === 1;
 }

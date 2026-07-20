@@ -3,7 +3,7 @@ import { createHmac } from "node:crypto";
 import { openDb } from "../db";
 import { upsertUser } from "../access/users-store";
 import { getFunnel, getTrafficSources, getUtmCampaigns } from "./report";
-import { parseStartAttribution, recordDailyEvent, recordEvent, recordFirstTouch } from "./store";
+import { parseStartAttribution, recordAttributionTouch, recordDailyEvent, recordEvent, recordFirstTouch } from "./store";
 import { verifyInitData } from "../lib/telegram-init-data";
 import { getAdminStats } from "../admin/stats";
 
@@ -58,6 +58,20 @@ describe("first-touch attribution", () => {
       campaign: "summer",
     });
   });
+
+  test("replaces migration placeholders but preserves real first-touch attribution", () => {
+    const db = openDb(":memory:");
+    upsertUser(db, 101);
+    db.run(`INSERT INTO user_attribution (chat_id, source, medium) VALUES (101, 'unknown', 'legacy')`);
+
+    expect(recordFirstTouch(db, 101, parseStartAttribution("utm_vk__cpc__launch"))).toBe(true);
+    expect(recordFirstTouch(db, 101, parseStartAttribution("utm_youtube__video__later"))).toBe(false);
+    expect(db.query(`SELECT source, medium, campaign FROM user_attribution WHERE chat_id = 101`).get()).toEqual({
+      source: "vk",
+      medium: "cpc",
+      campaign: "launch",
+    });
+  });
 });
 
 describe("analytics events", () => {
@@ -81,10 +95,26 @@ describe("analytics events", () => {
 });
 
 describe("acquisition reports", () => {
+  test("counts a returning user's tagged visit in the UTM campaign report", () => {
+    const db = openDb(":memory:");
+    upsertUser(db, 404);
+    recordFirstTouch(db, 404, parseStartAttribution(null));
+    recordAttributionTouch(db, 404, parseStartAttribution("utm_channel__post__release"));
+
+    expect(getTrafficSources(db, "all")[0]).toMatchObject({ source: "direct", users: 1 });
+    expect(getUtmCampaigns(db, "all")[0]).toMatchObject({
+      source: "channel",
+      medium: "post",
+      campaign: "release",
+      users: 1,
+    });
+  });
+
   test("groups cohort users, payers, revenue, campaigns, and unique-user funnel steps", () => {
     const db = openDb(":memory:");
     for (const chatId of [101, 202, 303]) upsertUser(db, chatId);
     recordFirstTouch(db, 101, parseStartAttribution("utm_vk__cpc__summer"));
+    recordAttributionTouch(db, 101, parseStartAttribution("utm_vk__cpc__summer"));
     recordFirstTouch(db, 202, parseStartAttribution(null));
     recordFirstTouch(db, 303, parseStartAttribution("ref_101"));
 

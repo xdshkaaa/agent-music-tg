@@ -3,7 +3,8 @@ import { env } from "./env";
 import { openDb } from "./db";
 import { bootstrapAllowlist } from "./lib/access-control";
 import { createBot } from "./bot";
-import { loadCustomEmojis, accent } from "./bot/emoji";
+import { loadCustomEmojis } from "./bot/emoji";
+import { statusMessage } from "./bot/message-format";
 import { createApiRoutes } from "./api/routes";
 import { setVerificationExtractor, setPrewarmStreamResolver } from "./core/run-generation";
 import { verifyWebhookSignature, type WebhookUpdate } from "./payments/webhook";
@@ -19,6 +20,7 @@ import { createTelegramAudioSender } from "./audio/telegram-sender";
 import type { AudioDeps } from "./api/audio-routes";
 import { reconcileStaleDownloads } from "./audio/downloads-store";
 import { createTelegramBroadcastSender } from "./admin/telegram-broadcast";
+import { createShutdownHandler } from "./lifecycle";
 
 const db = openDb(env.dbPath);
 bootstrapAllowlist(db);
@@ -42,11 +44,10 @@ const send = createTelegramBroadcastSender(bot, env.publicOrigin);
 async function notifyFulfilled(result: FulfillResult): Promise<void> {
   await alertPaymentFulfilled(db, result);
   if (!result.fulfilled || !result.chatId || !result.offerTitle) return;
-  const check = accent("check");
   try {
     await bot.api.sendMessage(
       result.chatId,
-      `${check ? check + " " : ""}Оплата получена: «${result.offerTitle}». Доступ активирован.`,
+      statusMessage("check", "Оплата получена", `Пакет «${result.offerTitle}» активирован.`),
       { parse_mode: "HTML" },
     );
   } catch {
@@ -159,14 +160,14 @@ bot.start();
 
 const stopPoller = startPoller(db, notifyFulfilled);
 const stopPlategaPoller = startPlategaPoller(db, notifyFulfilled);
-process.on("SIGTERM", () => {
-  stopPoller();
-  stopPlategaPoller();
+const shutdown = createShutdownHandler({
+  stopPoller,
+  stopPlategaPoller,
+  stopBot: () => bot.stop(),
+  exit: (code) => process.exit(code),
 });
-process.on("SIGINT", () => {
-  stopPoller();
-  stopPlategaPoller();
-});
+process.once("SIGTERM", () => void shutdown("SIGTERM"));
+process.once("SIGINT", () => void shutdown("SIGINT"));
 
 export default {
   port: env.port,

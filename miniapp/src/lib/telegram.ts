@@ -82,15 +82,27 @@ export function openPayUrl(url: string): void {
  * Opens the configured support contact. Accepts a username (@handle, t.me/...),
  * a bare handle, or any URL. Falls back to opening in a new tab.
  */
-export function openSupport(contact: string): void {
+export function normalizeSupportContact(contact: string): { url: string; telegram: boolean } | null {
   const trimmed = (contact ?? "").trim();
-  if (!trimmed) return;
-  const handle = trimmed.replace(/^https?:\/\/t\.me\//i, "").replace(/^@/, "");
+  if (!trimmed) return null;
+  if (/^https?:\/\/(?:www\.)?(?:t\.me|telegram\.me)\//i.test(trimmed)) {
+    const handle = trimmed.replace(/^https?:\/\/(?:www\.)?(?:t\.me|telegram\.me)\//i, "").replace(/^@/, "");
+    return { url: `https://t.me/${handle}`, telegram: true };
+  }
+  if (/^@?[a-zA-Z0-9_]{5,}$/.test(trimmed)) {
+    return { url: `https://t.me/${trimmed.replace(/^@/, "")}`, telegram: true };
+  }
+  return { url: trimmed, telegram: false };
+}
+
+export function openSupport(contact: string): void {
+  const target = normalizeSupportContact(contact);
+  if (!target) return;
   const webApp = getTelegramWebApp();
   if (!webApp) {
-    window.open(/^https?:\/\//i.test(trimmed) ? trimmed : `https://t.me/${handle}`, "_blank");
+    window.open(target.url, "_blank");
     return;
   }
-  if (/^https?:\/\//i.test(trimmed)) webApp.openLink(trimmed);
-  else webApp.openTelegramLink(`https://t.me/${handle}`);
+  if (target.telegram) webApp.openTelegramLink(target.url);
+  else webApp.openLink(target.url);
 }

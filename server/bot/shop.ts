@@ -10,10 +10,11 @@ import { fulfillStarsPayment, parseStarsPayload, type StarsPayload } from "../pa
 import { plategaEnabled } from "../payments/platega";
 import { alertPaymentFulfilled } from "../payments/alerts";
 import { recordEvent } from "../analytics/store";
-import { btnText, heading, accent } from "./emoji";
+import { btnText } from "./emoji";
 import { getShopSettings, getPaymentsEnabled } from "../lib/settings";
 import { env } from "../env";
 import { configuredLegalDocs } from "./legal";
+import { detailBlock, detailRow, escapeHtml, messageHint, messageTitle, statusMessage } from "./message-format";
 
 export interface ShopView {
   text: string;
@@ -55,7 +56,7 @@ export function offersKeyboard(db: AppDb, chatId: number): InlineKeyboard | null
 
 export function purchasePromptText(): string {
   // Sent with parse_mode: "HTML" by sendOffers below.
-  return `<b>${heading("ruler", "ДОСТУП")}</b>\nЧтобы генерировать плейлисты, нужен доступ. Выберите пакет:`;
+  return `${messageTitle("ruler", "Доступ к генерациям")}\n${messageHint("Выберите подходящий пакет или активируйте бесплатный доступ.")}`;
 }
 
 /**
@@ -93,28 +94,33 @@ function formatSubscription(until: number | null): string {
 function buildProfileText(db: AppDb, chatId: number): string {
   const user = getUser(db, chatId);
   const purchases = listInvoicesForChat(db, chatId).filter((i) => i.status === "paid");
-  const wallet = accent("wallet");
-  const ruler = accent("ruler");
-  const pkg = accent("package");
-  const gift = accent("gift");
-  const lines = [
-    `<b>${heading("profile", "ПРОФИЛЬ")}</b>`,
-    `${wallet ? wallet + " " : ""}Генерации: ${user?.credits ?? 0}`,
+  const accessRows = [
+    detailRow("wallet", "Генерации", user?.credits ?? 0),
     ...(trialActive(user)
-      ? [`${gift ? gift + " " : ""}Бесплатный пакет: ${user!.trialCredits} ген. до ${new Date(user!.trialUntil! * 1000).toLocaleDateString("ru-RU")}`]
+      ? [detailRow(
+          "gift",
+          "Бесплатный пакет",
+          `${user!.trialCredits} ген. · до ${new Date(user!.trialUntil! * 1000).toLocaleDateString("ru-RU")}`,
+        )]
       : []),
-    `${ruler ? ruler + " " : ""}Подписка: ${formatSubscription(user?.subscriptionUntil ?? null)}`,
+    detailRow("ruler", "Подписка", formatSubscription(user?.subscriptionUntil ?? null)),
+    detailRow("package", "Покупки", purchases.length),
+  ];
+  const lines = [
+    messageTitle("profile", "Профиль"),
+    messageHint("Ваш доступ и история оплат"),
     "",
-    `${pkg ? pkg + " " : ""}Покупок: ${purchases.length}`,
+    detailBlock(accessRows),
   ];
   if (purchases.length > 0) {
+    lines.push("", "<b>Последние покупки</b>");
     for (const p of purchases.slice(0, 10)) {
-      lines.push(`• #${p.id}: ${p.amount} ${p.asset === "XTR" ? "Stars" : p.asset}`);
+      lines.push(`• <code>#${p.id}</code> · ${escapeHtml(p.amount)} ${escapeHtml(p.asset === "XTR" ? "Stars" : p.asset)}`);
     }
   }
   const shop = getShopSettings(db);
   if (shop.supportContact) {
-    lines.push("", `Поддержка: ${shop.supportContact}`);
+    lines.push("", `<b>Поддержка</b>\n${escapeHtml(shop.supportContact)}`);
   }
   return lines.join("\n");
 }
@@ -158,8 +164,9 @@ export function registerShop(bot: Bot<BotContext>, db: AppDb): void {
     try {
       const result = await purchaseOffer(db, ctx.chat!.id, offerId);
       const kb = new InlineKeyboard().url("Оплатить", result.payUrl);
-      await ctx.reply(`Счёт на «${result.offerTitle}» создан. Оплатите по кнопке ниже, доступ активируется автоматически.`, {
+      await ctx.reply(`${messageTitle("wallet", "Счёт создан")}\nПакет: <b>${escapeHtml(result.offerTitle)}</b>\n\n${messageHint("Оплатите по кнопке ниже — доступ активируется автоматически.")}`, {
         reply_markup: kb,
+        parse_mode: "HTML",
       });
     } catch (e) {
       if (e instanceof OfferUnavailableError) {
@@ -175,8 +182,8 @@ export function registerShop(bot: Bot<BotContext>, db: AppDb): void {
       const result = await purchaseOfferRub(db, ctx.chat!.id, offerId);
       const kb = new InlineKeyboard().url("Оплатить ₽ (СБП)", result.payUrl);
       await ctx.reply(
-        `Счёт на «${result.offerTitle}» создан. Оплатите по СБП: ссылка действует ~15 минут. Доступ активируется автоматически.`,
-        { reply_markup: kb },
+        `${messageTitle("wallet", "Счёт СБП создан")}\nПакет: <b>${escapeHtml(result.offerTitle)}</b>\n\n${messageHint("Ссылка действует около 15 минут. Доступ активируется автоматически.")}`,
+        { reply_markup: kb, parse_mode: "HTML" },
       );
     } catch (e) {
       if (e instanceof OfferUnavailableError || e instanceof RubPriceMissingError) {
@@ -208,8 +215,10 @@ export function registerShop(bot: Bot<BotContext>, db: AppDb): void {
     }
     if (claimTrial(db, ctx.chat!.id)) {
       recordEvent(db, ctx.chat!.id, "trial_claimed");
-      const check = accent("check");
-      await ctx.reply(`${check ? check + " " : ""}Бесплатный пакет активирован: ${TRIAL_CREDITS} генераций на ${TRIAL_DAYS} дня.`, { parse_mode: "HTML" });
+      await ctx.reply(
+        statusMessage("check", "Бесплатный пакет активирован", `${TRIAL_CREDITS} генераций доступны на ${TRIAL_DAYS} дня.`),
+        { parse_mode: "HTML" },
+      );
       const fromNav = ctx.callbackQuery.message?.reply_markup?.inline_keyboard.some((row) =>
         row.some((btn) => "callback_data" in btn && btn.callback_data === "nav:menu"),
       );
@@ -238,7 +247,10 @@ export function registerShop(bot: Bot<BotContext>, db: AppDb): void {
     const kb = new InlineKeyboard().text(`${offer.amount} ${offer.asset}`, `buyc:${offerId}`).row();
     if (offer.starsAmount) kb.text(btnText(`Stars: ${offer.starsAmount}`, "star"), `buys:${offerId}`).row();
     if (hasRub) kb.text(`Оплатить ₽ (СБП): ${offer.rubAmount} ₽`, `buyp:${offerId}`);
-    await ctx.reply(`«${offer.title}». Выберите способ оплаты:`, { reply_markup: kb });
+    await ctx.reply(
+      `${messageTitle("wallet", offer.title)}\n${messageHint("Выберите удобный способ оплаты.")}`,
+      { reply_markup: kb, parse_mode: "HTML" },
+    );
   });
 
   bot.callbackQuery(/^buyc:(\d+)$/, async (ctx) => {
@@ -279,11 +291,10 @@ export function registerShop(bot: Bot<BotContext>, db: AppDb): void {
     });
     if (result.fulfilled) {
       await alertPaymentFulfilled(db, result);
-      const check = accent("check");
       await ctx.reply(
         result.offerTitle
-          ? `${check ? check + " " : ""}Оплата получена: «${result.offerTitle}». Доступ активирован.`
-          : `${check ? check + " " : ""}Оплата получена. Доступ активирован.`,
+          ? statusMessage("check", "Оплата получена", `Пакет «${result.offerTitle}» активирован.`)
+          : statusMessage("check", "Оплата получена", "Доступ активирован."),
         { parse_mode: "HTML" },
       );
     }

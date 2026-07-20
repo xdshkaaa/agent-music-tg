@@ -1,6 +1,7 @@
 import { Bot, InlineKeyboard, InputFile } from "grammy";
 import type { InputFile as InputFileType } from "grammy";
 import type {
+  BroadcastButton,
   BroadcastButtonPreset,
   BroadcastMedia,
   BroadcastMessage,
@@ -16,22 +17,26 @@ interface SentMediaMessage {
   document?: { file_id: string };
 }
 
-const BUTTONS: Record<BroadcastButtonPreset, { label: string; symbol: string; query: string }> = {
-  open_app: { label: "Открыть приложение", symbol: "app", query: "" },
-  search: { label: "Поиск", symbol: "search", query: "?tab=create&mode=search" },
-  playlists: { label: "Мои плейлисты", symbol: "music", query: "?tab=playlists" },
-  profile: { label: "Профиль", symbol: "profile", query: "?tab=profile" },
+const BUTTONS: Record<BroadcastButtonPreset, { symbol: string; query: string }> = {
+  open_app: { symbol: "app", query: "" },
+  search: { symbol: "search", query: "?tab=create&mode=search" },
+  playlists: { symbol: "music", query: "?tab=playlists" },
+  profile: { symbol: "profile", query: "?tab=profile" },
 };
 
 export function buildBroadcastKeyboard(
-  buttons: readonly BroadcastButtonPreset[],
+  buttons: readonly BroadcastButton[],
   publicOrigin: string,
 ): InlineKeyboard | undefined {
   if (buttons.length === 0) return undefined;
   const keyboard = new InlineKeyboard();
-  buttons.forEach((preset, index) => {
-    const button = BUTTONS[preset];
-    keyboard.webApp(btnText(button.label, button.symbol), `${publicOrigin}${button.query}`);
+  buttons.forEach((button, index) => {
+    if (button.kind === "preset") {
+      const preset = BUTTONS[button.preset];
+      keyboard.webApp(btnText(button.text, preset.symbol, button.style), `${publicOrigin}${preset.query}`);
+    } else {
+      keyboard.url(btnText(button.text, "link", button.style), button.url);
+    }
     if (index < buttons.length - 1) keyboard.row();
   });
   return keyboard;

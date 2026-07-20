@@ -4,6 +4,7 @@ import { insertGrantHistory } from "../admin/grant-history";
 export interface User {
   chatId: number;
   username: string | null;
+  firstName: string | null;
   photoFileId: string | null;
   credits: number;
   subscriptionUntil: number | null;
@@ -18,6 +19,7 @@ export interface User {
 interface UserRow {
   chat_id: number;
   username: string | null;
+  first_name: string | null;
   photo_file_id: string | null;
   credits: number;
   subscription_until: number | null;
@@ -33,6 +35,7 @@ function toUser(row: UserRow): User {
   return {
     chatId: row.chat_id,
     username: row.username,
+    firstName: row.first_name,
     photoFileId: row.photo_file_id,
     credits: row.credits,
     subscriptionUntil: row.subscription_until,
@@ -52,9 +55,9 @@ function toUser(row: UserRow): User {
  */
 export const SIGNUP_BONUS_CREDITS = 10;
 
-// Every authenticated API request calls upsertUser with no username, purely
-// to bump last_seen. Throttle that write per chat so a burst of requests from
-// one active chat doesn't turn into a write per request. Keyed per-db (not
+// Some internal calls invoke upsertUser without Telegram identity, purely to
+// bump last_seen. Throttle those writes so a burst of requests from one active
+// chat doesn't turn into a write per request. Keyed per-db (not
 // just chatId) so separate AppDb instances — as in tests, each opening its
 // own :memory: db and reusing the same chat ids — never share throttle state.
 const LAST_SEEN_THROTTLE_MS = 60_000;
@@ -62,11 +65,16 @@ const LAST_SEEN_MAX_CHATS = 10_000;
 const recentlySeenByDb = new WeakMap<AppDb, Map<number, number>>();
 
 /**
- * Records the chat as a known user and refreshes username/last_seen.
+ * Records the chat as a known user and refreshes Telegram identity/last_seen.
  * Returns true the first time a chat_id is ever recorded, so callers can
  * fire new-user side effects (e.g. admin alerts) exactly once.
  */
-export function upsertUser(db: AppDb, chatId: number, username?: string | null): boolean {
+export function upsertUser(
+  db: AppDb,
+  chatId: number,
+  username?: string | null,
+  firstName?: string | null,
+): boolean {
   if (username == null) {
     let recentlySeen = recentlySeenByDb.get(db);
     if (!recentlySeen) {
@@ -84,11 +92,12 @@ export function upsertUser(db: AppDb, chatId: number, username?: string | null):
   }
   const isNew = getUser(db, chatId) === null;
   db.query(
-    `INSERT INTO users (chat_id, username, credits, last_seen) VALUES (?, ?, ?, unixepoch())
+    `INSERT INTO users (chat_id, username, first_name, credits, last_seen) VALUES (?, ?, ?, ?, unixepoch())
      ON CONFLICT(chat_id) DO UPDATE SET
        username = COALESCE(excluded.username, users.username),
+       first_name = COALESCE(excluded.first_name, users.first_name),
        last_seen = unixepoch()`,
-  ).run(chatId, username ?? null, SIGNUP_BONUS_CREDITS);
+  ).run(chatId, username ?? null, firstName ?? null, SIGNUP_BONUS_CREDITS);
   return isNew;
 }
 

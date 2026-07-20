@@ -149,6 +149,8 @@ export interface Track {
   deepLink?: string;
 }
 
+export type MusicFeedbackEvent = "play_started" | "play_completed" | "skipped";
+
 export interface Album {
   uri: string;
   title: string;
@@ -182,6 +184,7 @@ export interface AdminSettings {
 export interface AdminUser {
   chatId: number;
   username: string | null;
+  firstName: string | null;
   photoFileId: string | null;
   credits: number;
   subscriptionUntil: number | null;
@@ -233,10 +236,24 @@ export interface GrantHistoryResponse {
 }
 
 export type AdminBroadcastButtonPreset = "open_app" | "search" | "playlists" | "profile";
+export type AdminBroadcastButtonStyle = "primary" | "success" | "danger";
+export type AdminBroadcastButton =
+  | {
+      kind: "preset";
+      preset: AdminBroadcastButtonPreset;
+      text: string;
+      style?: AdminBroadcastButtonStyle;
+    }
+  | {
+      kind: "url";
+      text: string;
+      url: string;
+      style?: AdminBroadcastButtonStyle;
+    };
 
 export interface AdminBroadcastInput {
   text: string;
-  buttons: AdminBroadcastButtonPreset[];
+  buttons: AdminBroadcastButton[];
   media: File | null;
 }
 
@@ -433,6 +450,13 @@ export const api = {
   // --- Player reactions ---
   reactionStatus: (uri: string) =>
     request<{ liked: boolean; disliked: boolean }>(`/api/reactions/status?uri=${encodeURIComponent(uri)}`),
+  /** Best-effort by design: feedback must never block or break playback. */
+  musicFeedback: (event: MusicFeedbackEvent, track: Pick<Track, "uri" | "title" | "artist">): void => {
+    void request<{ ok: boolean }>("/api/music-feedback", {
+      method: "POST",
+      body: JSON.stringify({ event, uri: track.uri, title: track.title, artist: track.artist }),
+    }).catch(() => {});
+  },
   dislikeTrack: (track: { uri: string; title: string; artist: string }) =>
     request<{ ok: boolean }>("/api/reactions/dislike", { method: "POST", body: JSON.stringify(track) }),
   undislikeTrack: (uri: string) =>

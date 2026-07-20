@@ -150,5 +150,58 @@ export function getTrafficSources(db: AppDb, period: AnalyticsPeriod): Attributi
 }
 
 export function getUtmCampaigns(db: AppDb, period: AnalyticsPeriod): AttributionBreakdown[] {
-  return getBreakdown(db, period, true);
+  const cutoff = cutoffFor(period);
+  const periodClause = cutoff === null ? "" : "AND last_seen >= ?";
+  const args = cutoff === null ? [] as [] : [cutoff] as [number];
+  const counts = db.query<BreakdownCountRow, [] | [number]>(
+    `WITH campaign_users AS (
+       SELECT DISTINCT chat_id, source, medium, campaign
+       FROM attribution_touches
+       WHERE campaign IS NOT NULL AND start_param LIKE 'utm\_%' ESCAPE '\\' ${periodClause}
+     )
+     SELECT
+       t.source AS source,
+       t.medium AS medium,
+       t.campaign AS campaign,
+       COUNT(DISTINCT t.chat_id) AS users,
+       COUNT(DISTINCT CASE WHEN i.status = 'paid' THEN t.chat_id END) AS payers
+     FROM campaign_users t
+     LEFT JOIN invoices i ON i.chat_id = t.chat_id
+     GROUP BY t.source, t.medium, t.campaign
+     ORDER BY users DESC, payers DESC, t.source ASC`,
+  ).all(...args);
+  const revenues = db.query<BreakdownRevenueRow, [] | [number]>(
+    `WITH campaign_users AS (
+       SELECT DISTINCT chat_id, source, medium, campaign
+       FROM attribution_touches
+       WHERE campaign IS NOT NULL AND start_param LIKE 'utm\_%' ESCAPE '\\' ${periodClause}
+     )
+     SELECT
+       t.source AS source,
+       t.medium AS medium,
+       t.campaign AS campaign,
+       i.asset AS asset,
+       SUM(CAST(i.amount AS REAL)) AS total
+     FROM campaign_users t
+     JOIN invoices i ON i.chat_id = t.chat_id AND i.status = 'paid'
+     GROUP BY t.source, t.medium, t.campaign, i.asset`,
+  ).all(...args);
+  const grouped = new Map<string, AttributionBreakdown>();
+  for (const row of counts) {
+    const key = `${row.source}\u0000${row.medium ?? ""}\u0000${row.campaign ?? ""}`;
+    grouped.set(key, {
+      source: row.source,
+      medium: row.medium,
+      campaign: row.campaign,
+      users: row.users,
+      payers: row.payers,
+      conversionRate: row.users > 0 ? row.payers / row.users : null,
+      revenue: [],
+    });
+  }
+  for (const row of revenues) {
+    const key = `${row.source}\u0000${row.medium ?? ""}\u0000${row.campaign ?? ""}`;
+    grouped.get(key)?.revenue.push({ asset: row.asset, total: row.total });
+  }
+  return [...grouped.values()];
 }

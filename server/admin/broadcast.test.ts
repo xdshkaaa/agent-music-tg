@@ -1,16 +1,19 @@
 import { describe, expect, test } from "bun:test";
 import type { AppEnv } from "../api/context";
+import type { BroadcastButton } from "./broadcast";
 process.env.TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "test-token";
 
 const { Hono } = await import("hono");
 const { openDb } = await import("../db");
-const { upsertUser } = await import("../access/users-store");
+const { getUser, upsertUser } = await import("../access/users-store");
 const { createAdminRoutes } = await import("../api/admin-routes");
 const { buildBroadcastKeyboard, createTelegramBroadcastSender } = await import("./telegram-broadcast");
 const { __resetForTests, __setEmojiForTests } = await import("../bot/emoji");
 const {
+  broadcastRecipientName,
   broadcast,
-  parseBroadcastButtonPresets,
+  parseBroadcastButtons,
+  personalizeBroadcastMessage,
   resolveBroadcastMediaKind,
   validateBroadcastMessage,
 } = await import("./broadcast");
@@ -19,18 +22,25 @@ describe("broadcast message validation", () => {
   test("builds valid Web App button rows with premium icons and no empty row", () => {
     __resetForTests();
     __setEmojiForTests("app", "5870718740236079262");
+    __setEmojiForTests("link", "5870527201874546272");
     expect(
-      JSON.parse(JSON.stringify(buildBroadcastKeyboard(["open_app", "search"], "https://miniapp.xdshka.party"))),
+      JSON.parse(JSON.stringify(buildBroadcastKeyboard([
+        { kind: "preset", preset: "open_app", text: "Запустить", style: "primary" },
+        { kind: "url", text: "Подробнее", url: "https://example.com/news", style: "success" },
+      ], "https://miniapp.xdshka.party"))),
     ).toEqual({
       inline_keyboard: [
         [{
-          text: "Открыть приложение",
+          text: "Запустить",
           icon_custom_emoji_id: "5870718740236079262",
+          style: "primary",
           web_app: { url: "https://miniapp.xdshka.party" },
         }],
         [{
-          text: "Поиск",
-          web_app: { url: "https://miniapp.xdshka.party?tab=create&mode=search" },
+          text: "Подробнее",
+          icon_custom_emoji_id: "5870527201874546272",
+          style: "success",
+          url: "https://example.com/news",
         }],
       ],
     });
@@ -46,14 +56,20 @@ describe("broadcast message validation", () => {
     expect(resolveBroadcastMediaKind("renamed.gif", "application/pdf")).toBe("document");
   });
 
-  test("accepts only known button presets and removes duplicates", () => {
-    expect(parseBroadcastButtonPresets(["open_app", "search", "open_app", "profile"])).toEqual([
-      "open_app",
-      "search",
-      "profile",
+  test("accepts legacy presets plus editable custom buttons and rejects invalid URLs", () => {
+    expect(parseBroadcastButtons(["open_app", "search", "open_app", "profile"])).toEqual([
+      { kind: "preset", preset: "open_app", text: "Открыть приложение" },
+      { kind: "preset", preset: "search", text: "Поиск" },
+      { kind: "preset", preset: "profile", text: "Профиль" },
     ]);
-    expect(parseBroadcastButtonPresets(["open_app", "unknown"])).toBeNull();
-    expect(parseBroadcastButtonPresets("open_app")).toBeNull();
+    expect(parseBroadcastButtons([
+      { kind: "url", text: "Наш канал", url: "https://t.me/example", style: "primary" },
+    ])).toEqual([
+      { kind: "url", text: "Наш канал", url: "https://t.me/example", style: "primary" },
+    ]);
+    expect(parseBroadcastButtons([{ kind: "url", text: "Сломано", url: "javascript:alert(1)" }])).toBeNull();
+    expect(parseBroadcastButtons(["open_app", "unknown"])).toBeNull();
+    expect(parseBroadcastButtons("open_app")).toBeNull();
   });
 
   test("requires text or media and applies Telegram text limits", () => {
@@ -89,6 +105,23 @@ describe("broadcast message validation", () => {
 });
 
 describe("broadcast delivery", () => {
+  test("chooses a first name, then @username, then a neutral fallback", () => {
+    expect(broadcastRecipientName({ firstName: " Алиса ", username: "alice" })).toBe("Алиса");
+    expect(broadcastRecipientName({ firstName: null, username: "alice" })).toBe("@alice");
+    expect(broadcastRecipientName({ firstName: null, username: null })).toBe("друг");
+  });
+
+  test("personalizes every placeholder and escapes names in HTML messages", () => {
+    const db = openDb(":memory:");
+    upsertUser(db, 101, "alice", "Алиса <Admin>");
+    const storedUser = getUser(db, 101)!;
+
+    expect(personalizeBroadcastMessage(
+      { text: "<b>Привет, {name}!</b> До встречи, {name}.", buttons: [], parseMode: "HTML" },
+      storedUser,
+    ).text).toBe("<b>Привет, Алиса &lt;Admin&gt;!</b> До встречи, Алиса &lt;Admin&gt;.");
+  });
+
   test("uploads media once and reuses Telegram file_id for later recipients", async () => {
     const sources: unknown[] = [];
     const bot = {
@@ -139,11 +172,14 @@ describe("broadcast delivery", () => {
     ]);
   });
 
-  test("sends the same prepared message to every known user and tolerates failures", async () => {
+  test("sends a personalized message to every known user and tolerates failures", async () => {
     const db = openDb(":memory:");
-    upsertUser(db, 101);
-    upsertUser(db, 202);
-    const message = { text: "Привет", buttons: ["open_app"] as const };
+    upsertUser(db, 101, "alice", "Алиса");
+    upsertUser(db, 202, "bob");
+    const message = {
+      text: "Привет, {name}!",
+      buttons: [{ kind: "preset", preset: "open_app", text: "Открыть приложение" }] as const,
+    };
     const calls: Array<{ chatId: number; text: string }> = [];
 
     const result = await broadcast(db, message, async (chatId, payload) => {
@@ -153,8 +189,8 @@ describe("broadcast delivery", () => {
 
     expect(result).toEqual({ sent: 1, failed: 1 });
     expect(calls).toEqual([
-      { chatId: 101, text: "Привет" },
-      { chatId: 202, text: "Привет" },
+      { chatId: 101, text: "Привет, Алиса!" },
+      { chatId: 202, text: "Привет, @bob!" },
     ]);
   });
 });
@@ -166,7 +202,7 @@ describe("admin broadcast API", () => {
     const delivered: Array<{
       chatId: number;
       text: string;
-      buttons: readonly string[];
+      buttons: readonly BroadcastButton[];
       kind?: string;
       filename?: string;
     }> = [];
@@ -191,7 +227,10 @@ describe("admin broadcast API", () => {
 
     const form = new FormData();
     form.set("text", "<b>Новинка</b>");
-    form.set("buttons", JSON.stringify(["open_app", "playlists"]));
+    form.set("buttons", JSON.stringify([
+      { kind: "preset", preset: "open_app", text: "Запустить", style: "primary" },
+      { kind: "url", text: "Подробнее", url: "https://example.com/news", style: "success" },
+    ]));
     form.set("media", new File(["gif-data"], "promo.gif", { type: "image/gif" }));
     const response = await app.request("/admin/broadcast", { method: "POST", body: form });
 
@@ -201,7 +240,10 @@ describe("admin broadcast API", () => {
       {
         chatId: 101,
         text: "<b>Новинка</b>",
-        buttons: ["open_app", "playlists"],
+        buttons: [
+          { kind: "preset", preset: "open_app", text: "Запустить", style: "primary" },
+          { kind: "url", text: "Подробнее", url: "https://example.com/news", style: "success" },
+        ],
         kind: "animation",
         filename: "promo.gif",
       },

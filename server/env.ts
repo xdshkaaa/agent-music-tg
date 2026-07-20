@@ -42,6 +42,9 @@ export const env = {
   opencodeModel: process.env.OPENCODE_MODEL ?? "claude-sonnet-5",
   ollamaUrl: process.env.OLLAMA_URL ?? "http://127.0.0.1:11434",
   ollamaModel: process.env.OLLAMA_MODEL ?? "llama3",
+  // Local genre hints + candidate ranking. Disabling restores the prior agent
+  // prompt/order without deleting the feedback collected for future use.
+  recommendationEnrichmentEnabled: bool(process.env.RECOMMENDATION_ENRICHMENT_ENABLED, true),
   port: Number(process.env.PORT ?? "8787"),
   dbPath: process.env.DB_PATH ?? "./data/app.sqlite",
   // CryptoBot Crypto Pay — payments feature. Token is required only when

@@ -26,16 +26,19 @@ function fakeProvider(turns: AgentResult[]): AgentProvider & { calls: number } {
 
 function fakeMusic(opts: { remotePlaylists: boolean; searchTrack?: (artist: string, title: string) => Promise<Track | null> }) {
   const searchTrackCalls: string[] = [];
-  const music: MusicProvider & { searchTrackCalls: string[] } = {
+  const searchTracksCalls: string[] = [];
+  const music: MusicProvider & { searchTrackCalls: string[]; searchTracksCalls: string[] } = {
     name: "youtube-music",
     capabilities: { remotePlaylists: opts.remotePlaylists, remotePlayback: opts.remotePlaylists },
     searchTrackCalls,
+    searchTracksCalls,
     async searchTrack(artist, title) {
       searchTrackCalls.push(`${artist}|${title}`);
       if (opts.searchTrack) return opts.searchTrack(artist, title);
       return { uri: `ytm:${artist}-${title}`, title, artist };
     },
     async searchTracks(query) {
+      searchTracksCalls.push(query);
       return [{ uri: `ytm:q-${query}`, title: query, artist: "Q" }];
     },
     async searchArtist(name) {
@@ -302,6 +305,30 @@ describe("generatePlaylist", () => {
     expect(playlist.name).toBe("OST");
     expect(playlist.tracks).toHaveLength(1);
     expect(playlist.tracks[0]!.title).toBe("kyokai no kanata soundtrack");
+  });
+
+  test("candidate ranking adds no LLM turn or backend search", async () => {
+    const provider = fakeProvider([
+      searchTracksResult("c1", "shoegaze"),
+      finalizeResult("Dream Wall", [{ artist: "Q", title: "shoegaze" }]),
+    ]);
+    const music = fakeMusic({ remotePlaylists: false });
+    let rankCalls = 0;
+
+    await generatePlaylist({
+      provider,
+      music,
+      prompt: "шугейз",
+      systemPrompt: "base\n\nLOCAL MUSIC CONTEXT: shoegaze",
+      rankTracks(tracks) {
+        rankCalls++;
+        return tracks;
+      },
+    });
+
+    expect(provider.calls).toBe(2);
+    expect(music.searchTracksCalls).toEqual(["shoegaze"]);
+    expect(rankCalls).toBe(1);
   });
 
   test("extend mode: add_to_playlist accumulates and finalize merges with the base, deduping base tracks", async () => {
