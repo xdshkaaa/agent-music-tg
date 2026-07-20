@@ -4,7 +4,7 @@ import { describe, expect, test, beforeEach } from "bun:test";
 // dynamic imports below pull it in.
 process.env.TELEGRAM_BOT_TOKEN ??= "test-token";
 
-const { btnText, accent, heading, fallbackSymbol, __resetForTests, __setEmojiForTests } = await import("./emoji");
+const { btnText, accent, heading, fallbackSymbol, loadCustomEmojis, __resetForTests, __setEmojiForTests } = await import("./emoji");
 
 const USED_SYMBOLS = [
   "info",
@@ -61,6 +61,21 @@ describe("emoji fallback (EMOJI_STICKER_SET unset)", () => {
 });
 
 describe("emoji mapped (EMOJI_STICKER_SET resolved a symbol)", () => {
+  test("loads the gift icon used by the /start referral button", async () => {
+    const bot = {
+      api: {
+        getCustomEmojiStickers: async (ids: string[]) => ids.map((id) => ({ custom_emoji_id: id })),
+      },
+    } as unknown as Parameters<typeof loadCustomEmojis>[0];
+
+    await loadCustomEmojis(bot);
+
+    expect(btnText("Пригласить друга", "gift")).toEqual({
+      text: "Пригласить друга",
+      icon_custom_emoji_id: "6032644646587338669",
+    });
+  });
+
   test("btnText returns { text, icon_custom_emoji_id } when mapped", () => {
     __setEmojiForTests("sparkle", "5377637156164392590");
     expect(btnText("Открыть приложение", "sparkle")).toEqual({

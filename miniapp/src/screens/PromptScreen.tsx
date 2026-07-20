@@ -397,8 +397,8 @@ export function PromptScreen({
         )}
       </div>
 
-      {mode === "ai" && events.length > 0 && (
-        <ReasoningTranscript events={events} collapsed={!busy} friendly={!isAdmin} />
+      {mode === "ai" && (busy || events.length > 0) && (
+        <ReasoningTranscript events={events} active={busy} friendly={!isAdmin} />
       )}
 
       {mode === "search" && !queryActive && recent.length > 0 && (

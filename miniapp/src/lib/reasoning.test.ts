@@ -55,6 +55,7 @@ describe("toLines", () => {
     const lines = toLines(events);
     expect(lines).toHaveLength(1);
     expect(lines[0]?.marker).toBe("⏺");
+    expect(lines[0]?.state).toBe("success");
     expect(lines[0]?.segments.map((s) => s.text).join("")).toContain("searchTrack");
     expect(lines[0]?.segments.map((s) => s.text).join("")).toContain("Burial – Archangel");
   });
@@ -63,7 +64,18 @@ describe("toLines", () => {
     const events: AgentEvent[] = [{ kind: "tool_call", id: "1", name: "finalize_playlist", args: { name: "Test" } }];
     const lines = toLines(events);
     expect(lines).toHaveLength(1);
+    expect(lines[0]?.state).toBe("pending");
     expect(lines[0]?.segments.map((s) => s.text).join("")).not.toContain("✓");
+  });
+
+  test("marks reasoning and failed tool results with their visual states", () => {
+    const events: AgentEvent[] = [
+      { kind: "reasoning", delta: "Проверяю настроение" },
+      { kind: "tool_call", id: "1", name: "searchTrack", args: { query: "unknown" } },
+      { kind: "tool_result", id: "1", ok: false, result: { error: "not found" } },
+    ];
+    const lines = toLines(events);
+    expect(lines.map((line) => line.state)).toEqual(["thinking", "error"]);
   });
 
   test("collapses a run of 3+ same-name calls into one tally line", () => {
@@ -75,8 +87,23 @@ describe("toLines", () => {
     const lines = toLines(events);
     // First call keeps its own line, the remaining 3 fold into a tally line.
     expect(lines).toHaveLength(2);
+    expect(lines[1]?.state).toBe("success");
     expect(lines[1]?.segments.map((s) => s.text).join("")).toContain("×3");
     expect(lines[1]?.segments.map((s) => s.text).join("")).toContain("✓ 3 ok");
+  });
+
+  test("keeps a partially completed call group pending", () => {
+    const events: AgentEvent[] = [
+      { kind: "tool_call", id: "1", name: "searchTrack", args: { query: "a" } },
+      { kind: "tool_call", id: "2", name: "searchTrack", args: { query: "b" } },
+      { kind: "tool_call", id: "3", name: "searchTrack", args: { query: "c" } },
+      { kind: "tool_result", id: "1", ok: true, result: { title: "a" } },
+    ];
+    const lines = toLines(events);
+    expect(lines).toHaveLength(2);
+    expect(lines[0]?.state).toBe("success");
+    expect(lines[1]?.state).toBe("pending");
+    expect(lines[1]?.segments.map((s) => s.text).join("")).toContain("0/2 done");
   });
 
   test("caps rendered lines at MAX_LINES, keeping the tail", () => {

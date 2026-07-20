@@ -22,7 +22,6 @@ CONFIG_FILE="$SCRIPT_DIR/deploy.conf"
 : ${TEST_PORT:=8788}
 : ${TEST_SERVICE:="agent-music-tg-test"}
 : ${KEEP_RELEASES:=3}
-TEST_BOT_TOKEN="8675084924:AAHFw9GrTmeg3cpgv4Yl8nx6O1psOdbEeOU"
 
 SSH_OPTS="${SSH_OPTS:--o ConnectTimeout=25 -o ConnectionAttempts=5 -o ServerAliveInterval=10 -o ServerAliveCountMax=6 -o BatchMode=yes}"
 
@@ -74,6 +73,7 @@ check_ssh() {
 ensure_test_env() {
   log "Ensuring test .env exists on VPS"
   run_remote "test -f '$TEST_API_DIR/.env'" && { log "Test .env already present, leaving as-is"; return; }
+  [ -n "${TEST_BOT_TOKEN:-}" ] || fail "Set TEST_BOT_TOKEN in the environment or gitignored deploy/deploy.conf before first TEST bootstrap"
   run_ssh "test -f '/opt/agent-music-tg/.env'" || fail "Prod .env not found at /opt/agent-music-tg/.env — nothing to bootstrap test .env from"
   run_remote "mkdir -p '$TEST_API_DIR'"
   run_remote "cp '/opt/agent-music-tg/.env' '$TEST_API_DIR/.env'"

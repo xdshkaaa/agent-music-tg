@@ -43,6 +43,7 @@ export function setActiveBackendId(db: AppDb, backendId: string): void {
 
 const REFERRAL_REWARD_CREDITS_KEY = "referral_reward_credits";
 const REFERRAL_MAX_PER_USER_KEY = "referral_max_per_user";
+export const DEFAULT_REFERRAL_REWARD_CREDITS = 10;
 
 export interface ReferralSettings {
   rewardCredits: number;
@@ -50,10 +51,12 @@ export interface ReferralSettings {
 }
 
 export function getReferralSettings(db: AppDb): ReferralSettings {
-  const reward = Number(getSetting(db, REFERRAL_REWARD_CREDITS_KEY));
-  const max = Number(getSetting(db, REFERRAL_MAX_PER_USER_KEY));
+  const rewardValue = getSetting(db, REFERRAL_REWARD_CREDITS_KEY);
+  const maxValue = getSetting(db, REFERRAL_MAX_PER_USER_KEY);
+  const reward = rewardValue === null ? Number.NaN : Number(rewardValue);
+  const max = maxValue === null ? Number.NaN : Number(maxValue);
   return {
-    rewardCredits: Number.isInteger(reward) && reward >= 0 ? reward : 1,
+    rewardCredits: Number.isInteger(reward) && reward >= 0 ? reward : DEFAULT_REFERRAL_REWARD_CREDITS,
     maxPerUser: Number.isInteger(max) && max >= 0 ? max : 0,
   };
 }
