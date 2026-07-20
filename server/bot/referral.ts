@@ -2,6 +2,7 @@ import { Bot, InlineKeyboard } from "grammy";
 import type { AppDb } from "../db";
 import type { BotContext } from "./context";
 import { applyReferral, getReferralStats } from "../access/referral-store";
+import { getReferralSettings } from "../lib/settings";
 import { btnText, heading, accent } from "./emoji";
 import type { ShopView } from "./shop";
 
@@ -19,14 +20,28 @@ function backRow(kb: InlineKeyboard): InlineKeyboard {
   return kb.row().text(btnText("Назад", "back"), "nav:menu");
 }
 
+export function formatGenerationCount(count: number): string {
+  const mod100 = count % 100;
+  const mod10 = count % 10;
+  const form = mod100 >= 11 && mod100 <= 14
+    ? "генераций"
+    : mod10 === 1
+      ? "генерация"
+      : mod10 >= 2 && mod10 <= 4
+        ? "генерации"
+        : "генераций";
+  return `${count} ${form}`;
+}
+
 export async function buildReferralView(bot: Bot<BotContext>, db: AppDb, chatId: number): Promise<ShopView> {
   const username = await botUsername(bot);
   const link = `https://t.me/${username}?start=ref_${chatId}`;
   const stats = getReferralStats(db, chatId);
+  const settings = getReferralSettings(db);
   const gift = accent("gift");
   const lines = [
     `<b>${heading("gift", "РЕФЕРАЛЬНАЯ ПРОГРАММА")}</b>`,
-    `Приглашайте друзей — получайте генерации.`,
+    `Приглашайте друзей — получайте ${formatGenerationCount(settings.rewardCredits)} за каждого.`,
     "",
     `${gift ? gift + " " : ""}Приглашено: ${stats.invitedCount}`,
     `Начислено генераций: ${stats.creditsEarned}`,

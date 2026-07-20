@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Package, Plus, Wallet, Calendar, Receipt, User,
-  CircleNotch, WarningCircle, Gift, Star,
+  CircleNotch, WarningCircle, Gift,
   MusicNotes,
   ChartBar,
   UsersThree, Copy, Check,
@@ -14,9 +14,32 @@ import { api, type MeResponse, type Invoice } from "../lib/api";
 import { ACCENT_PRESETS } from "../lib/accent";
 
 function formatSubscription(until: number | null): string {
-  if (!until) return "нет";
-  if (until * 1000 <= Date.now()) return "истекла";
-  return new Date(until * 1000).toLocaleDateString("ru-RU");
+  if (!until) return "Не подключена";
+  if (until * 1000 <= Date.now()) return "Истекла";
+  return `До ${new Date(until * 1000).toLocaleDateString("ru-RU")}`;
+}
+
+function pluralRu(n: number, [one, few, many]: [string, string, string]): string {
+  const absolute = Math.abs(n);
+  const mod10 = absolute % 10;
+  const mod100 = absolute % 100;
+  if (mod10 === 1 && mod100 !== 11) return one;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return few;
+  return many;
+}
+
+function generationWord(n: number): string {
+  return pluralRu(n, ["генерация", "генерации", "генераций"]);
+}
+
+function formatGenerationCount(n: number): string {
+  return `${n} ${generationWord(n)}`;
+}
+
+function formatPurchaseAmount(invoice: Invoice): string {
+  return invoice.asset === "XTR"
+    ? `${invoice.amount} звёзд Telegram`
+    : `${invoice.amount} ${invoice.asset}`;
 }
 
 function displayName(me: MeResponse | null): string {
@@ -59,12 +82,19 @@ function MusicBackendPicker({ me }: { me: MeResponse | null }) {
   }
 
   return (
-    <div className="admin-settings-bar-item">
-      <span className="admin-settings-bar-label icon-row">
-        <MusicNotes size={13} weight="bold" /> Музыка
-      </span>
+    <div className="profile-preference">
+      <div className="profile-preference-heading">
+        <span className="profile-section-label icon-row">
+          <MusicNotes size={14} weight="bold" /> Источник треков
+        </span>
+        {saving && (
+          <span role="status" aria-label="Сохраняем источник треков" className="profile-saving-indicator">
+            <CircleNotch size={14} className="spin" />
+          </span>
+        )}
+      </div>
       <Segmented<MusicBackendId>
-        ariaLabel="Источник музыки"
+        ariaLabel="Источник треков"
         role="radiogroup"
         fill
         options={MUSIC_BACKENDS}
@@ -72,16 +102,9 @@ function MusicBackendPicker({ me }: { me: MeResponse | null }) {
         value={backend}
         onChange={handleChange}
       />
-      <span
-        role="status"
-        aria-label={saving ? "Сохранение" : undefined}
-        style={{ display: "inline-flex", width: 14, height: 14, marginLeft: 8, flexShrink: 0 }}
-      >
-        {saving && <CircleNotch size={14} className="spin" />}
-      </span>
       {saveError && (
-        <p role="alert" className="text-muted fs-micro" style={{ margin: "6px 0 0", width: "100%" }}>
-          Не удалось сохранить, попробуйте ещё раз
+        <p role="alert" className="text-muted fs-micro profile-preference-error">
+          Не удалось сменить источник. Попробуйте ещё раз.
         </p>
       )}
     </div>
@@ -90,11 +113,11 @@ function MusicBackendPicker({ me }: { me: MeResponse | null }) {
 
 function AccentPicker({ accent, onChange }: { accent: string; onChange: (value: string) => void }) {
   return (
-    <div style={{ marginTop: 14, padding: "14px 0 0", borderTop: "1px solid var(--hairline)" }}>
-      <span className="text-muted fs-micro" style={{ display: "block", marginBottom: 10 }}>
-        Акцентный цвет
+    <div className="profile-preference profile-accent-picker">
+      <span className="profile-section-label">
+        Цвет интерфейса
       </span>
-      <div role="radiogroup" aria-label="Акцентный цвет" style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+      <div role="radiogroup" aria-label="Цвет интерфейса" className="profile-accent-options">
         {ACCENT_PRESETS.map((preset) => {
           const active = preset.value.toLowerCase() === accent.toLowerCase();
           return (
@@ -120,22 +143,40 @@ function AccentPicker({ accent, onChange }: { accent: string; onChange: (value: 
 }
 
 function ReferralCard() {
-  const [data, setData] = useState<{ link: string; invitedCount: number; creditsEarned: number } | null>(null);
+  const [data, setData] = useState<{
+    link: string;
+    invitedCount: number;
+    creditsEarned: number;
+    rewardCredits: number;
+    maxPerUser: number;
+  } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState(false);
   const [error, setError] = useState(false);
 
-  useEffect(() => {
-    api.referral()
-      .then(setData)
-      .catch(() => setError(true));
+  const loadReferral = useCallback(async () => {
+    setError(false);
+    try {
+      setData(await api.referral());
+    } catch {
+      setError(true);
+    }
   }, []);
 
-  function handleCopy() {
+  useEffect(() => {
+    void loadReferral();
+  }, [loadReferral]);
+
+  async function handleCopy() {
     if (!data) return;
-    navigator.clipboard.writeText(data.link).then(() => {
+    setCopyError(false);
+    try {
+      await navigator.clipboard.writeText(data.link);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    }).catch(() => {});
+    } catch {
+      setCopyError(true);
+    }
   }
 
   function handleShare() {
@@ -146,35 +187,67 @@ function ReferralCard() {
     else window.open(shareUrl, "_blank");
   }
 
-  if (error || !data) return null;
+  if (error) {
+    return (
+      <GlassPanel className="reveal">
+        <h2 className="screen-title" style={{ marginBottom: 14 }}>Приглашения</h2>
+        <EmptyState
+          icon={<WarningCircle size={40} weight="bold" />}
+          label="Не удалось загрузить приглашения. Проверьте соединение и попробуйте ещё раз."
+          action={{ label: "Попробовать снова", onClick: () => void loadReferral() }}
+        />
+      </GlassPanel>
+    );
+  }
+
+  if (!data) return null;
+
+  const referralsLeft = data.maxPerUser > 0
+    ? Math.max(data.maxPerUser - data.invitedCount, 0)
+    : null;
+  const rewardDescription = data.rewardCredits === 0
+    ? "Поделитесь ссылкой, чтобы друг сразу открыл бота."
+    : referralsLeft === 0
+      ? "Лимит приглашений с наградой достигнут. Ссылкой всё ещё можно делиться."
+      : `За каждого друга, который впервые запустит бота по ссылке, вы получите ${formatGenerationCount(data.rewardCredits)}.${
+        referralsLeft === null
+          ? ""
+          : ` Награда доступна ещё за ${referralsLeft} ${pluralRu(referralsLeft, ["друга", "друзей", "друзей"])}.`
+      }`;
 
   return (
     <GlassPanel className="reveal">
-      <h2 className="screen-title" style={{ marginBottom: 14 }}>Реферальная программа</h2>
-      <div className="profile-stats">
+      <h2 className="screen-title" style={{ marginBottom: 6 }}>Приглашайте друзей</h2>
+      <p className="text-muted fs-label" style={{ margin: "0 0 14px" }}>{rewardDescription}</p>
+      <div className="profile-stats profile-stats--referral">
         <div className="profile-stats-col">
           <span className="text-muted icon-row fs-micro">
-            <UsersThree size={13} weight="bold" /> Приглашено
+            <UsersThree size={13} weight="bold" /> Приглашено друзей
           </span>
           <span className="fs-label" style={{ fontWeight: 700 }}>{data.invitedCount}</span>
         </div>
         <div className="profile-stats-col">
           <span className="text-muted icon-row fs-micro">
-            <Gift size={13} weight="bold" /> Начислено
+            <Gift size={13} weight="bold" /> Получено
           </span>
-          <span className="fs-label" style={{ fontWeight: 700 }}>{data.creditsEarned} ген</span>
+          <span className="fs-label" style={{ fontWeight: 700 }}>{formatGenerationCount(data.creditsEarned)}</span>
         </div>
       </div>
-      <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-        <button type="button" className="glass-button" style={{ flex: 1 }} onClick={handleCopy}>
+      <div className="referral-actions">
+        <button type="button" className="glass-button" onClick={handleCopy}>
           {copied ? <Check size={16} weight="bold" /> : <Copy size={16} weight="bold" />}
-          {copied ? "Скопировано" : "Копировать ссылку"}
+          {copied ? "Ссылка скопирована" : "Скопировать ссылку"}
         </button>
-        <button type="button" className="glass-button primary" style={{ flex: 1 }} onClick={handleShare}>
+        <button type="button" className="glass-button primary" onClick={handleShare}>
           <UsersThree size={16} weight="bold" />
-          Пригласить
+          Пригласить друга
         </button>
       </div>
+      {copyError && (
+        <p role="alert" className="text-muted fs-micro" style={{ margin: "10px 0 0" }}>
+          Не удалось скопировать ссылку. Попробуйте ещё раз.
+        </p>
+      )}
     </GlassPanel>
   );
 }
@@ -192,88 +265,116 @@ export default function ProfileScreen({
 }) {
   const firstName = getTelegramUserFirstName();
   const [purchases, setPurchases] = useState<Invoice[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [purchasesLoading, setPurchasesLoading] = useState(true);
+  const [purchasesError, setPurchasesError] = useState(false);
+
+  const loadPurchases = useCallback(async () => {
+    setPurchasesLoading(true);
+    setPurchasesError(false);
+    try {
+      const response = await api.purchases();
+      setPurchases(response.purchases.filter((invoice) => invoice.status === "paid"));
+    } catch {
+      setPurchasesError(true);
+    } finally {
+      setPurchasesLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    api.purchases()
-      .then((p) => setPurchases(p.purchases.filter((i) => i.status === "paid")))
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
-  }, []);
+    void loadPurchases();
+  }, [loadPurchases]);
+
+  const availableGenerations = (me?.credits ?? 0) + (me?.trial.active ? me.trial.creditsLeft : 0);
 
   return (
     <div className="stack">
       <GlassPanel className="reveal">
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, marginBottom: 22 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
-            {me?.photoUrl ? (
-              <img src={me.photoUrl} alt="" className="profile-avatar" />
-            ) : (
-              <span className="profile-avatar-placeholder" aria-hidden="true">
-                <User size={20} weight="bold" style={{ color: "var(--text-muted-dark)" }} />
-              </span>
+        <div className="profile-identity">
+          {me?.photoUrl ? (
+            <img src={me.photoUrl} alt="" className="profile-avatar" />
+          ) : (
+            <span className="profile-avatar-placeholder" aria-hidden="true">
+              <User size={20} weight="bold" style={{ color: "var(--text-muted-dark)" }} />
+            </span>
+          )}
+          <div className="profile-identity-copy">
+            <p className="profile-name">{firstName ?? displayName(me)}</p>
+            {firstName && me?.username && (
+              <p className="text-muted fs-label profile-handle">@{me.username}</p>
             )}
-            <div style={{ minWidth: 0 }}>
-              <p className="fs-title" style={{ fontWeight: 800, margin: 0 }}>
-                {firstName ?? displayName(me)}
-              </p>
-              {firstName && me?.username && (
-                <p className="text-muted fs-label" style={{ margin: "2px 0 0" }}>@{me.username}</p>
-              )}
-            </div>
           </div>
-          <button type="button" className="glass-button primary profile-topup-btn" onClick={onGoShop}>
-            <Plus size={18} weight="bold" />
-            Пополнить
-          </button>
         </div>
 
-        <div className="profile-stats">
-          <div className="profile-stats-col">
-            <span className="text-muted icon-row fs-micro">
-              <Wallet size={13} weight="bold" /> Баланс
-            </span>
-            <span style={{ fontSize: 34, fontWeight: 800, fontFamily: "var(--font-display)", letterSpacing: "var(--ls-display)", lineHeight: 1.05 }}>
-              {(me?.credits ?? 0) + (me?.trial.active ? me.trial.creditsLeft : 0)}{" "}
-              <span style={{ fontSize: 16, fontWeight: 700 }}>ген</span>
-            </span>
-            {me?.trial.active && (
-              <span className="text-muted fs-micro" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                <Gift size={12} weight="bold" /> вкл. {me.trial.creditsLeft} до{" "}
+        <div className="profile-account">
+          <div className="profile-balance-row">
+            <div className="profile-balance-copy">
+              <span className="profile-section-label icon-row">
+                <Wallet size={14} weight="bold" /> Доступно
+              </span>
+              <strong className="profile-balance-value">{formatGenerationCount(availableGenerations)}</strong>
+            </div>
+            <button type="button" className="glass-button primary profile-topup-btn" onClick={onGoShop}>
+              <Plus size={18} weight="bold" />
+              Пополнить
+            </button>
+          </div>
+
+          {me?.trial.active && (
+            <p className="text-muted fs-micro profile-trial-note">
+              <Gift size={14} weight="bold" />
+              <span>
+                Пробный баланс: {formatGenerationCount(me.trial.creditsLeft)}, до{" "}
                 {new Date((me.trial.until ?? 0) * 1000).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" })}
               </span>
-            )}
-          </div>
-          <div className="profile-stats-col">
-            <span className="text-muted icon-row fs-micro">
-              <ChartBar size={13} weight="bold" /> Потрачено
-            </span>
-            <span className="fs-label" style={{ fontWeight: 700 }}>{me?.generationsUsed ?? 0} ген</span>
-          </div>
-          <div className="profile-stats-col">
-            <span className="text-muted icon-row fs-micro">
-              <Calendar size={13} weight="bold" /> Подписка
-            </span>
-            <span className="fs-label" style={{ fontWeight: 700 }}>{formatSubscription(me?.subscriptionUntil ?? null)}</span>
+            </p>
+          )}
+
+          <div className="profile-facts">
+            <div className="profile-fact">
+              <span className="text-muted icon-row fs-micro">
+                <ChartBar size={13} weight="bold" /> Использовано
+              </span>
+              <span className="fs-label profile-fact-value">{formatGenerationCount(me?.generationsUsed ?? 0)}</span>
+            </div>
+            <div className="profile-fact">
+              <span className="text-muted icon-row fs-micro">
+                <Calendar size={13} weight="bold" /> Подписка
+              </span>
+              <span className="fs-label profile-fact-value">{formatSubscription(me?.subscriptionUntil ?? null)}</span>
+            </div>
           </div>
         </div>
 
-        <div className="admin-settings-bar" style={{ marginTop: 14, padding: "14px 0 0" }}>
+        <div className="profile-preferences">
           <MusicBackendPicker me={me} />
+          <AccentPicker accent={accent} onChange={onChangeAccent} />
         </div>
-
-        <AccentPicker accent={accent} onChange={onChangeAccent} />
       </GlassPanel>
 
       <ReferralCard />
 
       <GlassPanel className="reveal">
-        <h2 className="screen-title" style={{ marginBottom: 14 }}>Покупки</h2>
-        {error && <p role="alert" className="icon-row"><WarningCircle size={16} weight="bold" /> {error}</p>}
-        {purchases.length === 0 ? (
+        <h2 className="screen-title" style={{ marginBottom: 14 }}>История покупок</h2>
+        {purchasesLoading ? (
+          <p role="status" className="text-muted icon-row">
+            <CircleNotch size={16} className="spin" /> Загружаем покупки…
+          </p>
+        ) : purchasesError ? (
+          <div role="alert">
+            <p className="icon-row">
+              <WarningCircle size={16} weight="bold" />
+              Не удалось загрузить покупки. Проверьте соединение и попробуйте ещё раз.
+            </p>
+            <button type="button" className="glass-button" onClick={() => void loadPurchases()}>
+              Попробовать снова
+            </button>
+          </div>
+        ) : purchases.length === 0 ? (
           <EmptyState
             icon={<Package size={40} weight="bold" />}
-            label="Покупок пока нет"
-            action={{ label: "В магазин", onClick: onGoShop }}
+            label="Здесь появятся оплаченные пакеты и подписки."
+            action={{ label: "Выбрать пакет", onClick: onGoShop }}
           />
         ) : (
           <ul className="plain-list plain-list--col-gap reveal-stagger">
@@ -281,7 +382,7 @@ export default function ProfileScreen({
               <li key={p.id} className="purchase-item" style={{ ["--i" as string]: i }}>
                 <Receipt size={18} weight="bold" />
                 <span style={{ flex: 1 }}>
-                  #{p.id} · {p.amount} {p.asset === "XTR" ? <Star size={12} weight="fill" /> : p.asset}
+                  Покупка №{p.id} · {formatPurchaseAmount(p)}
                 </span>
                 <time
                   dateTime={new Date(p.createdAt * 1000).toISOString()}
