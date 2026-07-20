@@ -6,7 +6,8 @@ import { processDownload } from "../audio/deliver";
 import { createTelegramAudioSender } from "../audio/telegram-sender";
 import { YtDlpExtractor } from "../audio/extractor";
 import { env } from "../env";
-import { btnText, heading } from "./emoji";
+import { btnText } from "./emoji";
+import { messageHint, messageTitle, statusMessage } from "./message-format";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -33,7 +34,7 @@ interface DatesView {
 function buildDatesView(records: DownloadRecord[]): DatesView {
   if (records.length === 0) {
     return {
-      text: `${heading("info", "История загрузок пуста.")}\n\nСгенерируй плейлист в мини-приложении, чтобы она появилась здесь.`,
+      text: statusMessage("history", "История пока пуста", "Скачайте плейлист в мини-приложении — после этого он появится здесь."),
       keyboard: undefined,
     };
   }
@@ -52,7 +53,10 @@ function buildDatesView(records: DownloadRecord[]): DatesView {
     kb.text(btnText(label, "history"), `hist:date:${day}`).row();
   }
 
-  return { text: `<b>${heading("music", "ИСТОРИЯ")}</b>\n\nВыбери дату, чтобы скачать плейлист заново:`, keyboard: kb };
+  return {
+    text: `${messageTitle("history", "История загрузок")}\n${messageHint("Выберите дату, чтобы отправить плейлист заново.")}`,
+    keyboard: kb,
+  };
 }
 
 interface PlaylistsView {
@@ -67,7 +71,10 @@ function buildPlaylistsView(day: number, items: DownloadRecord[]): PlaylistsView
     kb.text(btnText(label, "music"), `hist:dl:${r.id}`).row();
   }
   kb.text(btnText("Назад", "back"), "hist:back");
-  return { text: `<b>${heading("music", formatDay(day))}</b>\n\nВыбери плейлист для скачивания:`, keyboard: kb };
+  return {
+    text: `${messageTitle("music", formatDay(day))}\n${messageHint("Выберите плейлист для повторной загрузки.")}`,
+    keyboard: kb,
+  };
 }
 
 export async function showHistory(ctx: BotContext, db: AppDb): Promise<void> {

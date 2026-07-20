@@ -2,10 +2,11 @@ import { getInitData } from "./telegram";
 import type { AgentEvent } from "./reasoning";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const isFormData = init?.body instanceof FormData;
   const res = await fetch(path, {
     ...init,
     headers: {
-      "content-type": "application/json",
+      ...(isFormData ? {} : { "content-type": "application/json" }),
       "X-Telegram-Init-Data": getInitData(),
       ...init?.headers,
     },
@@ -92,6 +93,24 @@ export interface AdminStats {
     payingNoSubscription: number;
     freeNoActivity: number;
   };
+  funnel: {
+    event: "acquired" | "miniapp_opened" | "generation_started" | "generation_completed" | "checkout_started" | "purchase_completed";
+    users: number;
+    stepConversion: number | null;
+    overallConversion: number | null;
+  }[];
+  trafficSources: AttributionBreakdown[];
+  utmCampaigns: AttributionBreakdown[];
+}
+
+export interface AttributionBreakdown {
+  source: string;
+  medium: string | null;
+  campaign: string | null;
+  users: number;
+  payers: number;
+  conversionRate: number | null;
+  revenue: { asset: string; total: number }[];
 }
 
 export interface ShopSettings {
@@ -130,6 +149,8 @@ export interface Track {
   deepLink?: string;
 }
 
+export type MusicFeedbackEvent = "play_started" | "play_completed" | "skipped";
+
 export interface Album {
   uri: string;
   title: string;
@@ -163,6 +184,7 @@ export interface AdminSettings {
 export interface AdminUser {
   chatId: number;
   username: string | null;
+  firstName: string | null;
   photoFileId: string | null;
   credits: number;
   subscriptionUntil: number | null;
@@ -211,6 +233,28 @@ export interface GrantHistoryRecord {
 export interface GrantHistoryResponse {
   history: GrantHistoryRecord[];
   total?: number;
+}
+
+export type AdminBroadcastButtonPreset = "open_app" | "search" | "playlists" | "profile";
+export type AdminBroadcastButtonStyle = "primary" | "success" | "danger";
+export type AdminBroadcastButton =
+  | {
+      kind: "preset";
+      preset: AdminBroadcastButtonPreset;
+      text: string;
+      style?: AdminBroadcastButtonStyle;
+    }
+  | {
+      kind: "url";
+      text: string;
+      url: string;
+      style?: AdminBroadcastButtonStyle;
+    };
+
+export interface AdminBroadcastInput {
+  text: string;
+  buttons: AdminBroadcastButton[];
+  media: File | null;
 }
 
 export type DownloadTrackStatus = "pending" | "sent" | "failed";
@@ -406,6 +450,13 @@ export const api = {
   // --- Player reactions ---
   reactionStatus: (uri: string) =>
     request<{ liked: boolean; disliked: boolean }>(`/api/reactions/status?uri=${encodeURIComponent(uri)}`),
+  /** Best-effort by design: feedback must never block or break playback. */
+  musicFeedback: (event: MusicFeedbackEvent, track: Pick<Track, "uri" | "title" | "artist">): void => {
+    void request<{ ok: boolean }>("/api/music-feedback", {
+      method: "POST",
+      body: JSON.stringify({ event, uri: track.uri, title: track.title, artist: track.artist }),
+    }).catch(() => {});
+  },
   dislikeTrack: (track: { uri: string; title: string; artist: string }) =>
     request<{ ok: boolean }>("/api/reactions/dislike", { method: "POST", body: JSON.stringify(track) }),
   undislikeTrack: (uri: string) =>
@@ -491,8 +542,13 @@ export const api = {
     request<{ offer: Offer }>(`/api/admin/offers/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   adminDeleteOffer: (id: number) =>
     request<{ ok: boolean }>(`/api/admin/offers/${id}`, { method: "DELETE" }),
-  adminBroadcast: (text: string) =>
-    request<{ sent: number; failed: number }>("/api/admin/broadcast", { method: "POST", body: JSON.stringify({ text }) }),
+  adminBroadcast: (input: AdminBroadcastInput) => {
+    const body = new FormData();
+    body.set("text", input.text);
+    body.set("buttons", JSON.stringify(input.buttons));
+    if (input.media) body.set("media", input.media, input.media.name);
+    return request<{ sent: number; failed: number }>("/api/admin/broadcast", { method: "POST", body });
+  },
   adminShopSettings: () => request<ShopSettings>("/api/admin/shop-settings"),
   adminSetShopSettings: (patch: Partial<ShopSettings>) =>
     request<ShopSettings>("/api/admin/shop-settings", { method: "POST", body: JSON.stringify(patch) }),

@@ -29,6 +29,8 @@ export function requireAuth(db: AppDb): MiddlewareHandler<AppEnv> {
     }
     c.set("chatId", role.chatId);
     c.set("isAdmin", role.isAdmin);
+    c.set("startParam", verified.startParam);
+    c.set("telegramUser", verified.user);
     await next();
   };
 }

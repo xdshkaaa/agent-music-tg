@@ -16,6 +16,7 @@ import { cancelInvoiceAndRefund } from "../payments/cancel";
 import { getLyrics } from "../core/lyrics";
 import { AVATAR_DIR, isAnimatedAvatar, getCachedAvatarRelPath, downloadToTemp, convertToStaticJpeg, cacheStaticAvatar } from "../avatar";
 import { trialStatus } from "./shared";
+import { recordDailyEvent } from "../analytics/store";
 
 /** `/me`, avatars, generation history, saved tracks, lyrics, and player reactions. */
 export function createMeRoutes(db: AppDb): Hono<AppEnv> {
@@ -93,6 +94,7 @@ export function createMeRoutes(db: AppDb): Hono<AppEnv> {
 
   app.get("/me", async (c) => {
     const chatId = c.get("chatId");
+    recordDailyEvent(db, chatId, "miniapp_opened");
     const user = getUser(db, chatId);
     const photoUrl = await resolvePhotoUrl(chatId, user);
     return c.json({

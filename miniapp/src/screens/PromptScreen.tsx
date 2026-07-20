@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUp,
+  ArrowsClockwise,
   CheckCircle,
   CircleNotch,
   DownloadSimple,
@@ -18,6 +19,7 @@ import { TrackRow } from "../components/TrackRow";
 import { TrackOverflowMenu } from "../components/TrackOverflowMenu";
 import { requestAddToPlaylist } from "../components/AddToPlaylistButton";
 import { api, type Album, type ArtistCard, type Track } from "../lib/api";
+import { humanizeError } from "../lib/errorText";
 import { usePlayer } from "../lib/player";
 import type { AgentEvent } from "../lib/reasoning";
 import { useTextScramble } from "../lib/useTextScramble";
@@ -25,6 +27,41 @@ import { useTextScramble } from "../lib/useTextScramble";
 const MAX_INPUT_HEIGHT = 96;
 const RECENT_KEY = "miniapp-recent-searches";
 const RECENT_MAX = 8;
+const PROMPT_EXAMPLE_COUNT = 5;
+const PROMPT_EXAMPLES = [
+  "Спокойный инди для вечерней прогулки",
+  "Фокус без вокала",
+  "Энергичная музыка для тренировки",
+  "Неоновая электроника для ночной дороги",
+  "Джаз для дождливого утра",
+  "Русский рок для поездки за город",
+  "Тёплый соул для ужина вдвоём",
+  "Танцевальные хиты нулевых",
+  "Мрачный постпанк для ночной прогулки",
+  "Музыка как саундтрек к космосу",
+  "Лёгкий фон для чтения",
+  "Бодрый поп для уборки",
+  "Что-нибудь похожее на Radiohead",
+  "Женский вокал и дрим-поп",
+  "Тихая классика перед сном",
+  "Латино для домашней вечеринки",
+  "Диско и фанк для хорошего настроения",
+  "Хип-хоп с расслабленным битом",
+  "Саундтрек для рабочего дедлайна",
+  "Акустика для вечера у костра",
+];
+
+function samplePromptExamples(previous: readonly string[] = []): string[] {
+  const previousSet = new Set(previous);
+  const candidates = PROMPT_EXAMPLES.filter((example) => !previousSet.has(example));
+
+  for (let index = candidates.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [candidates[index], candidates[swapIndex]] = [candidates[swapIndex], candidates[index]];
+  }
+
+  return candidates.slice(0, PROMPT_EXAMPLE_COUNT);
+}
 
 type DownloadState = { kind: "idle" } | { kind: "sending" } | { kind: "sent" } | { kind: "error"; message: string };
 type Mode = "ai" | "search";
@@ -115,18 +152,23 @@ export function PromptScreen({
   events,
   isAdmin,
   onOpenArtist,
+  initialMode,
+  initialQuery,
 }: {
   onSubmit: (prompt: string) => void;
   busy: boolean;
   events: AgentEvent[];
   isAdmin?: boolean;
   onOpenArtist: (target: { id?: string; name?: string }) => void;
+  initialMode?: Mode;
+  initialQuery?: string;
 }) {
   const player = usePlayer();
-  const [prompt, setPrompt] = useState("");
+  const [prompt, setPrompt] = useState(() => initialQuery?.trim() ?? "");
   const [mode, setMode] = useState<Mode>(() =>
-    new URLSearchParams(window.location.search).get("mode") === "search" ? "search" : "ai",
+    initialMode ?? (new URLSearchParams(window.location.search).get("mode") === "search" ? "search" : "ai"),
   );
+  const [promptExamples, setPromptExamples] = useState(() => samplePromptExamples());
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const [tracks, setTracks] = useState<Track[]>([]);
@@ -206,6 +248,13 @@ export function PromptScreen({
     const t = setTimeout(() => el.focus(), 40);
     return () => clearTimeout(t);
   }, [mode]);
+
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el || !initialQuery) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, MAX_INPUT_HEIGHT)}px`;
+  }, [initialQuery]);
 
   function handleHeroClick() {
     if (!heroComplete) return;
@@ -310,6 +359,10 @@ export function PromptScreen({
     });
   }
 
+  function refreshPromptExamples() {
+    setPromptExamples((current) => samplePromptExamples(current));
+  }
+
   const MODES: { id: Mode; label: string; icon: typeof Sparkle }[] = [
     { id: "ai", label: "AI", icon: Sparkle },
     { id: "search", label: "Поиск", icon: MagnifyingGlass },
@@ -333,13 +386,26 @@ export function PromptScreen({
   return (
     <GlassPanel className="reveal prompt-card">
       <div className="prompt-hero">
-        <h1 onClick={handleHeroClick} role="button" tabIndex={0}>
-          {heroDisplay.slice(0, heroPhrase.before.length)}
-          <span className="prompt-hero-accent">
-            {heroDisplay.slice(heroPhrase.before.length, heroPhrase.before.length + heroPhrase.accent.length)}
-          </span>
-          {heroDisplay.slice(heroPhrase.before.length + heroPhrase.accent.length)}
+        <p className="prompt-hero-kicker">{mode === "ai" ? "AI собирает плейлист" : "Поиск по каталогу"}</p>
+        <h1>
+          <button
+            type="button"
+            className="prompt-hero-action"
+            aria-label={`Сменить фразу. Сейчас: ${heroFull}`}
+            onClick={handleHeroClick}
+          >
+            {heroDisplay.slice(0, heroPhrase.before.length)}
+            <span className="prompt-hero-accent">
+              {heroDisplay.slice(heroPhrase.before.length, heroPhrase.before.length + heroPhrase.accent.length)}
+            </span>
+            {heroDisplay.slice(heroPhrase.before.length + heroPhrase.accent.length)}
+          </button>
         </h1>
+        <p className="prompt-hero-copy">
+          {mode === "ai"
+            ? "Опишите настроение или занятие. Получите готовую подборку реальных треков, которую можно сразу слушать и сохранять."
+            : "Введите трек, исполнителя или альбом и сразу включайте."}
+        </p>
       </div>
 
       <div className="prompt-modes" role="group" aria-label="Режим">
@@ -351,7 +417,10 @@ export function PromptScreen({
               type="button"
               className={`prompt-mode-seg-btn${mode === m.id ? " active" : ""}`}
               aria-pressed={mode === m.id}
-              onClick={() => setMode(m.id)}
+              onClick={() => {
+                if (m.id === "ai" && !prompt.trim()) refreshPromptExamples();
+                setMode(m.id);
+              }}
             >
               <Icon size={15} weight={mode === m.id ? "fill" : "regular"} />
               <span>{m.label}</span>
@@ -370,7 +439,7 @@ export function PromptScreen({
           ref={inputRef}
           className="prompt-pill-input"
           rows={1}
-          placeholder={mode === "ai" ? "Опишите запрос…" : "Трек, исполнитель или альбом"}
+          placeholder={mode === "ai" ? "Настроение, жанр или занятие" : "Трек, исполнитель или альбом"}
           value={prompt}
           onChange={(e) => {
             setPrompt(e.target.value);
@@ -397,6 +466,30 @@ export function PromptScreen({
         )}
       </div>
 
+      {mode === "ai" && !busy && events.length === 0 && !prompt.trim() && (
+        <div className="prompt-examples" aria-label="Примеры запросов">
+          <div className="prompt-examples-head">
+            <p className="prompt-examples-label">Можно начать так</p>
+            <button
+              type="button"
+              className="prompt-examples-refresh"
+              aria-label="Показать другие примеры"
+              onClick={refreshPromptExamples}
+            >
+              <ArrowsClockwise size={14} weight="bold" aria-hidden="true" />
+              Ещё
+            </button>
+          </div>
+          <div className="prompt-suggestions" aria-live="polite">
+            {promptExamples.map((example) => (
+              <button key={example} type="button" className="prompt-suggestion" onClick={() => pickRecent(example)}>
+                {example}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {mode === "ai" && (busy || events.length > 0) && (
         <ReasoningTranscript events={events} active={busy} friendly={!isAdmin} />
       )}
@@ -418,7 +511,7 @@ export function PromptScreen({
       {mode === "search" && queryActive && (
         <>
           {searchStatus === "loading" && !hasResults && (
-            <p className="text-muted search-status">
+            <p className="text-muted search-status" role="status">
               <CircleNotch size={16} className="spin" /> Ищу…
             </p>
           )}
@@ -429,7 +522,7 @@ export function PromptScreen({
                 <WarningCircle size={16} weight="bold" />
               </span>
               <p role="alert" className="error-row-message">
-                {searchError}
+                {humanizeError(searchError ?? "").message}
               </p>
             </div>
           )}
@@ -454,17 +547,21 @@ export function PromptScreen({
                   <button
                     key={id ?? name}
                     type="button"
-                    className="track-row search-artist-row"
+                    className="track-row search-artist-row search-artist-card"
                     style={{ ["--i" as string]: i }}
+                    aria-label={`Открыть исполнителя ${name}`}
                     onClick={() => onOpenArtist(id ? { id } : { name })}
                   >
                     <span className="search-artist-avatar" aria-hidden>
-                      {artwork ? <img src={artwork} alt="" /> : <User size={18} weight="bold" />}
+                      {artwork ? <img src={artwork} alt="" /> : <User size={22} weight="bold" />}
                     </span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="search-artist-copy">
                       <p className="search-row-title">{name}</p>
                       <p className="text-muted search-row-meta">Исполнитель</p>
                     </div>
+                    <span className="search-artist-enter" aria-hidden>
+                      <CaretRightIcon size={17} weight="bold" />
+                    </span>
                   </button>
                 ))}
               </div>
@@ -535,7 +632,9 @@ export function PromptScreen({
                             </p>
                           )}
                           {open.status === "error" && (
-                            <p className="text-muted" style={{ padding: "4px 8px" }}>{open.error}</p>
+                            <p className="text-muted" role="alert" style={{ padding: "4px 8px" }}>
+                              {humanizeError(open.error ?? "").message}
+                            </p>
                           )}
                           {open.status === "idle" && open.tracks.length === 0 && (
                             <p className="text-muted" style={{ padding: "4px 8px" }}>Пусто</p>

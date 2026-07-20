@@ -20,7 +20,7 @@ export function humanizeError(raw: string): FriendlyError {
 
   const lower = text.toLowerCase();
 
-  if (/401|missing authentication|unauthorized|invalid api key|api[_ -]?key/i.test(lower)) {
+  if (/401|missing authentication|unauthenticated|unauthorized|invalid api key|api[_ -]?key/i.test(lower)) {
     return {
       message: "Сервис временно недоступен. Попробуйте позже или напишите в поддержку.",
       detail: text,
@@ -44,7 +44,7 @@ export function humanizeError(raw: string): FriendlyError {
       detail: text,
     };
   }
-  if (/timeout|timed out|econn|enotfound|fetch failed|network|no route|connection/i.test(lower)) {
+  if (/timeout|timed out|econn|enotfound|fetch failed|load failed|network|no route|connection/i.test(lower)) {
     return {
       message: "Произошла ошибка подключения. Проверьте соединение и попробуйте ещё раз.",
       detail: text,

@@ -2,7 +2,7 @@
 
 Scope: server (Bun/Hono, bot long-polling, payments, audio), Mini App (React).
 Reviewed: auth/middleware, webhooks (Crypto Pay, Platega), payments/fulfillment,
-offers/purchase, access-control, entitlements, audio extractor + stream cache,
+offers/purchase, access-control, entitlements, audio extractor + stream proxy,
 music backends (YTMusic, SoundCloud), agent tools, bot admin panel, DB layer, env.
 
 ## Severity summary
@@ -35,12 +35,12 @@ Fix: validate `artistId` against the expected SoundCloud id shape (digits) befor
 and clamp `limit`. Same guard applied to `searchTracks`/`searchTrack` `limit`.
 
 ### 2. `/stream` triggers yt-dlp for any `ytm:`/`sc:` uri (Low)
-`server/api/audio-routes.ts:109` — `/stream/:uri` only checks `isValidTrackUri`
-(`^(ytm|sc):[\w-]+$`), then calls `streamCache.getFile(uri)` which shells out
-to `yt-dlp` for that id. Any authenticated user can therefore ask the server to
-fetch/transcode an arbitrary video/track id. Blast radius is bounded (ids are
-opaque, output is audio only, no admin action), but it is an unauthenticated-to-
-the-host compute/SSRF-ish primitive reachable by any allowlisted user.
+`server/api/audio-routes.ts` — `/stream/:uri` only checks `isValidTrackUri`
+(`^(ytm|sc):[\w-]+$`), then resolves and proxies the upstream media URL for that
+id. Any authenticated user can therefore ask the server to proxy an arbitrary
+video/track id. Blast radius is bounded (ids are opaque, output is audio only,
+no full download/transcode is performed), but it is still a bandwidth primitive
+reachable by any allowlisted user.
 
 Fix (defense): require the uri to have been seen in a prior generation for this
 chat (or at least ownership of an extraction), OR keep as-is but document it is

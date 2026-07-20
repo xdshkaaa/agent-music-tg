@@ -18,6 +18,9 @@ import { registerHistory, buildHistoryView } from "./history";
 import { registerReferral, buildReferralView, applyReferral, formatGenerationCount } from "./referral";
 import { btnText, heading } from "./emoji";
 import { grantPlaylistSlotsForPayment } from "../access/stars-payments-store";
+import { createTelegramBroadcastSender } from "../admin/telegram-broadcast";
+import { parseStartAttribution, recordAttributionTouch, recordEvent, recordFirstTouch } from "../analytics/store";
+import { detailBlock, escapeHtml, messageHint, messageTitle, statusMessage } from "./message-format";
 
 export function createBot(db: AppDb): Bot<BotContext> {
   const bot = new Bot<BotContext>(env.telegramBotToken);
@@ -27,9 +30,7 @@ export function createBot(db: AppDb): Bot<BotContext> {
   bot.use(allowlistGate(db));
   bot.use(channelSubscriptionGate(db));
 
-  const send = async (chatId: number, text: string): Promise<void> => {
-    await bot.api.sendMessage(chatId, text);
-  };
+  const send = createTelegramBroadcastSender(bot, env.publicOrigin);
 
   function buildStartKeyboard(ctx: BotContext): InlineKeyboard {
     const kb = new InlineKeyboard()
@@ -44,7 +45,7 @@ export function createBot(db: AppDb): Bot<BotContext> {
       .text(btnText("Профиль", "profile"), "nav:profile")
       .text(btnText("История", "history"), "nav:history").row()
       .text(btnText("Пригласить друга", "gift"), "nav:referral")
-      .text(btnText("Поддержка", "info"), "nav:support").row();
+      .text(btnText("Помощь и FAQ", "info"), "nav:faq").row();
     if (ctx.isAdmin) {
       kb.text(btnText("Админка", "gear"), "nav:admin");
     }
@@ -53,34 +54,82 @@ export function createBot(db: AppDb): Bot<BotContext> {
 
   function buildMenuView(ctx: BotContext): ShopView {
     const shop = getShopSettings(db);
-    const header = `${heading("info", `<b>AGENT MUSIC</b>`)}`;
+    const header = messageTitle("music", "AGENT MUSIC");
     const features = [
-      `${heading("music", "<b>Генерация</b> плейлиста под настроение")}`,
-      `${heading("search", "<b>Поиск</b> треков и альбомов")}`,
-      `${heading("money", "<b>Жми</b>: кнопку ниже чтобы начать пользоваться")}`,
+      heading("music", "<b>AI-подбор</b> под настроение и ситуацию"),
+      heading("search", "<b>Поиск</b> треков, артистов и альбомов"),
+      heading("headphone", "<b>Музыка</b> и загрузки всегда под рукой"),
     ].join("\n");
-    const body = `${shop.shopName}\n\n<i>${shop.aboutText}</i>`;
-    return { text: `${header}\n\n${features}\n\n${body}`, keyboard: buildStartKeyboard(ctx) };
+    const intro = messageHint(`${shop.shopName} — ваш музыкальный помощник`);
+    const about = escapeHtml(shop.aboutText);
+    return {
+      text: `${header}\n${intro}\n\n${detailBlock(features.split("\n"))}\n\n${about}`,
+      keyboard: buildStartKeyboard(ctx),
+    };
   }
 
   function buildSupportView(): ShopView {
     const shop = getShopSettings(db);
-    const text = shop.supportContact ? `Поддержка: ${shop.supportContact}` : "Контакт поддержки не указан.";
+    const text = shop.supportContact
+      ? `${messageTitle("info", "Поддержка")}\n${messageHint("Напишите нам — поможем разобраться.")}\n\n${detailBlock([escapeHtml(shop.supportContact)])}`
+      : statusMessage("info", "Поддержка", "Контакт поддержки пока не указан.");
     const kb = new InlineKeyboard().text(btnText("Назад", "back"), "nav:menu");
     return { text, keyboard: kb };
   }
 
+  function buildFaqView(): ShopView {
+    const text = [
+      messageTitle("info", "Помощь и FAQ"),
+      messageHint("Коротко о главных возможностях"),
+      "",
+      "<b>Как создать плейлист?</b>",
+      "Откройте приложение, выберите AI-подбор и опишите настроение или ситуацию одной фразой.",
+      "",
+      "<b>Чем AI-подбор отличается от поиска?</b>",
+      "AI собирает новый плейлист по описанию. Поиск находит конкретный трек, артиста или альбом.",
+      "",
+      "<b>Где моя музыка?</b>",
+      "Сохранённые плейлисты, избранные треки и загрузки находятся во вкладке «Музыка».",
+      "",
+      "<b>Как скачать аудио?</b>",
+      "Нажмите кнопку загрузки в приложении — готовые аудиофайлы придут в этот чат.",
+      "",
+      "<b>Как работают генерации?</b>",
+      "Один новый AI-плейлист расходует генерацию. Остаток виден в верхней панели и профиле.",
+    ].join("\n");
+    const kb = new InlineKeyboard()
+      .webApp(btnText("Открыть полную справку", "app"), `${env.publicOrigin}?tab=help`).row();
+    const shop = getShopSettings(db);
+    if (shop.supportContact) kb.text(btnText("Написать в поддержку", "info"), "nav:support").row();
+    kb.text(btnText("Назад", "back"), "nav:menu");
+    return { text, keyboard: kb };
+  }
+
   bot.command("start", async (ctx) => {
-    const isNewUser = upsertUser(db, ctx.chat.id, ctx.from?.username ?? null);
+    const startParam = String(ctx.match ?? "").trim() || null;
+    const isNewUser = upsertUser(
+      db,
+      ctx.chat.id,
+      ctx.from?.username ?? null,
+      ctx.from?.first_name ?? null,
+    );
+    const attribution = parseStartAttribution(startParam);
+    recordFirstTouch(db, ctx.chat.id, attribution);
+    if (startParam) recordAttributionTouch(db, ctx.chat.id, attribution);
+    recordEvent(db, ctx.chat.id, "bot_started", startParam ? { startParam } : {});
     if (isNewUser) {
       alertNewUser(ctx.chat.id, ctx.from?.username).catch(() => {});
     }
-    const refMatch = /^ref_(\d+)$/.exec(ctx.match ?? "");
+    const refMatch = /^ref_(\d+)$/.exec(startParam ?? "");
     if (isNewUser && refMatch) {
       const referrerChatId = Number(refMatch[1]);
       if (applyReferral(db, referrerChatId, ctx.chat.id)) {
         const reward = formatGenerationCount(getReferralSettings(db).rewardCredits);
-        bot.api.sendMessage(referrerChatId, `${heading("gift", "Новый реферал!")} Вам начислено ${reward} — /referral для подробностей.`, { parse_mode: "HTML" }).catch(() => {});
+        bot.api.sendMessage(
+          referrerChatId,
+          `${messageTitle("gift", "Новый реферал")}\nВам начислено <b>${escapeHtml(reward)}</b>.\n\nПодробнее: /referral`,
+          { parse_mode: "HTML" },
+        ).catch(() => {});
       }
     }
     try {
@@ -107,7 +156,7 @@ export function createBot(db: AppDb): Bot<BotContext> {
 
   bot.command("app", async (ctx) => {
     const keyboard = new InlineKeyboard().webApp(btnText("Открыть приложение", "app"), env.publicOrigin);
-    await ctx.reply(`${heading("info", "Откройте мини-приложение:")}`, {
+    await ctx.reply(`${messageTitle("app", "Мини-приложение")}\n${messageHint("Создавайте плейлисты, ищите музыку и управляйте коллекцией.")}`, {
       reply_markup: keyboard,
       parse_mode: "HTML",
     });
@@ -115,12 +164,20 @@ export function createBot(db: AppDb): Bot<BotContext> {
 
   bot.command("about", async (ctx) => {
     const shop = getShopSettings(db);
-    await ctx.reply(`${heading("info", `${shop.shopName}`)}\n\n${shop.aboutText}`, { parse_mode: "HTML" });
+    await ctx.reply(
+      `${messageTitle("music", shop.shopName)}\n\n${detailBlock([escapeHtml(shop.aboutText)])}`,
+      { parse_mode: "HTML" },
+    );
   });
 
   bot.command("support", async (ctx) => {
-    const shop = getShopSettings(db);
-    await ctx.reply(shop.supportContact ? `Поддержка: ${shop.supportContact}` : "Контакт поддержки не указан.");
+    const view = buildSupportView();
+    await ctx.reply(view.text, { reply_markup: view.keyboard, parse_mode: "HTML" });
+  });
+
+  bot.command("help", async (ctx) => {
+    const view = buildFaqView();
+    await ctx.reply(view.text, { reply_markup: view.keyboard, parse_mode: "HTML" });
   });
 
   registerShop(bot, db);
@@ -166,6 +223,9 @@ export function createBot(db: AppDb): Bot<BotContext> {
         break;
       case "support":
         await editOrReply(ctx, buildSupportView());
+        break;
+      case "faq":
+        await editOrReply(ctx, buildFaqView());
         break;
       case "admin": {
         if (!ctx.isAdmin) return;
@@ -222,6 +282,7 @@ export function createBot(db: AppDb): Bot<BotContext> {
     { command: "buy", description: "Купить доступ" },
     { command: "profile", description: "Мой профиль" },
     { command: "support", description: "Поддержка" },
+    { command: "help", description: "Помощь и частые вопросы" },
   ]).catch(() => {});
 
   // Telegram Stars (XTR): approve every checkout our own bot issued, then grant
@@ -239,7 +300,7 @@ export function createBot(db: AppDb): Bot<BotContext> {
     const granted = grantPlaylistSlotsForPayment(db, payment.telegram_payment_charge_id, chatId, slots);
     if (granted) {
       await ctx
-        .reply(`${heading("check", `Готово! +${slots} к лимиту плейлистов.`)}`, { parse_mode: "HTML" })
+        .reply(statusMessage("check", "Лимит увеличен", `Добавлено мест: ${slots}.`), { parse_mode: "HTML" })
         .catch(() => {});
     }
   });
@@ -249,7 +310,7 @@ export function createBot(db: AppDb): Bot<BotContext> {
     const text = ctx.message.text.trim();
     if (text.startsWith("/")) return; // unknown commands: ignore
 
-    if (upsertUser(db, chatId, ctx.from?.username ?? null)) {
+    if (upsertUser(db, chatId, ctx.from?.username ?? null, ctx.from?.first_name ?? null)) {
       alertNewUser(chatId, ctx.from?.username).catch(() => {});
     }
 
@@ -257,7 +318,10 @@ export function createBot(db: AppDb): Bot<BotContext> {
     if (await handleAdminText(ctx, db, send)) return;
 
     // Playlist generation happens only in the Mini App now.
-    await ctx.reply(`${heading("info", "Открой мини-приложение, чтобы сгенерировать плейлист.")}`, { parse_mode: "HTML" });
+    await ctx.reply(
+      `${messageTitle("app", "Создание плейлиста")}\n${messageHint("Откройте мини-приложение и опишите настроение или ситуацию.")}`,
+      { parse_mode: "HTML" },
+    );
   });
 
   return bot;

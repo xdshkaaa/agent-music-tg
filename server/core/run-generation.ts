@@ -5,7 +5,6 @@ import { getActiveProviderId, getActiveBackendId, getProviderOverrides } from ".
 import { hasAccess, consumeAccess, checkSubscriptionRateLimit } from "../access/entitlements";
 import { insertGeneration, getGeneration, appendTracksToGeneration, incrementExtendCount } from "../access/generations-store";
 import { getUserMusicBackend } from "../access/users-store";
-import { listDislikedForPrompt, listDislikedUris } from "../access/reactions-store";
 import {
   ClarifyNeededError,
   MaxIterationsExceededError,
@@ -15,12 +14,16 @@ import {
   type GeneratePlaylistOptions,
   type GeneratePlaylistResult,
 } from "./generate-playlist";
-import { buildExtendSystemPrompt } from "../agent/prompts";
+import { buildExtendSystemPrompt, PLAYLIST_SYSTEM_PROMPT } from "../agent/prompts";
 import type { AgentEvent, AgentMessage } from "../agent/types";
 import { verifyTracks, verificationStore } from "../audio/track-verification";
 import type { Extractor } from "../audio/extractor";
-import type { StreamCache } from "../audio/stream-cache";
+import type { StreamResolver } from "../audio/stream-resolver";
 import { mapWithConcurrency } from "./concurrency";
+import { env } from "../env";
+import { appendGenreHint, resolveGenreContext } from "../recommendation/genre-knowledge";
+import { buildPreferenceSnapshot } from "../recommendation/preferences";
+import { createTrackRanker } from "../recommendation/ranker";
 
 export type GenerationOutcome =
   | { status: "ok"; playlist: FinalizedPlaylist; generationId: number }
@@ -60,9 +63,26 @@ async function buildRunInputs(db: AppDb, chatId: number) {
   return { provider, music };
 }
 
-/** Disliked tracks are excluded from every generation: nudged in the prompt, hard-filtered from results. */
-function buildDislikeOpts(db: AppDb, chatId: number): { dislikedTracks: string[]; dislikedUris: Set<string> } {
-  return { dislikedTracks: listDislikedForPrompt(db, chatId), dislikedUris: listDislikedUris(db, chatId) };
+/** Builds all local recommendation inputs once, before the network-bound loop. */
+function buildRecommendationOpts(
+  db: AppDb,
+  chatId: number,
+  prompt: string,
+  baseSystemPrompt = PLAYLIST_SYSTEM_PROMPT,
+): Pick<GeneratePlaylistOptions, "dislikedTracks" | "dislikedUris" | "rankTracks" | "systemPrompt"> {
+  const preferences = buildPreferenceSnapshot(db, chatId);
+  const base = {
+    dislikedTracks: preferences.dislikedTracks,
+    dislikedUris: preferences.dislikedUris,
+  };
+  if (!env.recommendationEnrichmentEnabled) return base;
+
+  const genreContext = resolveGenreContext(prompt);
+  return {
+    ...base,
+    systemPrompt: appendGenreHint(baseSystemPrompt, genreContext),
+    rankTracks: createTrackRanker(genreContext, preferences),
+  };
 }
 
 type RunResult = { status: "ok"; playlist: FinalizedPlaylist } | Exclude<GenerationOutcome, { status: "ok" }>;
@@ -89,17 +109,15 @@ async function toOutcome(run: () => Promise<GeneratePlaylistResult>): Promise<Ru
 }
 
 function fireVerification(playlist: FinalizedPlaylist): void {
-  // Prewarm the stream cache in the background so the first play of any track
-  // hits a cached file instead of waiting out a live yt-dlp extraction. Its
-  // success/failure doubles as the availability check, so when it's running
-  // there's no need for a separate probe — that would be a second yt-dlp
-  // invocation per track for the same answer.
-  if (_streamCache) {
-    const cache = _streamCache;
+  // Resolve signed upstream URLs in the background so playback can proxy bytes
+  // immediately without downloading and transcoding full MP3 files first.
+  // Resolution also verifies availability, avoiding a duplicate yt-dlp probe.
+  if (_streamResolver) {
+    const resolver = _streamResolver;
     void mapWithConcurrency(playlist.tracks, 2, async (t) => {
       verificationStore.set(t.uri, "checking");
       try {
-        await cache.getFile(t.uri);
+        await resolver.resolve(t.uri);
         verificationStore.set(t.uri, "verified");
       } catch {
         verificationStore.set(t.uri, "unavailable");
@@ -121,7 +139,7 @@ export async function startGeneration(
 
   const outcome = await toOutcome(async () => {
     const { provider, music } = await buildRunInputs(db, chatId);
-    const opts: GeneratePlaylistOptions = { provider, music, prompt, onEvent, ...buildDislikeOpts(db, chatId) };
+    const opts: GeneratePlaylistOptions = { provider, music, prompt, onEvent, ...buildRecommendationOpts(db, chatId, prompt) };
     return generatePlaylist(opts);
   });
   if (outcome.status === "ok") {
@@ -161,7 +179,7 @@ export async function resumeGeneration(
       resumeClarifyAnswer: clarifyAnswer,
       resumeClarifyRound: priorRound,
       onEvent,
-      ...buildDislikeOpts(db, chatId),
+      ...buildRecommendationOpts(db, chatId, originalPrompt),
     });
   });
   if (outcome.status === "ok") {
@@ -214,9 +232,13 @@ export async function extendGeneration(
       mode: "extend",
       baseTracks,
       baseName: existing.playlistName ?? undefined,
-      systemPrompt: buildExtendSystemPrompt(existing.playlistName ?? "Playlist", baseTracks),
       onEvent,
-      ...buildDislikeOpts(db, chatId),
+      ...buildRecommendationOpts(
+        db,
+        chatId,
+        prompt,
+        buildExtendSystemPrompt(existing.playlistName ?? "Playlist", baseTracks),
+      ),
     });
   });
   if (outcome.status === "ok") {
@@ -230,10 +252,10 @@ export async function extendGeneration(
 }
 
 let _extractor: Extractor | null = null;
-let _streamCache: StreamCache | null = null;
+let _streamResolver: StreamResolver | null = null;
 
-export function setPrewarmStreamCache(cache: StreamCache): void {
-  _streamCache = cache;
+export function setPrewarmStreamResolver(resolver: StreamResolver): void {
+  _streamResolver = resolver;
 }
 
 export function setVerificationExtractor(extractor: Extractor): void {

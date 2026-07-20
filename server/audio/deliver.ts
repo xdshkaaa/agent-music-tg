@@ -2,7 +2,7 @@ import { unlink } from "node:fs/promises";
 import type { AppDb } from "../db";
 import { getCachedAudio, setCachedAudio } from "./cache";
 import type { Extractor } from "./extractor";
-import { accent } from "../bot/emoji";
+import { detailBlock, escapeHtml, messageTitle } from "../bot/message-format";
 import {
   finalStatusFor,
   setDownloadStatus,
@@ -105,15 +105,17 @@ export async function deliverTrack(db: AppDb, chatId: number, track: DownloadTra
 }
 
 function summaryText(playlistName: string, tracks: DownloadTrack[]): string {
-  const check = accent("check");
-  const cross = accent("cross");
-  const warning = accent("warning");
   const sent = tracks.filter((t) => t.status === "sent").length;
-  if (sent === tracks.length) return `${check ? check + " " : ""}«${playlistName}»: все ${tracks.length} треков отправлены.`;
+  const name = escapeHtml(playlistName);
+  if (sent === tracks.length) {
+    return `${messageTitle("check", "Плейлист отправлен")}\n<b>${name}</b> · ${tracks.length} треков`;
+  }
   const failed = tracks.filter((t) => t.status === "failed");
-  const lines = failed.map((t) => `• ${t.artist} — ${t.title}`);
-  if (sent === 0) return [`${cross ? cross + " " : ""}«${playlistName}»: не удалось скачать треки:`, ...lines].join("\n");
-  return [`${warning ? warning + " " : ""}«${playlistName}»: отправлено ${sent} из ${tracks.length}. Не получилось:`, ...lines].join("\n");
+  const lines = failed.map((t) => `• ${escapeHtml(t.artist)} — ${escapeHtml(t.title)}`);
+  if (sent === 0) {
+    return `${messageTitle("cross", "Не удалось скачать плейлист")}\n<b>${name}</b>\n\n${detailBlock(lines)}`;
+  }
+  return `${messageTitle("warning", "Плейлист отправлен частично")}\n<b>${name}</b> · ${sent} из ${tracks.length}\n\n${detailBlock(lines)}`;
 }
 
 /**

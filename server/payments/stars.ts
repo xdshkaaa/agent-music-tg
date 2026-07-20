@@ -3,6 +3,7 @@ import { insertPaidStarsInvoice } from "./invoices-store";
 import { getOffer } from "./offers-store";
 import { addCredits, extendSubscription } from "../access/users-store";
 import type { FulfillResult } from "./fulfillment";
+import { recordEvent } from "../analytics/store";
 
 /** Payload carried through the Telegram invoice round-trip. */
 export interface StarsPayload {
@@ -32,6 +33,17 @@ export function fulfillStarsPayment(
 ): FulfillResult {
   const tx = db.transaction((): FulfillResult => {
     if (!insertPaidStarsInvoice(db, input)) return { fulfilled: false, chatId: input.chatId };
+
+    const invoice = db
+      .query<{ id: number }, [string]>(`SELECT id FROM invoices WHERE provider = 'stars' AND external_id = ?`)
+      .get(input.chargeId);
+    recordEvent(
+      db,
+      input.chatId,
+      "purchase_completed",
+      { provider: "stars", offerId: input.offerId, amount: String(input.starsAmount), asset: "XTR" },
+      invoice ? `purchase:${invoice.id}` : `stars-purchase:${input.chargeId}`,
+    );
 
     const offer = getOffer(db, input.offerId);
     if (!offer) return { fulfilled: true, chatId: input.chatId, provider: "stars", amount: String(input.starsAmount), asset: "XTR" };

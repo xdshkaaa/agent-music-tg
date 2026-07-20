@@ -10,7 +10,7 @@ const TEST_CHAT = 555555;
 
 const { env } = await import("../env");
 const { openDb } = await import("../db");
-const { upsertUser, SIGNUP_BONUS_CREDITS } = await import("../access/users-store");
+const { getUser, upsertUser, SIGNUP_BONUS_CREDITS } = await import("../access/users-store");
 const { createApiRoutes } = await import("./routes");
 
 /** Builds a valid Telegram Mini App initData string signed with the bot token. */
@@ -80,6 +80,7 @@ describe("GET /api/me", () => {
     expect(body.credits).toBe(SIGNUP_BONUS_CREDITS);
     expect(body.subscriptionUntil).toBeNull();
     expect(body.username).toBe("testuser");
+    expect(getUser(db, TEST_CHAT)?.firstName).toBe("Test");
   });
 
   test("omits username when the user has none recorded", async () => {

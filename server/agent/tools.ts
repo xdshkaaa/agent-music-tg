@@ -187,6 +187,8 @@ export const MUSIC_AGENT_TOOLS: ToolSpec[] = [
 
 export interface ToolDispatcherDeps {
   music: MusicProvider;
+  /** Optional pure in-memory ordering/filter applied to backend candidates. */
+  rankTracks?: (tracks: Track[]) => Track[];
   /** Delegates to the single-clarify-question flow (see core/generate-playlist.ts). */
   onClarify: (question: string, options: string[]) => Promise<string>;
 }
@@ -222,7 +224,8 @@ export async function dispatchTool(
     case "searchTracks": {
       const query = String(args.query ?? "");
       const limit = typeof args.limit === "number" ? args.limit : 10;
-      return (await deps.music.searchTracks(query, limit)).map(trackToResult);
+      const tracks = await deps.music.searchTracks(query, limit);
+      return (deps.rankTracks ? deps.rankTracks(tracks) : tracks).map(trackToResult);
     }
     case "searchArtist": {
       return deps.music.searchArtist(String(args.name ?? ""));
@@ -230,7 +233,8 @@ export async function dispatchTool(
     case "getArtistTopTracks": {
       const id = String(args.artistId ?? "");
       const limit = typeof args.limit === "number" ? args.limit : 5;
-      return (await deps.music.getArtistTopTracks(id, limit)).map(trackToResult);
+      const tracks = await deps.music.getArtistTopTracks(id, limit);
+      return (deps.rankTracks ? deps.rankTracks(tracks) : tracks).map(trackToResult);
     }
     case "searchAlbums": {
       const query = String(args.query ?? "");

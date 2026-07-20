@@ -11,6 +11,7 @@ export interface VerifiedInitData {
   chatId: number;
   user: TelegramInitDataUser;
   authDate: number;
+  startParam: string | null;
 }
 
 const MAX_INIT_DATA_AGE_SECONDS = 24 * 60 * 60;
@@ -55,7 +56,7 @@ export function verifyInitData(initData: string, botToken: string): VerifiedInit
 
   // In a private chat with the bot (the only surface this app runs in),
   // the user's own ID is the chat ID.
-  return { chatId: user.id, user, authDate };
+  return { chatId: user.id, user, authDate, startParam: params.get("start_param") };
 }
 
 function timingSafeEqualHex(a: string, b: string): boolean {

@@ -96,3 +96,6 @@ one exists — implementer to check at build time).
 - Referral tiers / multi-level referrals
 - Admin UI to view individual referral event history (stats endpoint returns
   aggregate only; can be added later via `getAllGrantHistory`-style listing if needed)
+- Automated nurture and win-back messages. Their audiences, triggers, limits,
+  and stop conditions are defined separately in
+  [Дожим и возврат пользователей](./2026-07-20-lifecycle-messaging-design.md).

@@ -1,5 +1,12 @@
 import type { AppDb } from "../db";
 import { countUsers } from "../access/users-store";
+import {
+  getFunnel,
+  getTrafficSources,
+  getUtmCampaigns,
+  type AttributionBreakdown,
+  type FunnelStep,
+} from "../analytics/report";
 
 export type StatsPeriod = "today" | "week" | "month" | "all";
 
@@ -38,6 +45,9 @@ export interface AdminStats {
   topOffers: TopOffer[];
   topActiveUsers: TopUser[];
   segments: UserSegments;
+  funnel: FunnelStep[];
+  trafficSources: AttributionBreakdown[];
+  utmCampaigns: AttributionBreakdown[];
 }
 
 const PERIOD_SECONDS: Record<Exclude<StatsPeriod, "all">, number> = {
@@ -150,6 +160,8 @@ export function getAdminStats(db: AppDb, period: StatsPeriod = "all"): AdminStat
       .get(now, now)?.n ?? 0;
   const totalUsersCount = countUsers(db);
   const freeNoActivityCount = totalUsersCount - activeSubCount - trialActiveCount - payingNoSubCount;
+  const funnel = getFunnel(db, period);
+  const purchaseStep = funnel.find((step) => step.event === "purchase_completed");
 
   return {
     period,
@@ -159,7 +171,9 @@ export function getAdminStats(db: AppDb, period: StatsPeriod = "all"): AdminStat
     paidPurchases,
     revenue: revenueRows.map((r) => ({ asset: r.asset, total: r.total })),
     revenueAllTime: revenueAllTimeRows.map((r) => ({ asset: r.asset, total: r.total })),
-    conversionRate: newUsers > 0 ? paidPurchases / newUsers : null,
+    // Unique paying users within the selected acquisition cohort. The old
+    // transaction-count / new-user ratio could exceed 100% on repeat buys.
+    conversionRate: purchaseStep?.overallConversion ?? null,
     topOffers: topOffersRows.map((r) => ({ title: r.title, count: r.count })),
     topActiveUsers: topActiveUsersRows.map((r) => ({ chatId: r.chat_id, username: r.username, generations: r.n })),
     segments: {
@@ -168,5 +182,8 @@ export function getAdminStats(db: AppDb, period: StatsPeriod = "all"): AdminStat
       payingNoSubscription: payingNoSubCount,
       freeNoActivity: freeNoActivityCount,
     },
+    funnel,
+    trafficSources: getTrafficSources(db, period),
+    utmCampaigns: getUtmCampaigns(db, period),
   };
 }

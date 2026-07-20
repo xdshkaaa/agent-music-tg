@@ -4,7 +4,7 @@ import type { AppEnv } from "./context";
 import { hasAccess } from "../access/entitlements";
 import { isValidTrackUri, type Extractor } from "../audio/extractor";
 import { processDownload, type AudioSender } from "../audio/deliver";
-import type { StreamCache } from "../audio/stream-cache";
+import type { StreamResolver } from "../audio/stream-resolver";
 import { verificationStore } from "../audio/track-verification";
 import {
   deleteDownload,
@@ -18,8 +18,11 @@ export interface AudioDeps {
   sender: AudioSender;
   extractor: Extractor;
   scratchDir: string;
-  streamCache: StreamCache;
+  streamResolver: StreamResolver;
+  streamFetch?: StreamFetch;
 }
+
+type StreamFetch = (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => ReturnType<typeof fetch>;
 
 interface DownloadBody {
   playlistName?: string;
@@ -113,40 +116,38 @@ export function createAudioRoutes(db: AppDb, deps: AudioDeps): Hono<AppEnv> {
     const uri = c.req.param("uri");
     if (!isValidTrackUri(uri)) return c.json({ error: "invalid uri" }, 400);
 
-    let path: string;
     try {
-      path = await deps.streamCache.getFile(uri);
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const resolved = await deps.streamResolver.resolve(uri);
+        const requestHeaders = new Headers(resolved.headers);
+        const range = c.req.header("Range");
+        if (range) requestHeaders.set("Range", range);
+        const upstream = await (deps.streamFetch ?? fetch)(resolved.url, { headers: requestHeaders, redirect: "follow" });
+        if (attempt === 0 && (upstream.status === 403 || upstream.status === 410)) {
+          await upstream.body?.cancel();
+          deps.streamResolver.invalidate(uri);
+          continue;
+        }
+        if (upstream.status === 416) {
+          const contentRange = upstream.headers.get("Content-Range");
+          return new Response(null, {
+            status: 416,
+            headers: contentRange ? { "Content-Range": contentRange } : undefined,
+          });
+        }
+        if (!upstream.ok) return c.json({ error: `upstream audio failed: ${upstream.status}` }, 502);
+        const headers = new Headers();
+        for (const name of ["Content-Type", "Content-Length", "Accept-Ranges", "Content-Range"]) {
+          const value = upstream.headers.get(name);
+          if (value !== null) headers.set(name, value);
+        }
+        headers.set("Cache-Control", "private, max-age=3600");
+        return new Response(upstream.body, { status: upstream.status, headers });
+      }
+      return c.json({ error: "upstream audio failed" }, 502);
     } catch (e) {
       return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
     }
-
-    const file = Bun.file(path);
-    const size = file.size;
-    const headers: Record<string, string> = {
-      "Content-Type": "audio/mpeg",
-      "Accept-Ranges": "bytes",
-      "Cache-Control": "private, max-age=3600",
-    };
-
-    const range = c.req.header("Range");
-    const match = range?.match(/^bytes=(\d*)-(\d*)$/);
-    if (match && (match[1] || match[2])) {
-      const start = match[1] ? Number(match[1]) : Math.max(0, size - Number(match[2]));
-      const end = match[1] && match[2] ? Math.min(Number(match[2]), size - 1) : size - 1;
-      if (start >= size || start > end) {
-        return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${size}` } });
-      }
-      return new Response(file.slice(start, end + 1), {
-        status: 206,
-        headers: {
-          ...headers,
-          "Content-Range": `bytes ${start}-${end}/${size}`,
-          "Content-Length": String(end - start + 1),
-        },
-      });
-    }
-
-    return new Response(file, { status: 200, headers: { ...headers, "Content-Length": String(size) } });
   });
 
   app.get("/tracks/verify", async (c) => {
