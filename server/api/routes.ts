@@ -11,6 +11,7 @@ import { createSearchRoutes } from "./search-routes";
 import { createOfferRoutes } from "./offer-routes";
 import { createAdminRoutes } from "./admin-routes";
 import { createGenerationRoutes } from "./generation-routes";
+import { parseStartAttribution, recordFirstTouch } from "../analytics/store";
 
 export type { ApiDeps } from "./context";
 
@@ -20,8 +21,14 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
 
   // Record every authenticated caller as a known user (audience + stats).
   app.use("*", async (c, next) => {
-    if (upsertUser(db, c.get("chatId"))) {
+    const chatId = c.get("chatId");
+    const isNew = upsertUser(db, chatId);
+    if (isNew) {
       alertNewUser(c.get("chatId")).catch(() => {});
+    }
+    const startParam = c.get("startParam");
+    if (startParam || isNew) {
+      recordFirstTouch(db, chatId, parseStartAttribution(startParam));
     }
     await next();
   });

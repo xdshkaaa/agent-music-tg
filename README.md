@@ -87,6 +87,19 @@ Admins (`ADMIN_CHAT_IDS` or allowlist admin flag) get:
 - **Bot**: `/admin` inline menu — statistics (users / paid purchases / revenue), offer management, broadcast to all known users, shop settings (name, support contact, about text).
 - **Mini App**: «Админ» tab with the same stats/offers/broadcast/shop-settings, plus «Настройки» for the AI provider / music backend.
 
+### Traffic attribution and funnel analytics
+
+Admin statistics also show first-touch traffic sources, UTM campaigns, cohort conversion, and the unique-user funnel from acquisition through playlist generation and payment. Existing users from before this feature are labeled `unknown / legacy`; reconstructable historical generation, checkout, and purchase events are backfilled automatically.
+
+Telegram deep links carry attribution in the start payload:
+
+```text
+https://t.me/<bot>?start=utm_<source>__<medium>__<campaign>__[content]__[term]
+https://t.me/<bot>/<mini-app>?startapp=utm_<source>__<medium>__<campaign>__[content]__[term]
+```
+
+Example: `utm_vk__cpc__summer-2026__banner-a`. Use URL-safe slugs (`A-Z`, `a-z`, `0-9`, `_`, `-`) and keep the complete payload within Telegram's 64-character limit. A source-only link can use `src_youtube`. Referral payloads (`ref_<chatId>`) remain supported and are attributed as `referral / telegram`.
+
 ### Rollback / kill switch
 
 Set `PAYMENTS_ENABLED=false` in `/opt/agent-music-tg/.env` and restart the unit: the paywall is bypassed (everyone generates for free, no credits consumed). Tables (`users`, `offers`, `invoices`) stay in place, harmless. Full removal = revert the deploy (see Rollback above).

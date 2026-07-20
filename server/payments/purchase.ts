@@ -5,6 +5,7 @@ import { insertPendingInvoice } from "./invoices-store";
 import { reserveCredits } from "../access/users-store";
 import { createInvoice } from "./crypto-pay";
 import { createTransaction, type PlategaTransaction } from "./platega";
+import { recordEvent } from "../analytics/store";
 
 export interface PurchaseResult {
   invoiceId: number;
@@ -52,6 +53,7 @@ export async function purchaseOffer(db: AppDb, chatId: number, offerId: number):
     asset: offer.asset,
     reservedCredits,
   });
+  recordEvent(db, chatId, "checkout_started", { method: "crypto", offerId });
 
   const payUrl = invoice.mini_app_invoice_url ?? invoice.bot_invoice_url ?? invoice.pay_url ?? "";
   return { invoiceId: invoice.invoice_id, payUrl, offerTitle: offer.title };
@@ -96,6 +98,7 @@ export async function purchaseOfferRub(
     asset: "RUB",
     reservedCredits,
   });
+  recordEvent(db, chatId, "checkout_started", { method: "platega", offerId });
 
   return { invoiceId: 0, payUrl: tx.redirect, offerTitle: offer.title };
 }

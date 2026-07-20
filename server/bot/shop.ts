@@ -9,6 +9,7 @@ import { purchaseOffer, purchaseOfferRub, OfferUnavailableError, RubPriceMissing
 import { fulfillStarsPayment, parseStarsPayload, type StarsPayload } from "../payments/stars";
 import { plategaEnabled } from "../payments/platega";
 import { alertPaymentFulfilled } from "../payments/alerts";
+import { recordEvent } from "../analytics/store";
 import { btnText, heading, accent } from "./emoji";
 import { getShopSettings, getPaymentsEnabled } from "../lib/settings";
 import { env } from "../env";
@@ -196,6 +197,7 @@ export function registerShop(bot: Bot<BotContext>, db: AppDb): void {
     await ctx.replyWithInvoice(offer.title, offerLabel(offer), JSON.stringify(payload), "XTR", [
       { label: offer.title, amount: offer.starsAmount },
     ]);
+    recordEvent(db, ctx.chat!.id, "checkout_started", { method: "stars", offerId });
   }
 
   bot.callbackQuery("trial:claim", async (ctx) => {
@@ -205,6 +207,7 @@ export function registerShop(bot: Bot<BotContext>, db: AppDb): void {
       return;
     }
     if (claimTrial(db, ctx.chat!.id)) {
+      recordEvent(db, ctx.chat!.id, "trial_claimed");
       const check = accent("check");
       await ctx.reply(`${check ? check + " " : ""}Бесплатный пакет активирован: ${TRIAL_CREDITS} генераций на ${TRIAL_DAYS} дня.`, { parse_mode: "HTML" });
       const fromNav = ctx.callbackQuery.message?.reply_markup?.inline_keyboard.some((row) =>

@@ -19,6 +19,7 @@ import { registerReferral, buildReferralView, applyReferral, formatGenerationCou
 import { btnText, heading } from "./emoji";
 import { grantPlaylistSlotsForPayment } from "../access/stars-payments-store";
 import { createTelegramBroadcastSender } from "../admin/telegram-broadcast";
+import { parseStartAttribution, recordEvent, recordFirstTouch } from "../analytics/store";
 
 export function createBot(db: AppDb): Bot<BotContext> {
   const bot = new Bot<BotContext>(env.telegramBotToken);
@@ -70,11 +71,14 @@ export function createBot(db: AppDb): Bot<BotContext> {
   }
 
   bot.command("start", async (ctx) => {
+    const startParam = String(ctx.match ?? "").trim() || null;
     const isNewUser = upsertUser(db, ctx.chat.id, ctx.from?.username ?? null);
+    recordFirstTouch(db, ctx.chat.id, parseStartAttribution(startParam));
+    recordEvent(db, ctx.chat.id, "bot_started", startParam ? { startParam } : {});
     if (isNewUser) {
       alertNewUser(ctx.chat.id, ctx.from?.username).catch(() => {});
     }
-    const refMatch = /^ref_(\d+)$/.exec(ctx.match ?? "");
+    const refMatch = /^ref_(\d+)$/.exec(startParam ?? "");
     if (isNewUser && refMatch) {
       const referrerChatId = Number(refMatch[1]);
       if (applyReferral(db, referrerChatId, ctx.chat.id)) {

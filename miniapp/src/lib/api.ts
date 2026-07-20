@@ -93,6 +93,24 @@ export interface AdminStats {
     payingNoSubscription: number;
     freeNoActivity: number;
   };
+  funnel: {
+    event: "acquired" | "miniapp_opened" | "generation_started" | "generation_completed" | "checkout_started" | "purchase_completed";
+    users: number;
+    stepConversion: number | null;
+    overallConversion: number | null;
+  }[];
+  trafficSources: AttributionBreakdown[];
+  utmCampaigns: AttributionBreakdown[];
+}
+
+export interface AttributionBreakdown {
+  source: string;
+  medium: string | null;
+  campaign: string | null;
+  users: number;
+  payers: number;
+  conversionRate: number | null;
+  revenue: { asset: string; total: number }[];
 }
 
 export interface ShopSettings {

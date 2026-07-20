@@ -131,9 +131,94 @@ function StatsPanel() {
           </>
         )}
       </GlassPanel>
+      {stats && <FunnelPanel stats={stats} />}
+      {stats && <TrafficSourcesPanel stats={stats} />}
+      {stats && <UtmCampaignsPanel stats={stats} />}
       {stats && <UserSegmentsPanel stats={stats} />}
       {stats && <TopActiveUsersPanel stats={stats} />}
     </>
+  );
+}
+
+const FUNNEL_LABELS: Record<AdminStats["funnel"][number]["event"], string> = {
+  acquired: "Новые пользователи",
+  miniapp_opened: "Открыли приложение",
+  generation_started: "Начали генерацию",
+  generation_completed: "Получили плейлист",
+  checkout_started: "Начали оплату",
+  purchase_completed: "Оплатили",
+};
+
+function percent(value: number | null): string {
+  return value === null ? "—" : `${(value * 100).toFixed(1)}%`;
+}
+
+function revenueLabel(revenue: { asset: string; total: number }[]): string {
+  return revenue.length === 0 ? "0" : revenue.map((item) => `${item.total} ${item.asset}`).join(", ");
+}
+
+function attributionLabel(value: string | null): string {
+  if (!value) return "";
+  return {
+    direct: "Прямой",
+    referral: "Реферальная программа",
+    unknown: "Неизвестный",
+    telegram: "Telegram",
+    legacy: "Исторические данные",
+    "deep-link": "Диплинк",
+  }[value] ?? value;
+}
+
+function FunnelPanel({ stats }: { stats: AdminStats }) {
+  return (
+    <GlassPanel className="reveal">
+      <h2>Воронка привлечения</h2>
+      <p className="text-muted">Когорта пользователей, впервые пришедших за выбранный период.</p>
+      {stats.funnel.map((step) => (
+        <div className="stat-row" key={step.event}>
+          <span className="stat-row-label">{FUNNEL_LABELS[step.event]}</span>
+          <span className="stat-row-value">{step.users} · {percent(step.overallConversion)}</span>
+        </div>
+      ))}
+    </GlassPanel>
+  );
+}
+
+function TrafficSourcesPanel({ stats }: { stats: AdminStats }) {
+  return (
+    <GlassPanel className="reveal">
+      <h2>Источники трафика</h2>
+      {stats.trafficSources.length === 0 ? (
+        <div className="stat-row-label">Нет данных</div>
+      ) : stats.trafficSources.map((source) => (
+        <div className="stat-row" key={`${source.source}:${source.medium ?? ""}`}>
+          <span className="stat-row-label">
+            {attributionLabel(source.source)}{source.medium ? ` / ${attributionLabel(source.medium)}` : ""}<br />
+            <small>{source.users} пользователей · {source.payers} платящих · {percent(source.conversionRate)}</small>
+          </span>
+          <span className="stat-row-value">{revenueLabel(source.revenue)}</span>
+        </div>
+      ))}
+    </GlassPanel>
+  );
+}
+
+function UtmCampaignsPanel({ stats }: { stats: AdminStats }) {
+  return (
+    <GlassPanel className="reveal">
+      <h2>UTM-кампании</h2>
+      {stats.utmCampaigns.length === 0 ? (
+        <div className="stat-row-label">Пока нет размеченного трафика</div>
+      ) : stats.utmCampaigns.map((campaign) => (
+        <div className="stat-row" key={`${campaign.source}:${campaign.medium ?? ""}:${campaign.campaign}`}>
+          <span className="stat-row-label">
+            {campaign.campaign}<br />
+            <small>{attributionLabel(campaign.source)}{campaign.medium ? ` / ${attributionLabel(campaign.medium)}` : ""} · {campaign.users} пользователей</small>
+          </span>
+          <span className="stat-row-value">{campaign.payers} · {revenueLabel(campaign.revenue)}</span>
+        </div>
+      ))}
+    </GlassPanel>
   );
 }
 

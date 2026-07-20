@@ -5,6 +5,7 @@ import type { BroadcastSendFn } from "../admin/broadcast";
 export interface AuthVariables {
   chatId: number;
   isAdmin: boolean;
+  startParam: string | null;
 }
 
 export type AppEnv = { Variables: AuthVariables };

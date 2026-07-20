@@ -76,6 +76,36 @@ function statsText(s: ReturnType<typeof getAdminStats>): string {
           .join("\n")
       : "—";
   const seg = s.segments;
+  const funnelLabels: Record<(typeof s.funnel)[number]["event"], string> = {
+    acquired: "Пришли",
+    miniapp_opened: "Открыли приложение",
+    generation_started: "Начали генерацию",
+    generation_completed: "Получили плейлист",
+    checkout_started: "Начали оплату",
+    purchase_completed: "Оплатили",
+  };
+  const funnel = s.funnel
+    .map((step) => `${funnelLabels[step.event]}: ${step.users}${step.overallConversion === null ? "" : ` (${(step.overallConversion * 100).toFixed(1)}%)`}`)
+    .join("\n");
+  const attributionLabel = (value: string | null): string => {
+    if (!value) return "";
+    return {
+      direct: "Прямой",
+      referral: "Реферальная программа",
+      unknown: "Неизвестный",
+      telegram: "Telegram",
+      legacy: "Исторические данные",
+      "deep-link": "Диплинк",
+    }[value] ?? value;
+  };
+  const sources = s.trafficSources
+    .slice(0, 5)
+    .map((source) => `${attributionLabel(source.source)}${source.medium ? ` / ${attributionLabel(source.medium)}` : ""}: ${source.users} → ${source.payers}`)
+    .join("\n") || "Нет данных";
+  const campaigns = s.utmCampaigns
+    .slice(0, 5)
+    .map((campaign) => `${campaign.campaign}: ${campaign.users} → ${campaign.payers}`)
+    .join("\n") || "Нет данных";
   return (
     `<b>${heading("stats", "Статистика")}</b> · ${STATS_PERIOD_LABELS[s.period]}\n` +
     `Всего пользователей: ${s.totalUsers}\n` +
@@ -91,7 +121,10 @@ function statsText(s: ReturnType<typeof getAdminStats>): string {
     `На трайле: ${seg.trialActive}\n` +
     `Покупали, без подписки: ${seg.payingNoSubscription}\n` +
     `Бесплатные, без покупок: ${seg.freeNoActivity}\n\n` +
-    `<b>Топ по активности</b> (генераций)\n${topUsers}`
+    `<b>Топ по активности</b> (генераций)\n${topUsers}\n\n` +
+    `<b>Воронка привлечения</b>\n${funnel}\n\n` +
+    `<b>Источники трафика</b>\n${sources}\n\n` +
+    `<b>UTM-кампании</b>\n${campaigns}`
   );
 }
 
