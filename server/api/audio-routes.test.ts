@@ -16,7 +16,6 @@ const { createApiRoutes } = await import("./routes");
 const { setCachedAudio, getCachedAudio } = await import("../audio/cache");
 const { insertDownload, getDownload, setDownloadStatus } = await import("../audio/downloads-store");
 const { fileNameForUri } = await import("../audio/extractor");
-const { StreamCache } = await import("../audio/stream-cache");
 
 import type { Extractor } from "../audio/extractor";
 import type { AudioSender } from "../audio/deliver";
@@ -83,11 +82,12 @@ function makeApp(db: ReturnType<typeof freshDb>) {
     sender: fakeSender(),
     extractor,
     scratchDir: mkdtempSync(join(tmpdir(), "audio-scratch-")),
-    streamCache: new StreamCache(extractor, {
-      dir: mkdtempSync(join(tmpdir(), "stream-cache-")),
-      maxBytes: 10_000,
-      ttlSeconds: 3600,
-    }),
+    streamResolver: {
+      async resolve() {
+        return { url: "https://media.example/audio", headers: {} };
+      },
+      invalidate() {},
+    },
   };
   return createApiRoutes(db, { audio });
 }
@@ -214,22 +214,97 @@ describe("downloads history API", () => {
 });
 
 describe("GET /api/stream/:uri", () => {
-  test("serves full file with audio/mpeg", async () => {
-    const app = makeApp(freshDb());
+  function makeProxyHarness(responses: Response[]) {
+    let extractCalls = 0;
+    let resolveCalls = 0;
+    let invalidateCalls = 0;
+    const upstreamRanges: Array<string | null> = [];
+    const extractor = fakeExtractor("legacy-mp3");
+    const countedExtractor: Extractor = {
+      ...extractor,
+      async extract(uri, targetDir) {
+        extractCalls++;
+        return extractor.extract(uri, targetDir);
+      },
+    };
+    const audio = {
+      sender: fakeSender(),
+      extractor: countedExtractor,
+      scratchDir: mkdtempSync(join(tmpdir(), "audio-scratch-")),
+      streamResolver: {
+        async resolve() {
+          resolveCalls++;
+          return { url: "https://media.example/audio", headers: { "user-agent": "yt-dlp-test" } };
+        },
+        invalidate() {
+          invalidateCalls++;
+        },
+      },
+      async streamFetch(_url: string | URL | Request, init?: RequestInit) {
+        upstreamRanges.push(new Headers(init?.headers).get("Range"));
+        const response = responses.shift();
+        if (!response) throw new Error("unexpected upstream request");
+        return response;
+      },
+    } as AudioDeps;
+    return {
+      app: createApiRoutes(freshDb(), { audio }),
+      calls: () => ({ extractCalls, resolveCalls, invalidateCalls, upstreamRanges }),
+    };
+  }
+
+  test("proxies upstream audio without waiting for MP3 extraction", async () => {
+    const { app, calls } = makeProxyHarness([
+      new Response("upstream-audio", { headers: { "Content-Type": "audio/mp4", "Content-Length": "14" } }),
+    ]);
     const res = await app.request("/stream/ytm:abc", { headers: authHeaders(TEST_CHAT) });
     expect(res.status).toBe(200);
-    expect(res.headers.get("Content-Type")).toBe("audio/mpeg");
-    expect(await res.text()).toBe("mp3-bytes");
+    expect(res.headers.get("Content-Type")).toBe("audio/mp4");
+    expect(await res.text()).toBe("upstream-audio");
+    expect(calls()).toEqual({ extractCalls: 0, resolveCalls: 1, invalidateCalls: 0, upstreamRanges: [null] });
   });
 
-  test("honors Range with 206 and Content-Range", async () => {
-    const app = makeApp(freshDb());
+  test("forwards Range and preserves the upstream partial response", async () => {
+    const { app, calls } = makeProxyHarness([
+      new Response("upst", {
+        status: 206,
+        headers: {
+          "Content-Type": "audio/mp4",
+          "Accept-Ranges": "bytes",
+          "Content-Range": "bytes 0-3/14",
+          "Content-Length": "4",
+        },
+      }),
+    ]);
     const res = await app.request("/stream/ytm:abc", {
       headers: { ...authHeaders(TEST_CHAT), Range: "bytes=0-3" },
     });
     expect(res.status).toBe(206);
-    expect(res.headers.get("Content-Range")).toBe("bytes 0-3/9");
-    expect(await res.text()).toBe("mp3-");
+    expect(res.headers.get("Content-Range")).toBe("bytes 0-3/14");
+    expect(await res.text()).toBe("upst");
+    expect(calls().upstreamRanges).toEqual(["bytes=0-3"]);
+  });
+
+  test("preserves an upstream unsatisfiable Range response", async () => {
+    const { app } = makeProxyHarness([
+      new Response(null, { status: 416, headers: { "Content-Range": "bytes */14" } }),
+    ]);
+    const res = await app.request("/stream/ytm:abc", {
+      headers: { ...authHeaders(TEST_CHAT), Range: "bytes=99-100" },
+    });
+    expect(res.status).toBe(416);
+    expect(res.headers.get("Content-Range")).toBe("bytes */14");
+  });
+
+  test("re-resolves once when a cached upstream URL has expired", async () => {
+    const { app, calls } = makeProxyHarness([
+      new Response("expired", { status: 403 }),
+      new Response("fresh-audio", { headers: { "Content-Type": "audio/mp4" } }),
+    ]);
+    const res = await app.request("/stream/ytm:abc", { headers: authHeaders(TEST_CHAT) });
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("fresh-audio");
+    expect(calls()).toEqual({ extractCalls: 0, resolveCalls: 2, invalidateCalls: 1, upstreamRanges: [null, null] });
   });
 
   test("rejects invalid uri with 400 and unauthenticated with 401", async () => {

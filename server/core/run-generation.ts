@@ -19,7 +19,7 @@ import { buildExtendSystemPrompt } from "../agent/prompts";
 import type { AgentEvent, AgentMessage } from "../agent/types";
 import { verifyTracks, verificationStore } from "../audio/track-verification";
 import type { Extractor } from "../audio/extractor";
-import type { StreamCache } from "../audio/stream-cache";
+import type { StreamResolver } from "../audio/stream-resolver";
 import { mapWithConcurrency } from "./concurrency";
 
 export type GenerationOutcome =
@@ -89,17 +89,15 @@ async function toOutcome(run: () => Promise<GeneratePlaylistResult>): Promise<Ru
 }
 
 function fireVerification(playlist: FinalizedPlaylist): void {
-  // Prewarm the stream cache in the background so the first play of any track
-  // hits a cached file instead of waiting out a live yt-dlp extraction. Its
-  // success/failure doubles as the availability check, so when it's running
-  // there's no need for a separate probe — that would be a second yt-dlp
-  // invocation per track for the same answer.
-  if (_streamCache) {
-    const cache = _streamCache;
+  // Resolve signed upstream URLs in the background so playback can proxy bytes
+  // immediately without downloading and transcoding full MP3 files first.
+  // Resolution also verifies availability, avoiding a duplicate yt-dlp probe.
+  if (_streamResolver) {
+    const resolver = _streamResolver;
     void mapWithConcurrency(playlist.tracks, 2, async (t) => {
       verificationStore.set(t.uri, "checking");
       try {
-        await cache.getFile(t.uri);
+        await resolver.resolve(t.uri);
         verificationStore.set(t.uri, "verified");
       } catch {
         verificationStore.set(t.uri, "unavailable");
@@ -230,10 +228,10 @@ export async function extendGeneration(
 }
 
 let _extractor: Extractor | null = null;
-let _streamCache: StreamCache | null = null;
+let _streamResolver: StreamResolver | null = null;
 
-export function setPrewarmStreamCache(cache: StreamCache): void {
-  _streamCache = cache;
+export function setPrewarmStreamResolver(resolver: StreamResolver): void {
+  _streamResolver = resolver;
 }
 
 export function setVerificationExtractor(extractor: Extractor): void {

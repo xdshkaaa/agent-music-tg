@@ -63,10 +63,7 @@ export const env = {
   // (no bot-owned sticker set required). Kept only so an existing
   // EMOJI_STICKER_SET in a deployed .env doesn't error; safe to remove.
   emojiStickerSet: process.env.EMOJI_STICKER_SET ?? "",
-  // Audio download/streaming: yt-dlp scratch dir (files deleted after upload)
-  // and the on-disk stream cache with LRU size cap + TTL.
+  // Audio downloads: yt-dlp scratch dir (files deleted after upload).
+  // In-app playback proxies signed upstream URLs and does not write audio here.
   audioScratchDir: process.env.AUDIO_SCRATCH_DIR ?? "./data/audio-scratch",
-  streamCacheDir: process.env.STREAM_CACHE_DIR ?? "./data/stream-cache",
-  streamCacheMaxBytes: Number(process.env.STREAM_CACHE_MAX_BYTES ?? String(200 * 1024 * 1024)),
-  streamCacheTtlSeconds: Number(process.env.STREAM_CACHE_TTL_SECONDS ?? String(24 * 60 * 60)),
 };

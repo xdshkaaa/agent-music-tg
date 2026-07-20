@@ -5,7 +5,7 @@ import { bootstrapAllowlist } from "./lib/access-control";
 import { createBot } from "./bot";
 import { loadCustomEmojis, accent } from "./bot/emoji";
 import { createApiRoutes } from "./api/routes";
-import { setVerificationExtractor, setPrewarmStreamCache } from "./core/run-generation";
+import { setVerificationExtractor, setPrewarmStreamResolver } from "./core/run-generation";
 import { verifyWebhookSignature, type WebhookUpdate } from "./payments/webhook";
 import { fulfillInvoice, fulfillPendingInvoice, type FulfillResult } from "./payments/fulfillment";
 import { startPoller, startPlategaPoller } from "./payments/poller";
@@ -14,7 +14,7 @@ import { getInvoice } from "./payments/invoices-store";
 import { cancelInvoiceAndRefund } from "./payments/cancel";
 import { alertPaymentFulfilled } from "./payments/alerts";
 import { YtDlpExtractor } from "./audio/extractor";
-import { StreamCache } from "./audio/stream-cache";
+import { YtDlpStreamResolver } from "./audio/stream-resolver";
 import { createTelegramAudioSender } from "./audio/telegram-sender";
 import type { AudioDeps } from "./api/audio-routes";
 import { reconcileStaleDownloads } from "./audio/downloads-store";
@@ -139,19 +139,16 @@ const createStarsInvoiceLink = async (args: { title: string; description: string
 };
 
 const extractor = new YtDlpExtractor();
+const streamResolver = new YtDlpStreamResolver();
 setVerificationExtractor(extractor);
 const audio: AudioDeps = {
   sender: createTelegramAudioSender(bot.api),
   extractor,
   scratchDir: env.audioScratchDir,
-  streamCache: new StreamCache(extractor, {
-    dir: env.streamCacheDir,
-    maxBytes: env.streamCacheMaxBytes,
-    ttlSeconds: env.streamCacheTtlSeconds,
-  }),
+  streamResolver,
 };
-// Warm the stream cache right after each generation so first playback is instant.
-setPrewarmStreamCache(audio.streamCache);
+// Resolve upstream URLs after generation so first playback skips yt-dlp startup too.
+setPrewarmStreamResolver(streamResolver);
 
 app.route("/api", createApiRoutes(db, { send, createStarsInvoiceLink, audio }));
 
