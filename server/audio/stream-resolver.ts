@@ -19,13 +19,14 @@ export interface YtDlpStreamResolverOptions {
 const DEFAULT_TTL_MS = 10 * 60 * 1000;
 const DEFAULT_TIMEOUT_MS = 12_000;
 const EXPIRY_SAFETY_MS = 60_000;
+const PROGRESSIVE_AUDIO_FORMAT =
+  "bestaudio[ext=m4a][protocol^=http][protocol!*=m3u8]/bestaudio[protocol^=http][protocol!*=m3u8]";
 
 interface CachedStream {
   value: ResolvedStream;
   expiresAt: number;
 }
 
-/** Resolves signed upstream audio URLs without downloading or transcoding the track. */
 export class YtDlpStreamResolver implements StreamResolver {
   private readonly binary: string;
   private readonly ttlMs: number;
@@ -62,7 +63,7 @@ export class YtDlpStreamResolver implements StreamResolver {
         "--no-playlist",
         "--quiet",
         "--js-runtimes", "node",
-        "-f", "bestaudio[ext=m4a]/bestaudio/best",
+        "-f", PROGRESSIVE_AUDIO_FORMAT,
         "--no-download",
         "--dump-single-json",
         sourceUrlForUri(uri),
@@ -93,15 +94,15 @@ export class YtDlpStreamResolver implements StreamResolver {
     } catch {
       throw new Error(`yt-dlp stream resolve returned invalid JSON for ${uri}`);
     }
-    const root = data as Record<string, unknown>;
-    const selected = Array.isArray(root.requested_downloads)
-      ? (root.requested_downloads[0] as Record<string, unknown> | undefined)
+    const ytDlpResult = data as Record<string, unknown>;
+    const selectedDownload = Array.isArray(ytDlpResult.requested_downloads)
+      ? (ytDlpResult.requested_downloads[0] as Record<string, unknown> | undefined)
       : undefined;
-    const url = selected?.url ?? root.url;
+    const url = selectedDownload?.url ?? ytDlpResult.url;
     if (typeof url !== "string" || !url.startsWith("http")) {
       throw new Error(`yt-dlp stream resolve returned no playable URL for ${uri}`);
     }
-    const rawHeaders = selected?.http_headers ?? root.http_headers;
+    const rawHeaders = selectedDownload?.http_headers ?? ytDlpResult.http_headers;
     const headers: Record<string, string> = {};
     if (rawHeaders && typeof rawHeaders === "object") {
       for (const [name, value] of Object.entries(rawHeaders)) {
@@ -109,13 +110,13 @@ export class YtDlpStreamResolver implements StreamResolver {
       }
     }
 
-    const value = { url, headers };
+    const resolvedStream = { url, headers };
     const upstreamExpiry = Number(new URL(url).searchParams.get("expire")) * 1000 - EXPIRY_SAFETY_MS;
     const ttlExpiry = Date.now() + this.ttlMs;
     const expiresAt = Number.isFinite(upstreamExpiry) && upstreamExpiry > Date.now()
       ? Math.min(ttlExpiry, upstreamExpiry)
       : ttlExpiry;
-    this.cache.set(uri, { value, expiresAt });
-    return value;
+    this.cache.set(uri, { value: resolvedStream, expiresAt });
+    return resolvedStream;
   }
 }
