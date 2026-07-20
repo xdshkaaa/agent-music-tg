@@ -36,6 +36,10 @@ function formatGenerationCount(n: number): string {
   return `${n} ${generationWord(n)}`;
 }
 
+function formatGenerationReward(n: number): string {
+  return `${n} ${pluralRu(n, ["генерацию", "генерации", "генераций"])}`;
+}
+
 function formatPurchaseAmount(invoice: Invoice): string {
   return invoice.asset === "XTR"
     ? `${invoice.amount} звёзд Telegram`
@@ -131,8 +135,6 @@ function AccentPicker({ accent, onChange }: { accent: string; onChange: (value: 
               className="accent-swatch"
               style={{
                 ["--swatch-color" as string]: preset.value,
-                outline: active ? "2px solid var(--text-dark, currentColor)" : "none",
-                outlineOffset: 2,
               }}
             />
           );
@@ -209,7 +211,7 @@ function ReferralCard() {
     ? "Поделитесь ссылкой, чтобы друг сразу открыл бота."
     : referralsLeft === 0
       ? "Лимит приглашений с наградой достигнут. Ссылкой всё ещё можно делиться."
-      : `За каждого друга, который впервые запустит бота по ссылке, вы получите ${formatGenerationCount(data.rewardCredits)}.${
+      : `За каждого друга, который впервые запустит бота по ссылке, вы получите ${formatGenerationReward(data.rewardCredits)}.${
         referralsLeft === null
           ? ""
           : ` Награда доступна ещё за ${referralsLeft} ${pluralRu(referralsLeft, ["друга", "друзей", "друзей"])}.`

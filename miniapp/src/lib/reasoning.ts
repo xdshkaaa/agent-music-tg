@@ -88,11 +88,14 @@ export interface LineSegment {
   tone: "reasoning" | "call" | "args" | "ok" | "error";
 }
 
+export type TranscriptLineState = "thinking" | "pending" | "success" | "error";
+
 export interface TranscriptLine {
   key: string;
   segments: LineSegment[];
   marker: string;
   depth: 0 | 1;
+  state: TranscriptLineState;
 }
 
 /** Cap rendered transcript lines so a multi-KB thinking stream can't blow up layout. */
@@ -121,7 +124,13 @@ export function toLines(events: AgentEvent[], opts?: { friendly?: boolean }): Tr
       paired.add(e.id);
       segments.push({ text: ` ${r.ok ? "✓" : "✗"} ${resultSummary(r.result)}`, tone: r.ok ? "ok" : "error" });
     }
-    lines.push({ key: `c${i}`, segments, marker: "⏺", depth: 0 });
+    lines.push({
+      key: `c${i}`,
+      segments,
+      marker: "⏺",
+      depth: 0,
+      state: r ? (r.ok ? "success" : "error") : "pending",
+    });
   };
 
   const orphanLine = (e: Extract<AgentEvent, { kind: "tool_result" }>, i: number) => {
@@ -130,6 +139,7 @@ export function toLines(events: AgentEvent[], opts?: { friendly?: boolean }): Tr
       segments: [{ text: `${e.ok ? "✓" : "✗"} ${resultSummary(e.result)}`, tone: e.ok ? "ok" : "error" }],
       marker: "⎿",
       depth: 1,
+      state: e.ok ? "success" : "error",
     });
   };
 
@@ -141,7 +151,15 @@ export function toLines(events: AgentEvent[], opts?: { friendly?: boolean }): Tr
         .split("\n")
         .map((l) => l.trim())
         .filter((l) => l.length > 0)
-        .forEach((l, j) => lines.push({ key: `r${i}-${j}`, segments: [{ text: l, tone: "reasoning" }], marker: "·", depth: 0 }));
+        .forEach((l, j) =>
+          lines.push({
+            key: `r${i}-${j}`,
+            segments: [{ text: l, tone: "reasoning" }],
+            marker: "·",
+            depth: 0,
+            state: "thinking",
+          }),
+        );
       i++;
     } else if (e.kind === "tool_call") {
       const run: number[] = [i];
@@ -194,7 +212,13 @@ export function toLines(events: AgentEvent[], opts?: { friendly?: boolean }): Tr
         } else {
           segments.push({ text: ` ✓ ${ok} ok`, tone: "ok" });
         }
-        lines.push({ key: `g${run[1]}`, segments, marker: "⏺", depth: 0 });
+        lines.push({
+          key: `g${run[1]}`,
+          segments,
+          marker: "⏺",
+          depth: 0,
+          state: done < rest.length ? "pending" : err > 0 ? "error" : "success",
+        });
 
         for (let k = i + 1; k < spanEnd; k++) {
           const n = events[k]!;
