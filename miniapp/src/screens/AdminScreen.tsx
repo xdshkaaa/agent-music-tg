@@ -322,12 +322,16 @@ function BroadcastPanel() {
 
   function mediaKind(file: File): "Изображение" | "GIF" | "Видео" | "Файл" {
     const name = file.name.toLowerCase();
-    if (file.type === "image/gif" || name.endsWith(".gif")) return "GIF";
-    if (
-      ["image/jpeg", "image/png", "image/webp"].includes(file.type)
-      || /\.(jpe?g|png|webp)$/.test(name)
-    ) return "Изображение";
-    if (file.type === "video/mp4" || name.endsWith(".mp4")) return "Видео";
+    const mimeType = file.type.toLowerCase();
+    if (mimeType && mimeType !== "application/octet-stream") {
+      if (mimeType === "image/gif") return "GIF";
+      if (["image/jpeg", "image/png", "image/webp"].includes(mimeType)) return "Изображение";
+      if (mimeType === "video/mp4") return "Видео";
+      return "Файл";
+    }
+    if (name.endsWith(".gif")) return "GIF";
+    if (/\.(jpe?g|png|webp)$/.test(name)) return "Изображение";
+    if (name.endsWith(".mp4")) return "Видео";
     return "Файл";
   }
 
