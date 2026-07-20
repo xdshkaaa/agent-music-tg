@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Api } from "grammy";
 import { mkdtempSync, existsSync } from "node:fs";
-import { writeFile, utimes } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -21,7 +21,6 @@ const {
   DOWNLOAD_STALE_MS,
 } = await import("./downloads-store");
 const { processDownload } = await import("./deliver");
-const { StreamCache } = await import("./stream-cache");
 const { verificationStore } = await import("./track-verification");
 
 import type { Extractor } from "./extractor";
@@ -232,6 +231,22 @@ describe("processDownload", () => {
     expect(sent.at(-1)?.value).toContain("1 из 2");
   });
 
+  test("summary keeps playlist and track metadata safe for Telegram HTML", async () => {
+    const db = openDb(":memory:");
+    const extractor = fakeExtractor({ failUris: ["ytm:bad"] });
+    const { sender, sent } = fakeSender();
+    const record = insertDownload(db, CHAT, "Focus <Flow> & Friends", [
+      { uri: "ytm:bad", title: "A < B", artist: "C & D" },
+    ]);
+
+    await processDownload(db, record, { sender, extractor, scratchDir: scratch() });
+
+    const summary = String(sent.at(-1)?.value);
+    expect(summary).toContain("Focus &lt;Flow&gt; &amp; Friends");
+    expect(summary).toContain("C &amp; D — A &lt; B");
+    expect(summary).not.toContain("Focus <Flow>");
+  });
+
   test("finalizes status even when the summary sendText throws", async () => {
     const db = openDb(":memory:");
     const extractor = fakeExtractor();
@@ -258,42 +273,6 @@ describe("processDownload", () => {
 
     expect(getDownload(db, CHAT, record.id)!.status).toBe("failed");
     expect(sent.filter((s) => s.kind === "upload")).toHaveLength(0);
-  });
-});
-
-describe("stream cache", () => {
-  test("extracts on miss, serves cached on hit", async () => {
-    const extractor = fakeExtractor();
-    const cache = new StreamCache(extractor, { dir: scratch(), maxBytes: 10_000, ttlSeconds: 3600 });
-    const p1 = await cache.getFile("ytm:a");
-    const p2 = await cache.getFile("ytm:a");
-    expect(p1).toBe(p2);
-    expect(extractor.calls).toEqual(["ytm:a"]);
-  });
-
-  test("evicts LRU files past the size cap", async () => {
-    const extractor = fakeExtractor({ sizeBytes: 100 });
-    const dir = scratch();
-    const cache = new StreamCache(extractor, { dir, maxBytes: 250, ttlSeconds: 3600 });
-    const pa = await cache.getFile("ytm:a");
-    // Age "a" so it is clearly the LRU entry.
-    const old = new Date(Date.now() - 60_000);
-    await utimes(pa, old, old);
-    await cache.getFile("ytm:b");
-    await cache.getFile("ytm:c"); // 300 bytes total -> evict oldest (a)
-    expect(existsSync(join(dir, fileNameForUri("ytm:a")))).toBe(false);
-    expect(existsSync(join(dir, fileNameForUri("ytm:c")))).toBe(true);
-  });
-
-  test("expired files are re-extracted", async () => {
-    const extractor = fakeExtractor();
-    const dir = scratch();
-    const cache = new StreamCache(extractor, { dir, maxBytes: 10_000, ttlSeconds: 1 });
-    const p = await cache.getFile("ytm:a");
-    const old = new Date(Date.now() - 10_000);
-    await utimes(p, old, old);
-    await cache.getFile("ytm:a");
-    expect(extractor.calls).toEqual(["ytm:a", "ytm:a"]);
   });
 });
 

@@ -9,6 +9,7 @@ import { purchaseOffer, purchaseOfferRub, OfferUnavailableError, RubPriceMissing
 import { UnsupportedAssetError } from "../payments/crypto-pay";
 import { plategaEnabled } from "../payments/platega";
 import { trialStatus, readJsonBody } from "./shared";
+import { recordDailyEvent, recordEvent } from "../analytics/store";
 
 /** User-facing shop: trial claim, offer listing, and invoice creation. */
 export function createOfferRoutes(db: AppDb, deps: ApiDeps): Hono<AppEnv> {
@@ -24,10 +25,12 @@ export function createOfferRoutes(db: AppDb, deps: ApiDeps): Hono<AppEnv> {
     if (!claimTrial(db, chatId)) {
       return c.json({ error: "trial already claimed" }, 409);
     }
+    recordEvent(db, chatId, "trial_claimed");
     return c.json({ trial: trialStatus(getUser(db, chatId)) });
   });
 
   app.get("/offers", (c) => {
+    recordDailyEvent(db, c.get("chatId"), "shop_viewed");
     return c.json({ offers: listActiveOffers(db) });
   });
 
@@ -77,6 +80,7 @@ export function createOfferRoutes(db: AppDb, deps: ApiDeps): Hono<AppEnv> {
           payload,
           starsAmount: offer.starsAmount,
         });
+        recordEvent(db, c.get("chatId"), "checkout_started", { method: "stars", offerId });
         return c.json({ payUrl, method: "stars", offerTitle: offer.title });
       } catch (e) {
         return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);

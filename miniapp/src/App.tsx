@@ -5,6 +5,7 @@ import { ClarifyScreen } from "./screens/ClarifyScreen";
 import { ResultsScreen } from "./screens/ResultsScreen";
 import BuyScreen from "./screens/BuyScreen";
 import ProfileScreen from "./screens/ProfileScreen";
+import HelpScreen from "./screens/HelpScreen";
 import PlaylistsScreen from "./screens/PlaylistsScreen";
 import { GlassPanel } from "./components/GlassPanel";
 import { ScreenTransition } from "./components/ScreenTransition";
@@ -20,6 +21,8 @@ import { PlayerScreen } from "./screens/PlayerScreen";
 import { ArtistScreen } from "./screens/ArtistScreen";
 import { AddToPlaylistSheet } from "./components/AddToPlaylistSheet";
 import { applyAccent, initialAccent } from "./lib/accent";
+import { Onboarding } from "./components/Onboarding";
+import { completeOnboarding, shouldShowOnboarding } from "./lib/onboarding";
 
 // Lazy: the admin screen's own chunk is only fetched when isAdmin is true,
 // so it never ships to a regular allowed user's browser. The real
@@ -27,12 +30,13 @@ import { applyAccent, initialAccent } from "./lib/accent";
 const AdminScreen = lazy(() => import("./screens/AdminScreen"));
 
 type Screen =
-  | { kind: "prompt" }
+  | { kind: "prompt"; initialMode?: "ai" | "search"; initialQuery?: string }
   | { kind: "clarify"; question: string; options: string[] }
   | { kind: "results"; playlist: FinalizedPlaylist; generationId: number; saved?: boolean }
   | { kind: "buy"; reason?: string }
   | { kind: "playlists" }
   | { kind: "profile" }
+  | { kind: "help" }
   | { kind: "admin" };
 
 function activeTab(screen: Screen): "create" | "shop" | "playlists" | "profile" | "admin" {
@@ -46,6 +50,7 @@ function activeTab(screen: Screen): "create" | "shop" | "playlists" | "profile" 
     case "playlists":
       return "playlists";
     case "profile":
+    case "help":
       return "profile";
     case "admin":
       return "admin";
@@ -60,6 +65,7 @@ const TAB_ORDER: Record<string, number> = {
   buy: 2,
   playlists: 3,
   profile: 4,
+  help: 4,
   admin: 5,
 };
 
@@ -99,6 +105,7 @@ function AppInner() {
   const [error, setError] = useState<string | null>(null);
   const [scheme, setScheme] = useState<"light" | "dark">(() => initialScheme());
   const [accent, setAccent] = useState<string>(() => initialAccent());
+  const [showOnboarding, setShowOnboarding] = useState(() => shouldShowOnboarding());
 
   function changeAccent(value: string) {
     setAccent(value);
@@ -138,6 +145,7 @@ function AppInner() {
     const tabParam = new URLSearchParams(window.location.search).get("tab");
     if (tabParam === "playlists") navigate({ kind: "playlists" });
     else if (tabParam === "profile") navigate({ kind: "profile" });
+    else if (tabParam === "help") navigate({ kind: "help" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -214,12 +222,28 @@ function AppInner() {
     setEvents([]);
     try {
       const outcome = await api.generateResumeStream(answer, (e) => setEvents((prev) => reduceEvents(prev, e)));
+      if (outcome.status === "error") {
+        openPlainSearchAfterClarifyError(answer);
+        return;
+      }
       applyOutcome(outcome);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+    } catch {
+      openPlainSearchAfterClarifyError(answer);
     } finally {
       setBusy(false);
     }
+  }
+
+  function openPlainSearchAfterClarifyError(answer: string) {
+    const query = [lastGenerate?.prompt, answer]
+      .map((part) => part?.trim())
+      .filter((part): part is string => Boolean(part))
+      .join(" ");
+
+    setError(null);
+    setEvents([]);
+    setLastClarify(null);
+    navigate({ kind: "prompt", initialMode: "search", initialQuery: query }, "back");
   }
 
   function retryLast() {
@@ -283,6 +307,8 @@ function AppInner() {
             events={events}
             isAdmin={isAdmin}
             onOpenArtist={(target) => setArtistTarget(target)}
+            initialMode={screen.initialMode}
+            initialQuery={screen.initialQuery}
           />
         );
       case "clarify":
@@ -325,8 +351,16 @@ function AppInner() {
           <ProfileScreen
             me={me}
             onGoShop={() => navigate({ kind: "buy" })}
+            onOpenHelp={() => navigate({ kind: "help" })}
             accent={accent}
             onChangeAccent={changeAccent}
+          />
+        );
+      case "help":
+        return (
+          <HelpScreen
+            onReplayOnboarding={() => setShowOnboarding(true)}
+            onStart={() => navigate({ kind: "prompt" }, "back")}
           />
         );
       case "admin":
@@ -350,6 +384,21 @@ function AppInner() {
   function handleReset() {
     setHistory([{ kind: "prompt" }]);
     setError(null);
+  }
+
+  function dismissOnboarding() {
+    completeOnboarding();
+    setShowOnboarding(false);
+  }
+
+  function startFromOnboarding(prompt: string) {
+    completeOnboarding();
+    setShowOnboarding(false);
+    navigate({ kind: "prompt", initialMode: "ai", initialQuery: prompt }, "back");
+  }
+
+  if (showOnboarding) {
+    return <Onboarding onSkip={dismissOnboarding} onStart={startFromOnboarding} />;
   }
 
   return (

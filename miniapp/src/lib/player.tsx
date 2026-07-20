@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { streamUrl } from "./api";
+import { api as clientApi, streamUrl, type MusicFeedbackEvent } from "./api";
 
 export type PlayerStatus = "idle" | "loading" | "playing" | "paused" | "error";
 
@@ -64,6 +64,124 @@ const FALLBACK_ARTWORK = `data:image/svg+xml,${encodeURIComponent(FALLBACK_ARTWO
 const PlayerContext = createContext<PlayerApi | null>(null);
 const PlayerTimeContext = createContext<PlayerTimeInfo | null>(null);
 
+export const PLAY_COMPLETION_FRACTION = 0.8;
+
+interface PlaybackFeedbackSession {
+  track: PlayerTrackInfo;
+  started: boolean;
+  completed: boolean;
+  skipped: boolean;
+  maxFraction: number;
+}
+
+/**
+ * Small state machine kept outside React so feedback thresholds and
+ * deduplication remain deterministic and testable. The emitter is always
+ * isolated: analytics can fail without touching player state.
+ */
+export class PlaybackFeedbackTracker {
+  private session: PlaybackFeedbackSession | null = null;
+
+  constructor(
+    private readonly emit: (event: MusicFeedbackEvent, track: PlayerTrackInfo) => void,
+  ) {}
+
+  private safeEmit(event: MusicFeedbackEvent, track: PlayerTrackInfo): void {
+    try {
+      this.emit(event, track);
+    } catch {
+      // Feedback is deliberately best-effort.
+    }
+  }
+
+  private emitSkipIfNeeded(): void {
+    const session = this.session;
+    if (!session || !session.started || session.completed || session.skipped) return;
+    session.skipped = true;
+    this.safeEmit("skipped", session.track);
+  }
+
+  switchTo(track: PlayerTrackInfo): void {
+    if (this.session?.track.uri === track.uri) return;
+    this.emitSkipIfNeeded();
+    this.session = { track, started: false, completed: false, skipped: false, maxFraction: 0 };
+  }
+
+  markPlaying(): void {
+    const session = this.session;
+    if (!session || session.started) return;
+    session.started = true;
+    this.safeEmit("play_started", session.track);
+  }
+
+  updateProgress(currentTime: number, duration: number): void {
+    const session = this.session;
+    if (!session || !session.started || !Number.isFinite(duration) || duration <= 0) return;
+    const fraction = Math.min(Math.max(currentTime / duration, 0), 1);
+    session.maxFraction = Math.max(session.maxFraction, fraction);
+    if (!session.completed && session.maxFraction >= PLAY_COMPLETION_FRACTION) {
+      session.completed = true;
+      this.safeEmit("play_completed", session.track);
+    }
+  }
+
+  markEnded(): void {
+    const session = this.session;
+    if (!session || !session.started || session.completed) return;
+    session.completed = true;
+    session.maxFraction = 1;
+    this.safeEmit("play_completed", session.track);
+  }
+}
+
+interface MediaSessionActions {
+  play(): void;
+  pause(): void;
+  nextTrack(): void;
+  previousTrack(): void;
+  seekTo?(positionSeconds: number): void;
+}
+
+/** Keeps OS media-control wiring testable without a real browser media session. */
+export function configureMediaSessionActions(ms: MediaSession, actions: MediaSessionActions): () => void {
+  ms.setActionHandler("play", actions.play);
+  ms.setActionHandler("pause", actions.pause);
+  ms.setActionHandler("nexttrack", actions.nextTrack);
+  ms.setActionHandler("previoustrack", actions.previousTrack);
+  ms.setActionHandler("seekto", (details) => {
+    if (actions.seekTo && typeof details.seekTime === "number") {
+      actions.seekTo(details.seekTime);
+    }
+  });
+
+  return () => {
+    ms.setActionHandler("play", null);
+    ms.setActionHandler("pause", null);
+    ms.setActionHandler("nexttrack", null);
+    ms.setActionHandler("previoustrack", null);
+    ms.setActionHandler("seekto", null);
+  };
+}
+
+/** Publishes a finite timeline so lock-screen players can render a scrubber. */
+export function syncMediaSessionPosition(
+  ms: MediaSession,
+  duration: number,
+  position: number,
+  playbackRate = 1,
+): void {
+  if (typeof ms.setPositionState !== "function") return;
+  if (!Number.isFinite(duration) || duration <= 0) {
+    ms.setPositionState();
+    return;
+  }
+  ms.setPositionState({
+    duration,
+    position: Math.min(Math.max(Number.isFinite(position) ? position : 0, 0), duration),
+    playbackRate: Number.isFinite(playbackRate) && playbackRate !== 0 ? playbackRate : 1,
+  });
+}
+
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const prevVolumeRef = useRef(DEFAULT_VOLUME);
@@ -72,6 +190,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const attemptRef = useRef(0);
   const failureHandledRef = useRef(false);
   const onAudioErrorRef = useRef<(() => void) | null>(null);
+  const feedbackTrackerRef = useRef<PlaybackFeedbackTracker | null>(null);
+  if (!feedbackTrackerRef.current) {
+    feedbackTrackerRef.current = new PlaybackFeedbackTracker((event, track) => clientApi.musicFeedback(event, track));
+  }
   const [state, setState] = useState<PlayerState>({
     track: null,
     status: "idle",
@@ -110,9 +232,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const audio = new Audio();
     audio.preload = "none";
     audio.volume = state.volume;
-    audio.addEventListener("playing", () => setState((s) => ({ ...s, status: "playing" })));
+    audio.addEventListener("playing", () => {
+      feedbackTrackerRef.current?.markPlaying();
+      setState((s) => ({ ...s, status: "playing" }));
+    });
     audio.addEventListener("pause", () => setState((s) => (s.status === "error" ? s : { ...s, status: "paused" })));
     audio.addEventListener("ended", () => {
+      feedbackTrackerRef.current?.markEnded();
       const { queue, queueIndex } = apiRef.current;
       if (queueIndex >= 0 && queueIndex < queue.length - 1) {
         apiRef.current.nextTrack();
@@ -123,6 +249,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     audio.addEventListener("error", () => onAudioErrorRef.current?.());
     audio.addEventListener("timeupdate", () => {
       const fraction = audio.duration > 0 ? audio.currentTime / audio.duration : 0;
+      feedbackTrackerRef.current?.updateProgress(audio.currentTime, audio.duration);
       setState((s) => ({ ...s, progress: fraction, currentTime: audio.currentTime, duration: audio.duration }));
     });
     audio.addEventListener("loadedmetadata", () => {
@@ -158,6 +285,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   function playTrack(track: PlayerTrackInfo, queue?: PlayerTrackInfo[], attempt = 0) {
     cancelRetry();
+    feedbackTrackerRef.current?.switchTo(track);
     const audio = ensureAudio();
     attemptRef.current = attempt;
     failureHandledRef.current = false;
@@ -325,30 +453,45 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         });
     }
 
-    ms.setActionHandler("play", () => {
-      if (apiRef.current.track && apiRef.current.status !== "playing") {
-        apiRef.current.toggle(apiRef.current.track);
-      }
+    const clearActions = configureMediaSessionActions(ms, {
+      play: () => {
+        if (apiRef.current.track && apiRef.current.status !== "playing") {
+          apiRef.current.toggle(apiRef.current.track);
+        }
+      },
+      pause: () => {
+        if (apiRef.current.track && apiRef.current.status === "playing") {
+          apiRef.current.toggle(apiRef.current.track);
+        }
+      },
+      nextTrack: () => apiRef.current.nextTrack(),
+      previousTrack: () => apiRef.current.previousTrack(),
+      seekTo: (positionSeconds) => {
+        const audio = audioRef.current;
+        if (!audio || !Number.isFinite(audio.duration) || audio.duration <= 0) return;
+        audio.currentTime = Math.min(Math.max(positionSeconds, 0), audio.duration);
+      },
     });
-    ms.setActionHandler("pause", () => {
-      if (apiRef.current.track && apiRef.current.status === "playing") {
-        apiRef.current.toggle(apiRef.current.track);
-      }
-    });
-    ms.setActionHandler("nexttrack", () => apiRef.current.nextTrack());
-    ms.setActionHandler("previoustrack", () => apiRef.current.previousTrack());
 
     return () => {
       if (artworkObjectUrlRef.current) {
         URL.revokeObjectURL(artworkObjectUrlRef.current);
         artworkObjectUrlRef.current = null;
       }
-      ms.setActionHandler("play", null);
-      ms.setActionHandler("pause", null);
-      ms.setActionHandler("nexttrack", null);
-      ms.setActionHandler("previoustrack", null);
+      clearActions();
     };
   }, [state.track?.uri, state.status, state.track]);
+
+  useEffect(() => {
+    if (!("mediaSession" in navigator)) return;
+    const audio = audioRef.current;
+    syncMediaSessionPosition(
+      navigator.mediaSession,
+      state.duration,
+      state.currentTime,
+      audio?.playbackRate ?? 1,
+    );
+  }, [state.currentTime, state.duration]);
 
   return (
     <PlayerContext.Provider value={api}>

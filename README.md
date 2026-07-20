@@ -58,11 +58,11 @@ curl -fsS http://127.0.0.1:8787/healthz
 
 ## Audio downloads & in-app playback
 
-Playlist results can be downloaded as audio: the Mini App's «Скачать» button queues a server-side job that extracts each track via **yt-dlp** (+ **ffmpeg**) and delivers it to the user's bot chat as audio messages (`deploy.sh` installs/updates both tools on the VPS). Uploaded tracks are cached by Telegram `file_id` (`audio_cache` table), so repeats never re-extract or re-upload. Download history lives in the profile's «Загрузки» tab with re-send and delete. Tracks also play inline in the Mini App via `GET /api/stream/:uri` (Range-supporting, initData-authenticated via query param) backed by an LRU disk cache.
+Playlist results can be downloaded as audio: the Mini App's «Скачать» button queues a server-side job that extracts each track via **yt-dlp** (+ **ffmpeg**) and delivers it to the user's bot chat as audio messages (`deploy.sh` installs/updates both tools on the VPS). Uploaded tracks are cached by Telegram `file_id` (`audio_cache` table), so repeats never re-extract or re-upload. Download history lives in the profile's «Загрузки» tab with re-send and delete. Tracks also play inline in the Mini App via `GET /api/stream/:uri` (Range-supporting, initData-authenticated via query param): the server resolves a short-lived upstream audio URL with `yt-dlp` and proxies bytes immediately without downloading or transcoding a full MP3 first.
 
 Endpoints (all under initData auth): `POST /api/download`, `GET /api/downloads`, `POST /api/downloads/:id/resend`, `DELETE /api/downloads/:id`, `GET /api/stream/:uri`.
 
-Config (`.env`): `AUDIO_SCRATCH_DIR` (temp files, deleted after upload), `STREAM_CACHE_DIR`, `STREAM_CACHE_MAX_BYTES` (default 200 MB), `STREAM_CACHE_TTL_SECONDS` (default 24 h).
+Config (`.env`): `AUDIO_SCRATCH_DIR` (temporary files for chat downloads, deleted after upload).
 
 ## Payments (CryptoBot)
 
@@ -86,6 +86,19 @@ Admins (`ADMIN_CHAT_IDS` or allowlist admin flag) get:
 
 - **Bot**: `/admin` inline menu — statistics (users / paid purchases / revenue), offer management, broadcast to all known users, shop settings (name, support contact, about text).
 - **Mini App**: «Админ» tab with the same stats/offers/broadcast/shop-settings, plus «Настройки» for the AI provider / music backend.
+
+### Traffic attribution and funnel analytics
+
+Admin statistics also show first-touch traffic sources, UTM campaigns, cohort conversion, and the unique-user funnel from acquisition through playlist generation and payment. Existing users from before this feature are labeled `unknown / legacy`; reconstructable historical generation, checkout, and purchase events are backfilled automatically.
+
+Telegram deep links carry attribution in the start payload:
+
+```text
+https://t.me/<bot>?start=utm_<source>__<medium>__<campaign>__[content]__[term]
+https://t.me/<bot>/<mini-app>?startapp=utm_<source>__<medium>__<campaign>__[content]__[term]
+```
+
+Example: `utm_vk__cpc__summer-2026__banner-a`. Use URL-safe slugs (`A-Z`, `a-z`, `0-9`, `_`, `-`) and keep the complete payload within Telegram's 64-character limit. A source-only link can use `src_youtube`. Referral payloads (`ref_<chatId>`) remain supported and are attributed as `referral / telegram`.
 
 ### Rollback / kill switch
 

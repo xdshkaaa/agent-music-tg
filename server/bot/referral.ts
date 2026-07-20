@@ -3,8 +3,9 @@ import type { AppDb } from "../db";
 import type { BotContext } from "./context";
 import { applyReferral, getReferralStats } from "../access/referral-store";
 import { getReferralSettings } from "../lib/settings";
-import { btnText, heading, accent } from "./emoji";
+import { btnText } from "./emoji";
 import type { ShopView } from "./shop";
+import { detailBlock, detailRow, escapeHtml, messageHint, messageTitle } from "./message-format";
 
 let cachedBotUsername: string | null = null;
 
@@ -38,15 +39,16 @@ export async function buildReferralView(bot: Bot<BotContext>, db: AppDb, chatId:
   const link = `https://t.me/${username}?start=ref_${chatId}`;
   const stats = getReferralStats(db, chatId);
   const settings = getReferralSettings(db);
-  const gift = accent("gift");
   const lines = [
-    `<b>${heading("gift", "РЕФЕРАЛЬНАЯ ПРОГРАММА")}</b>`,
-    `Приглашайте друзей — получайте ${formatGenerationCount(settings.rewardCredits)} за каждого.`,
+    messageTitle("gift", "Приглашайте друзей"),
+    messageHint(`Получайте ${formatGenerationCount(settings.rewardCredits)} за каждого нового пользователя.`),
     "",
-    `${gift ? gift + " " : ""}Приглашено: ${stats.invitedCount}`,
-    `Начислено генераций: ${stats.creditsEarned}`,
+    detailBlock([
+      detailRow("profile", "Приглашено", stats.invitedCount),
+      detailRow("gift", "Начислено", `${stats.creditsEarned} ген.`),
+    ]),
     "",
-    `Ваша ссылка:\n<code>${link}</code>`,
+    `<b>Ваша ссылка</b>\n<code>${escapeHtml(link)}</code>`,
   ];
   const kb = new InlineKeyboard().url(btnText("Поделиться", "gift"), `https://t.me/share/url?url=${encodeURIComponent(link)}`);
   return { text: lines.join("\n"), keyboard: backRow(kb) };

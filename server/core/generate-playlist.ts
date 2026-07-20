@@ -65,6 +65,8 @@ export interface GeneratePlaylistOptions {
   dislikedTracks?: string[];
   /** Uris to hard-filter out of the finalized result even if the agent proposes them. */
   dislikedUris?: Set<string>;
+  /** Pure precomputed candidate ranker; performs no I/O inside the tool loop. */
+  rankTracks?: (tracks: Track[]) => Track[];
 }
 
 export interface GeneratePlaylistResult {
@@ -308,6 +310,7 @@ export async function generatePlaylist(opts: GeneratePlaylistOptions): Promise<G
       try {
         const dispatchResult = await dispatchTool(call.name, call.args, {
           music: opts.music,
+          rankTracks: opts.rankTracks,
           onClarify: async () => {
             throw new Error("unreachable: clarify handled above");
           },

@@ -43,6 +43,7 @@ const MIGRATIONS: Migration[] = [
         CREATE TABLE IF NOT EXISTS users (
           chat_id INTEGER PRIMARY KEY,
           username TEXT,
+          first_name TEXT,
           credits INTEGER NOT NULL DEFAULT 0,
           subscription_until INTEGER,
           first_seen INTEGER NOT NULL DEFAULT (unixepoch()),
@@ -341,6 +342,114 @@ const MIGRATIONS: Migration[] = [
           created_at INTEGER NOT NULL DEFAULT (unixepoch())
         );
         CREATE INDEX IF NOT EXISTS idx_referral_events_referrer ON referral_events(referrer_chat_id);
+      `);
+    },
+  },
+  {
+    version: 12,
+    run(db) {
+      db.run(`
+        -- First-touch acquisition data. One immutable row per user keeps
+        -- later untagged launches from overwriting the campaign that acquired
+        -- them. start_param preserves the original Telegram deep-link payload.
+        CREATE TABLE IF NOT EXISTS user_attribution (
+          chat_id INTEGER PRIMARY KEY,
+          source TEXT NOT NULL,
+          medium TEXT,
+          campaign TEXT,
+          content TEXT,
+          term TEXT,
+          start_param TEXT,
+          created_at INTEGER NOT NULL DEFAULT (unixepoch())
+        );
+        CREATE INDEX IF NOT EXISTS idx_user_attribution_source
+          ON user_attribution(source, medium, campaign);
+
+        -- Append-only product event stream used for unique-user funnels.
+        -- event_key is optional; when present it makes retry-prone server
+        -- events idempotent without suppressing legitimate repeated actions.
+        CREATE TABLE IF NOT EXISTS analytics_events (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          chat_id INTEGER NOT NULL,
+          event_name TEXT NOT NULL,
+          properties_json TEXT NOT NULL DEFAULT '{}',
+          event_key TEXT UNIQUE,
+          created_at INTEGER NOT NULL DEFAULT (unixepoch())
+        );
+        CREATE INDEX IF NOT EXISTS idx_analytics_events_name_time
+          ON analytics_events(event_name, created_at);
+        CREATE INDEX IF NOT EXISTS idx_analytics_events_chat_time
+          ON analytics_events(chat_id, created_at);
+
+        -- Existing users predate attribution, so label them honestly instead
+        -- of pretending they were direct traffic. New users are attributed at
+        -- their first /start or authenticated Mini App launch.
+        INSERT OR IGNORE INTO user_attribution (chat_id, source, medium, created_at)
+        SELECT chat_id, 'unknown', 'legacy', first_seen FROM users;
+
+        -- Seed the historical parts of the funnel that can be reconstructed
+        -- exactly from domain tables. Open/start views cannot be backfilled.
+        INSERT OR IGNORE INTO analytics_events (chat_id, event_name, event_key, created_at)
+        SELECT chat_id, 'generation_completed', 'generation:' || id, created_at FROM generations;
+        INSERT OR IGNORE INTO analytics_events (chat_id, event_name, event_key, created_at)
+        SELECT chat_id, 'checkout_started', 'invoice:' || id, created_at FROM invoices;
+        INSERT OR IGNORE INTO analytics_events (chat_id, event_name, event_key, created_at)
+        SELECT chat_id, 'purchase_completed', 'purchase:' || id, paid_at
+        FROM invoices WHERE status = 'paid' AND paid_at IS NOT NULL;
+      `);
+    },
+  },
+  {
+    version: 13,
+    run(db) {
+      // Stored from trusted Telegram updates/initData for personalized broadcasts.
+      try { db.run(`ALTER TABLE users ADD COLUMN first_name TEXT;`); } catch {}
+    },
+  },
+  {
+    version: 14,
+    run(db) {
+      db.run(`
+        -- Campaign touches are separate from immutable first-touch attribution:
+        -- returning users must still appear in UTM campaign reports.
+        CREATE TABLE IF NOT EXISTS attribution_touches (
+          chat_id INTEGER NOT NULL,
+          source TEXT NOT NULL,
+          medium TEXT,
+          campaign TEXT,
+          content TEXT,
+          term TEXT,
+          start_param TEXT NOT NULL,
+          first_seen INTEGER NOT NULL DEFAULT (unixepoch()),
+          last_seen INTEGER NOT NULL DEFAULT (unixepoch()),
+          touch_count INTEGER NOT NULL DEFAULT 1,
+          PRIMARY KEY (chat_id, start_param)
+        );
+        CREATE INDEX IF NOT EXISTS idx_attribution_touches_campaign_time
+          ON attribution_touches(source, medium, campaign, last_seen);
+      `);
+    },
+  },
+  {
+    version: 15,
+    run(db) {
+      db.run(`
+        -- Coarse, aggregate playback signals for recommendation ranking. One
+        -- row per user+track keeps retries and long-term storage bounded.
+        CREATE TABLE IF NOT EXISTS music_feedback (
+          chat_id INTEGER NOT NULL,
+          uri TEXT NOT NULL,
+          title TEXT NOT NULL,
+          artist TEXT NOT NULL,
+          play_started_count INTEGER NOT NULL DEFAULT 0,
+          play_completed_count INTEGER NOT NULL DEFAULT 0,
+          skipped_count INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+          updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+          PRIMARY KEY (chat_id, uri)
+        );
+        CREATE INDEX IF NOT EXISTS idx_music_feedback_chat_updated
+          ON music_feedback(chat_id, updated_at DESC);
       `);
     },
   },

@@ -174,6 +174,9 @@ describe("bug repro: invoice created + abandoned (never paid)", () => {
     // (server/bot/shop.ts → purchaseOffer), same as the reported bug.
     const result = await purchaseOffer(db, CHAT, offer.id);
     expect(result.invoiceId).toBe(nextInvoiceId);
+    expect(
+      db.query<{ n: number }, []>(`SELECT COUNT(*) AS n FROM analytics_events WHERE event_name = 'checkout_started'`).get()?.n,
+    ).toBe(1);
 
     // Credits vanish immediately, exactly as reported ("package 67/67" gone).
     expect(getUser(db, CHAT)!.credits).toBe(0);

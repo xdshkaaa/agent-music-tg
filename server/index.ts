@@ -3,9 +3,10 @@ import { env } from "./env";
 import { openDb } from "./db";
 import { bootstrapAllowlist } from "./lib/access-control";
 import { createBot } from "./bot";
-import { loadCustomEmojis, accent } from "./bot/emoji";
+import { loadCustomEmojis } from "./bot/emoji";
+import { statusMessage } from "./bot/message-format";
 import { createApiRoutes } from "./api/routes";
-import { setVerificationExtractor, setPrewarmStreamCache } from "./core/run-generation";
+import { setVerificationExtractor, setPrewarmStreamResolver } from "./core/run-generation";
 import { verifyWebhookSignature, type WebhookUpdate } from "./payments/webhook";
 import { fulfillInvoice, fulfillPendingInvoice, type FulfillResult } from "./payments/fulfillment";
 import { startPoller, startPlategaPoller } from "./payments/poller";
@@ -14,10 +15,12 @@ import { getInvoice } from "./payments/invoices-store";
 import { cancelInvoiceAndRefund } from "./payments/cancel";
 import { alertPaymentFulfilled } from "./payments/alerts";
 import { YtDlpExtractor } from "./audio/extractor";
-import { StreamCache } from "./audio/stream-cache";
+import { YtDlpStreamResolver } from "./audio/stream-resolver";
 import { createTelegramAudioSender } from "./audio/telegram-sender";
 import type { AudioDeps } from "./api/audio-routes";
 import { reconcileStaleDownloads } from "./audio/downloads-store";
+import { createTelegramBroadcastSender } from "./admin/telegram-broadcast";
+import { createShutdownHandler } from "./lifecycle";
 
 const db = openDb(env.dbPath);
 bootstrapAllowlist(db);
@@ -36,16 +39,17 @@ const bot = createBot(db);
 // and bot replies fall back to clean text. See server/bot/emoji.ts.
 void loadCustomEmojis(bot);
 
-const send = async (chatId: number, text: string): Promise<void> => {
-  await bot.api.sendMessage(chatId, text, { parse_mode: "HTML" });
-};
+const send = createTelegramBroadcastSender(bot, env.publicOrigin);
 
 async function notifyFulfilled(result: FulfillResult): Promise<void> {
   await alertPaymentFulfilled(db, result);
   if (!result.fulfilled || !result.chatId || !result.offerTitle) return;
-  const check = accent("check");
   try {
-    await send(result.chatId, `${check ? check + " " : ""}Оплата получена: «${result.offerTitle}». Доступ активирован.`);
+    await bot.api.sendMessage(
+      result.chatId,
+      statusMessage("check", "Оплата получена", `Пакет «${result.offerTitle}» активирован.`),
+      { parse_mode: "HTML" },
+    );
   } catch {
     // user may have blocked the bot — ignore
   }
@@ -139,19 +143,16 @@ const createStarsInvoiceLink = async (args: { title: string; description: string
 };
 
 const extractor = new YtDlpExtractor();
+const streamResolver = new YtDlpStreamResolver();
 setVerificationExtractor(extractor);
 const audio: AudioDeps = {
   sender: createTelegramAudioSender(bot.api),
   extractor,
   scratchDir: env.audioScratchDir,
-  streamCache: new StreamCache(extractor, {
-    dir: env.streamCacheDir,
-    maxBytes: env.streamCacheMaxBytes,
-    ttlSeconds: env.streamCacheTtlSeconds,
-  }),
+  streamResolver,
 };
-// Warm the stream cache right after each generation so first playback is instant.
-setPrewarmStreamCache(audio.streamCache);
+// Resolve upstream URLs after generation so first playback skips yt-dlp startup too.
+setPrewarmStreamResolver(streamResolver);
 
 app.route("/api", createApiRoutes(db, { send, createStarsInvoiceLink, audio }));
 
@@ -159,14 +160,14 @@ bot.start();
 
 const stopPoller = startPoller(db, notifyFulfilled);
 const stopPlategaPoller = startPlategaPoller(db, notifyFulfilled);
-process.on("SIGTERM", () => {
-  stopPoller();
-  stopPlategaPoller();
+const shutdown = createShutdownHandler({
+  stopPoller,
+  stopPlategaPoller,
+  stopBot: () => bot.stop(),
+  exit: (code) => process.exit(code),
 });
-process.on("SIGINT", () => {
-  stopPoller();
-  stopPlategaPoller();
-});
+process.once("SIGTERM", () => void shutdown("SIGTERM"));
+process.once("SIGINT", () => void shutdown("SIGINT"));
 
 export default {
   port: env.port,

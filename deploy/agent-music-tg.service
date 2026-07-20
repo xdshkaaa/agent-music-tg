@@ -12,6 +12,7 @@ EnvironmentFile=/opt/agent-music-tg/.env
 ExecStart=/root/.bun/bin/bun run server/index.ts
 Restart=always
 RestartSec=5
+TimeoutStopSec=10
 
 [Install]
 WantedBy=multi-user.target

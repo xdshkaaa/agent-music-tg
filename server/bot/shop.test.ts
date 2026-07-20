@@ -12,7 +12,7 @@ const { offersKeyboard, purchasePromptText } = await import("./shop");
 const { __resetForTests } = await import("./emoji");
 
 // Emoji sticker set is unset in tests → accent() returns "" and heading()
-// returns the bare text, so purchasePromptText() yields a clean ДОСТУП header.
+// returns the bare text, so purchasePromptText() yields a clean access header.
 beforeEach(() => {
   __resetForTests();
 });
@@ -84,9 +84,9 @@ describe("shop offersKeyboard", () => {
 });
 
 describe("shop purchasePromptText", () => {
-  test("starts with the ДОСТУП header (clean text when emoji unset)", () => {
+  test("starts with the access header (clean text when emoji unset)", () => {
     const text = purchasePromptText();
-    expect(text.startsWith("<b>ДОСТУП</b>")).toBe(true);
-    expect(text).toContain("Выберите пакет");
+    expect(text.startsWith("<b>Доступ к генерациям</b>")).toBe(true);
+    expect(text).toContain("Выберите подходящий пакет");
   });
 });

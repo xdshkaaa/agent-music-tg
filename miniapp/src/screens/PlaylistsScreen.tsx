@@ -180,6 +180,28 @@ function HistoryItem({
   );
 }
 
+const PLAYLIST_COVER_PALETTES = [
+  ["#ff6f91", "#7247d9", "#15162a"],
+  ["#ff9a62", "#c93672", "#24152b"],
+  ["#68d5c8", "#2472a4", "#111d31"],
+  ["#f5c85b", "#e75d55", "#2e1930"],
+] as const;
+
+function PlaylistCover({ playlistId }: { playlistId: number }) {
+  const palette = PLAYLIST_COVER_PALETTES[Math.abs(playlistId) % PLAYLIST_COVER_PALETTES.length]!;
+  return (
+    <span
+      className="playlist-cover-art"
+      aria-hidden="true"
+      style={{
+        ["--cover-a" as string]: palette[0],
+        ["--cover-b" as string]: palette[1],
+        ["--cover-c" as string]: palette[2],
+      }}
+    />
+  );
+}
+
 function LibrarySection({ onOpen }: { onOpen: (entry: HistoryEntry) => void }) {
   const [downloads, setDownloads] = useState<DownloadRecord[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -400,9 +422,7 @@ function PlaylistsSection({ onOpen }: { onOpen: (id: number) => void }) {
         <div className="stack reveal-stagger mt-12">
           {playlists.map((p, i) => (
             <button key={p.id} type="button" className="track-row search-artist-row" style={{ ["--i" as string]: i }} onClick={() => onOpen(p.id)}>
-              <span className="search-artist-avatar" aria-hidden>
-                <PlaylistIcon size={18} weight="bold" />
-              </span>
+              <PlaylistCover playlistId={p.id} />
               <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
                 <p className="search-row-title">{p.name}</p>
                 <p className="text-muted search-row-meta">{p.trackCount} тр.</p>

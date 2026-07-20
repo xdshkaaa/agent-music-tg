@@ -4,7 +4,7 @@ import type { BotContext } from "./context";
 import { getUser } from "../access/users-store";
 import { trialActive } from "../access/entitlements";
 import { countGenerations } from "../access/generations-store";
-import { heading, accent } from "./emoji";
+import { detailBlock, detailRow, messageHint, messageTitle, statusMessage } from "./message-format";
 
 export function registerCredits(bot: Bot<BotContext>, db: AppDb): void {
   bot.command("credits", async (ctx) => {
@@ -13,27 +13,23 @@ export function registerCredits(bot: Bot<BotContext>, db: AppDb): void {
 
     const subActive = user?.subscriptionUntil != null && user.subscriptionUntil > Math.floor(Date.now() / 1000);
     if (!user || (user.credits <= 0 && !trialActive(user) && !subActive)) {
-      const wallet = accent("wallet");
-      const text = `${wallet ? wallet + " " : ""}Нет доступа.\n/buy: купить генерации или подписку`;
+      const text = `${statusMessage("wallet", "Генерации закончились", "Выберите пакет или подписку, чтобы продолжить.")}\n\n/buy — открыть варианты`;
       await ctx.reply(text, { parse_mode: "HTML" });
       return;
     }
 
-    const wallet = accent("wallet");
-    const ruler = accent("ruler");
-    const flame = accent("fire");
-    const lines: string[] = [`<b>${heading("wallet", "КРЕДИТЫ")}</b>`];
-    lines.push(`${wallet ? wallet + " " : ""}Генерации: ${user.credits}`);
+    const rows = [detailRow("wallet", "Генерации", user.credits)];
     if (trialActive(user)) {
-      lines.push(`${wallet ? wallet + " " : ""}Пробные: ${user.trialCredits}`);
+      rows.push(detailRow("gift", "Пробные", user.trialCredits));
     }
-    lines.push(`${flame ? flame + " " : ""}Потрачено: ${countGenerations(db, chatId)} ген`);
+    rows.push(detailRow("fire", "Использовано", `${countGenerations(db, chatId)} ген.`));
 
     if (user.subscriptionUntil && user.subscriptionUntil > Math.floor(Date.now() / 1000)) {
       const until = new Date(user.subscriptionUntil * 1000).toLocaleDateString("ru-RU");
-      lines.push(`${ruler ? ruler + " " : ""}Подписка до ${until}`);
+      rows.push(detailRow("ruler", "Подписка до", until));
     }
 
-    await ctx.reply(lines.join("\n"), { parse_mode: "HTML" });
+    const text = `${messageTitle("wallet", "Баланс")}\n${messageHint("Доступные генерации и активность")}\n\n${detailBlock(rows)}`;
+    await ctx.reply(text, { parse_mode: "HTML" });
   });
 }

@@ -2,7 +2,7 @@ import { Bot, InlineKeyboard } from "grammy";
 import type { AppDb } from "../db";
 import type { BotContext } from "./context";
 import { getAdminStats, type StatsPeriod } from "../admin/stats";
-import { broadcast, type SendFn } from "../admin/broadcast";
+import { BROADCAST_NAME_PLACEHOLDER, broadcast, type BroadcastSendFn } from "../admin/broadcast";
 import { listOffers, createOffer, setOfferActive, deleteOffer, type GrantKind } from "../payments/offers-store";
 import { isSupportedAsset, SUPPORTED_ASSETS as SUPPORTED_CRYPTO_ASSETS } from "../payments/crypto-pay";
 import {
@@ -76,6 +76,36 @@ function statsText(s: ReturnType<typeof getAdminStats>): string {
           .join("\n")
       : "—";
   const seg = s.segments;
+  const funnelLabels: Record<(typeof s.funnel)[number]["event"], string> = {
+    acquired: "Пришли",
+    miniapp_opened: "Открыли приложение",
+    generation_started: "Начали генерацию",
+    generation_completed: "Получили плейлист",
+    checkout_started: "Начали оплату",
+    purchase_completed: "Оплатили",
+  };
+  const funnel = s.funnel
+    .map((step) => `${funnelLabels[step.event]}: ${step.users}${step.overallConversion === null ? "" : ` (${(step.overallConversion * 100).toFixed(1)}%)`}`)
+    .join("\n");
+  const attributionLabel = (value: string | null): string => {
+    if (!value) return "";
+    return {
+      direct: "Прямой",
+      referral: "Реферальная программа",
+      unknown: "Неизвестный",
+      telegram: "Telegram",
+      legacy: "Исторические данные",
+      "deep-link": "Диплинк",
+    }[value] ?? value;
+  };
+  const sources = s.trafficSources
+    .slice(0, 5)
+    .map((source) => `${attributionLabel(source.source)}${source.medium ? ` / ${attributionLabel(source.medium)}` : ""}: ${source.users} → ${source.payers}`)
+    .join("\n") || "Нет данных";
+  const campaigns = s.utmCampaigns
+    .slice(0, 5)
+    .map((campaign) => `${campaign.campaign}: ${campaign.users} → ${campaign.payers}`)
+    .join("\n") || "Нет данных";
   return (
     `<b>${heading("stats", "Статистика")}</b> · ${STATS_PERIOD_LABELS[s.period]}\n` +
     `Всего пользователей: ${s.totalUsers}\n` +
@@ -91,7 +121,10 @@ function statsText(s: ReturnType<typeof getAdminStats>): string {
     `На трайле: ${seg.trialActive}\n` +
     `Покупали, без подписки: ${seg.payingNoSubscription}\n` +
     `Бесплатные, без покупок: ${seg.freeNoActivity}\n\n` +
-    `<b>Топ по активности</b> (генераций)\n${topUsers}`
+    `<b>Топ по активности</b> (генераций)\n${topUsers}\n\n` +
+    `<b>Воронка привлечения</b>\n${funnel}\n\n` +
+    `<b>Источники трафика</b>\n${sources}\n\n` +
+    `<b>UTM-кампании</b>\n${campaigns}`
   );
 }
 
@@ -319,7 +352,7 @@ function chunk<T>(arr: T[], size: number): T[][] {
  * Handles free-text input while an admin FSM flow is active. Returns true if
  * the message was consumed (caller must not treat it as a generation prompt).
  */
-export async function handleAdminText(ctx: BotContext, db: AppDb, send: SendFn): Promise<boolean> {
+export async function handleAdminText(ctx: BotContext, db: AppDb, send: BroadcastSendFn): Promise<boolean> {
   if (!ctx.isAdmin) return false;
   const chatId = ctx.chat!.id;
   const flow = getAdminFlow(db, chatId);
@@ -329,7 +362,7 @@ export async function handleAdminText(ctx: BotContext, db: AppDb, send: SendFn):
   if (flow.kind === "admin_broadcast") {
     clearSession(db, chatId);
     await ctx.reply("Отправляю рассылку…");
-    const res = await broadcast(db, text, send);
+    const res = await broadcast(db, { text, buttons: [] }, send);
     await ctx.reply(`Готово. Доставлено: ${res.sent}, ошибок: ${res.failed}.`);
     return true;
   }
@@ -712,7 +745,9 @@ export function registerAdminPanel(bot: Bot<BotContext>, db: AppDb): void {
     if (!ctx.isAdmin) return ctx.answerCallbackQuery();
     await ctx.answerCallbackQuery();
     setAdminFlow(db, ctx.chat!.id, { kind: "admin_broadcast" });
-    await ctx.reply("Пришлите текст рассылки:");
+    await ctx.reply(
+      `Пришлите текст рассылки. Для личного обращения используйте ${BROADCAST_NAME_PLACEHOLDER}, например: «Привет, ${BROADCAST_NAME_PLACEHOLDER}!».`,
+    );
   });
 
   bot.callbackQuery(/^admin:set:(shopName|supportContact|aboutText)$/, async (ctx) => {

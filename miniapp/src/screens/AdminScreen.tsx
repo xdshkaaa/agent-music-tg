@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   WarningCircle, Circle, Key, XCircle, Plus, Minus, Star,
-  Calendar, Prohibit, Crown, User, PencilSimple,
+  Calendar, Prohibit, Crown, User, PencilSimple, Paperclip, X,
+  Gauge, UsersThree, Storefront, SlidersHorizontal, PaperPlaneTilt,
 } from "@phosphor-icons/react";
 import { GlassPanel } from "../components/GlassPanel";
 import { AdminSettingsBar } from "../components/AdminSettingsBar";
@@ -19,25 +20,40 @@ import type {
   SettingEntry,
   PaymentsConfig,
   StatsPeriod,
+  AdminBroadcastButton,
+  AdminBroadcastButtonPreset,
+  AdminBroadcastButtonStyle,
 } from "../lib/api";
 import { api } from "../lib/api";
-import { useScrollFade } from "../lib/useScrollFade";
+import { buildTelegramUtmLink, buildTelegramUtmPayload, TELEGRAM_START_PARAM_LIMIT } from "../lib/utm";
 
-type AdminTab = "stats" | "offers" | "shop" | "users" | "issuance" | "access" | "providers" | "settings" | "payments" | "broadcast";
+type AdminTab = "overview" | "audience" | "commerce" | "system" | "broadcast";
 
-const SETTINGS_TABS: AdminTab[] = ["stats", "offers", "shop", "users", "issuance", "access", "providers", "settings", "payments", "broadcast"];
+const SETTINGS_TABS: AdminTab[] = ["overview", "audience", "commerce", "system", "broadcast"];
 const SETTINGS_LABELS: Record<AdminTab, string> = {
-  stats: "Статистика",
-  offers: "Пакеты",
-  shop: "Магазин",
-  users: "Пользователи",
-  issuance: "Выдача",
-  access: "Доступ",
-  providers: "Провайдеры",
-  settings: "Настройки",
-  payments: "Платежи",
+  overview: "Обзор",
+  audience: "Люди",
+  commerce: "Продажи",
+  system: "Система",
   broadcast: "Рассылка",
 };
+
+const SETTINGS_DESCRIPTIONS: Record<AdminTab, string> = {
+  overview: "Ключевые показатели, источники и UTM-кампании",
+  audience: "Пользователи, выдачи, роли и режим доступа",
+  commerce: "Пакеты, витрина и управление платежами",
+  system: "Провайдеры, музыка и служебные параметры",
+  broadcast: "Сообщение, вложение и настраиваемые inline-кнопки",
+};
+
+function AdminTabIcon({ tab }: { tab: AdminTab }) {
+  const props = { size: 18, weight: "bold" as const };
+  if (tab === "overview") return <Gauge {...props} />;
+  if (tab === "audience") return <UsersThree {...props} />;
+  if (tab === "commerce") return <Storefront {...props} />;
+  if (tab === "system") return <SlidersHorizontal {...props} />;
+  return <PaperPlaneTilt {...props} />;
+}
 
 const EMPTY_OFFER: OfferInput = { title: "", amount: "", asset: "USDT", starsAmount: null, rubAmount: null, icon: "", grantKind: "credits", grantAmount: 1 };
 
@@ -48,10 +64,10 @@ const CRYPTO_ASSETS = ["USDT", "TON", "BTC", "ETH", "LTC", "BNB", "TRX", "USDC"]
 
 const STATS_PERIODS: StatsPeriod[] = ["today", "week", "month", "all"];
 const STATS_PERIOD_LABELS: Record<StatsPeriod, string> = {
-  today: "Сегодня",
-  week: "Неделя",
-  month: "Месяц",
-  all: "Всё время",
+  today: "День",
+  week: "7 дней",
+  month: "30 дней",
+  all: "Всё",
 };
 
 function StatsPanel() {
@@ -130,9 +146,169 @@ function StatsPanel() {
           </>
         )}
       </GlassPanel>
+      {stats && <FunnelPanel stats={stats} />}
+      {stats && <TrafficSourcesPanel stats={stats} />}
+      {stats && <UtmCampaignsPanel stats={stats} />}
       {stats && <UserSegmentsPanel stats={stats} />}
       {stats && <TopActiveUsersPanel stats={stats} />}
     </>
+  );
+}
+
+const FUNNEL_LABELS: Record<AdminStats["funnel"][number]["event"], string> = {
+  acquired: "Новые пользователи",
+  miniapp_opened: "Открыли приложение",
+  generation_started: "Начали генерацию",
+  generation_completed: "Получили плейлист",
+  checkout_started: "Начали оплату",
+  purchase_completed: "Оплатили",
+};
+
+function percent(value: number | null): string {
+  return value === null ? "—" : `${(value * 100).toFixed(1)}%`;
+}
+
+function revenueLabel(revenue: { asset: string; total: number }[]): string {
+  return revenue.length === 0 ? "0" : revenue.map((item) => `${item.total} ${item.asset}`).join(", ");
+}
+
+function attributionLabel(value: string | null): string {
+  if (!value) return "";
+  return {
+    direct: "Прямой",
+    referral: "Реферальная программа",
+    unknown: "Неизвестный",
+    telegram: "Telegram",
+    legacy: "Исторические данные",
+    "deep-link": "Диплинк",
+  }[value] ?? value;
+}
+
+function FunnelPanel({ stats }: { stats: AdminStats }) {
+  return (
+    <GlassPanel className="reveal">
+      <h2>Воронка привлечения</h2>
+      <p className="text-muted">Когорта пользователей, впервые пришедших за выбранный период.</p>
+      {stats.funnel.map((step) => (
+        <div className="stat-row" key={step.event}>
+          <span className="stat-row-label">{FUNNEL_LABELS[step.event]}</span>
+          <span className="stat-row-value">{step.users} · {percent(step.overallConversion)}</span>
+        </div>
+      ))}
+    </GlassPanel>
+  );
+}
+
+function TrafficSourcesPanel({ stats }: { stats: AdminStats }) {
+  return (
+    <GlassPanel className="reveal">
+      <h2>Источники трафика</h2>
+      {stats.trafficSources.length === 0 ? (
+        <div className="stat-row-label">Нет данных</div>
+      ) : stats.trafficSources.map((source) => (
+        <div className="stat-row" key={`${source.source}:${source.medium ?? ""}`}>
+          <span className="stat-row-label">
+            {attributionLabel(source.source)}{source.medium ? ` / ${attributionLabel(source.medium)}` : ""}<br />
+            <small>{source.users} пользователей · {source.payers} платящих · {percent(source.conversionRate)}</small>
+          </span>
+          <span className="stat-row-value admin-source-value">
+            <strong>{source.users}</strong>
+            <small>{source.revenue.length ? revenueLabel(source.revenue) : "без выручки"}</small>
+          </span>
+        </div>
+      ))}
+    </GlassPanel>
+  );
+}
+
+function UtmLinkBuilder() {
+  const [botBaseUrl, setBotBaseUrl] = useState("");
+  const [source, setSource] = useState("");
+  const [medium, setMedium] = useState("telegram");
+  const [campaign, setCampaign] = useState("");
+  const [content, setContent] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    api.referral()
+      .then((data) => setBotBaseUrl(data.link.split("?")[0] ?? ""))
+      .catch(() => setBotBaseUrl(""));
+  }, []);
+
+  const fields = { source, medium, campaign, content };
+  const payload = buildTelegramUtmPayload(fields);
+  const link = botBaseUrl ? buildTelegramUtmLink(botBaseUrl, fields) : null;
+  const started = source.trim().length > 0 || campaign.trim().length > 0;
+
+  async function copyLink() {
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <div className="admin-utm-builder">
+      <div className="admin-section-heading">
+        <span>
+          <strong>Ссылка с UTM-меткой</strong>
+          <small>Создаёт рабочий Telegram deep link и считает как новых, так и вернувшихся пользователей.</small>
+        </span>
+        {payload && <span className="admin-count-badge">{payload.length}/{TELEGRAM_START_PARAM_LIMIT}</span>}
+      </div>
+      <div className="admin-form-grid">
+        <label className="admin-field">
+          <span>Источник</span>
+          <input className="glass-input" placeholder="telegram-channel" value={source} onChange={(e) => setSource(e.target.value)} />
+        </label>
+        <label className="admin-field">
+          <span>Канал</span>
+          <input className="glass-input" placeholder="post" value={medium} onChange={(e) => setMedium(e.target.value)} />
+        </label>
+        <label className="admin-field">
+          <span>Кампания</span>
+          <input className="glass-input" placeholder="summer-2026" value={campaign} onChange={(e) => setCampaign(e.target.value)} />
+        </label>
+        <label className="admin-field">
+          <span>Креатив</span>
+          <input className="glass-input" placeholder="button-a" value={content} onChange={(e) => setContent(e.target.value)} />
+        </label>
+      </div>
+      {link ? (
+        <div className="admin-generated-link">
+          <code>{link}</code>
+          <button type="button" className="glass-button" onClick={() => void copyLink()}>{copied ? "Скопировано" : "Копировать"}</button>
+        </div>
+      ) : started ? (
+        <small className="text-danger" role="alert">Заполните источник и кампанию латиницей; вся метка должна быть не длиннее 64 символов.</small>
+      ) : (
+        <small className="text-muted">Заполните источник и кампанию — ссылка появится здесь.</small>
+      )}
+    </div>
+  );
+}
+
+function UtmCampaignsPanel({ stats }: { stats: AdminStats }) {
+  return (
+    <GlassPanel className="reveal">
+      <h2>UTM-кампании</h2>
+      <UtmLinkBuilder />
+      {stats.utmCampaigns.length === 0 ? (
+        <div className="stat-row-label">Пока нет размеченного трафика</div>
+      ) : stats.utmCampaigns.map((campaign) => (
+        <div className="stat-row" key={`${campaign.source}:${campaign.medium ?? ""}:${campaign.campaign}`}>
+          <span className="stat-row-label">
+            {campaign.campaign}<br />
+            <small>{attributionLabel(campaign.source)}{campaign.medium ? ` / ${attributionLabel(campaign.medium)}` : ""} · {campaign.users} пользователей</small>
+          </span>
+          <span className="stat-row-value">{campaign.payers} · {revenueLabel(campaign.revenue)}</span>
+        </div>
+      ))}
+    </GlassPanel>
   );
 }
 
@@ -297,20 +473,131 @@ function OffersPanel() {
 }
 
 function BroadcastPanel() {
+  const namePlaceholder = "{name}";
   const [text, setText] = useState("");
+  const [media, setMedia] = useState<File | null>(null);
+  const [buttons, setButtons] = useState<AdminBroadcastButton[]>([
+    { kind: "preset", preset: "open_app", text: "Открыть приложение", style: "primary" },
+  ]);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [confirmSend, setConfirmSend] = useState(false);
+  const mediaInputRef = useRef<HTMLInputElement>(null);
+  const textInputRef = useRef<HTMLTextAreaElement>(null);
 
-  async function send(e: FormEvent) {
-    e.preventDefault();
+  const buttonPresets: Array<{ id: AdminBroadcastButtonPreset; label: string }> = [
+    { id: "open_app", label: "Открыть приложение" },
+    { id: "search", label: "Поиск" },
+    { id: "playlists", label: "Мои плейлисты" },
+    { id: "profile", label: "Профиль" },
+  ];
+
+  function addPreset(id: AdminBroadcastButtonPreset) {
+    const preset = buttonPresets.find((item) => item.id === id);
+    if (!preset || buttons.some((button) => button.kind === "preset" && button.preset === id)) return;
+    setButtons((current) => [...current, { kind: "preset", preset: id, text: preset.label }]);
+    setConfirmSend(false);
+  }
+
+  function addCustomButton() {
+    if (buttons.length >= 8) return;
+    setButtons((current) => [...current, { kind: "url", text: "Подробнее", url: "https://" }]);
+    setConfirmSend(false);
+  }
+
+  function updateButton(index: number, patch: Partial<AdminBroadcastButton>) {
+    setButtons((current) => current.map((button, itemIndex) => (
+      itemIndex === index ? { ...button, ...patch } as AdminBroadcastButton : button
+    )));
+    setConfirmSend(false);
+  }
+
+  function removeButton(index: number) {
+    setButtons((current) => current.filter((_, itemIndex) => itemIndex !== index));
+    setConfirmSend(false);
+  }
+
+  function isValidButton(button: AdminBroadcastButton): boolean {
+    if (!button.text.trim() || button.text.trim().length > 64) return false;
+    if (button.kind === "preset") return true;
+    try {
+      const url = new URL(button.url.trim());
+      return ["https:", "http:", "tg:"].includes(url.protocol);
+    } catch {
+      return false;
+    }
+  }
+
+  const buttonsValid = buttons.every(isValidButton);
+
+  function mediaKind(file: File): "Изображение" | "GIF" | "Видео" | "Файл" {
+    const name = file.name.toLowerCase();
+    const mimeType = file.type.toLowerCase();
+    if (mimeType && mimeType !== "application/octet-stream") {
+      if (mimeType === "image/gif") return "GIF";
+      if (["image/jpeg", "image/png", "image/webp"].includes(mimeType)) return "Изображение";
+      if (mimeType === "video/mp4") return "Видео";
+      return "Файл";
+    }
+    if (name.endsWith(".gif")) return "GIF";
+    if (/\.(jpe?g|png|webp)$/.test(name)) return "Изображение";
+    if (name.endsWith(".mp4")) return "Видео";
+    return "Файл";
+  }
+
+  function selectMedia(file: File | null) {
+    setResult(null);
+    setConfirmSend(false);
+    if (!file) {
+      setMedia(null);
+      return;
+    }
+    const maxBytes = mediaKind(file) === "Изображение" ? 10 * 1024 * 1024 : 50 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      setMedia(null);
+      setResult(
+        `Ошибка: ${mediaKind(file) === "Изображение"
+          ? "изображение должно быть не больше 10 МБ"
+          : "вложение должно быть не больше 50 МБ"}`,
+      );
+      if (mediaInputRef.current) mediaInputRef.current.value = "";
+      return;
+    }
+    setMedia(file);
+  }
+
+  function removeMedia() {
+    setMedia(null);
+    setConfirmSend(false);
+    if (mediaInputRef.current) mediaInputRef.current.value = "";
+  }
+
+  function insertNamePlaceholder() {
+    const input = textInputRef.current;
+    const start = input?.selectionStart ?? text.length;
+    const end = input?.selectionEnd ?? start;
+    const nextText = `${text.slice(0, start)}${namePlaceholder}${text.slice(end)}`;
+    setText(nextText);
+    setConfirmSend(false);
+    requestAnimationFrame(() => {
+      input?.focus();
+      const caret = start + namePlaceholder.length;
+      input?.setSelectionRange(caret, caret);
+    });
+  }
+
+  async function send(e?: FormEvent) {
+    e?.preventDefault();
     setBusy(true);
     setResult(null);
     setConfirmSend(false);
     try {
-      const r = await api.adminBroadcast(text.trim());
+      const preparedButtons = buttons.map((button) => ({ ...button, text: button.text.trim() }));
+      const r = await api.adminBroadcast({ text: text.trim(), buttons: preparedButtons, media });
       setResult(`Доставлено: ${r.sent}, не доставлено: ${r.failed}`);
       setText("");
+      setMedia(null);
+      if (mediaInputRef.current) mediaInputRef.current.value = "";
     } catch (err) {
       setResult(`Ошибка: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
@@ -322,14 +609,166 @@ function BroadcastPanel() {
     <GlassPanel className="reveal">
       <h2>Рассылка</h2>
       <form className="stack mt-12" onSubmit={send}>
-        <textarea className="glass-input" rows={4} placeholder="Текст сообщения" value={text} onChange={(e) => setText(e.target.value)} required />
+        <textarea
+          ref={textInputRef}
+          className="glass-input"
+          rows={5}
+          placeholder={media
+            ? "Подпись к вложению (необязательно, поддерживается HTML)"
+            : "Текст сообщения (поддерживается HTML)"}
+          value={text}
+          maxLength={media ? 1024 : 4096}
+          onChange={(e) => {
+            setText(e.target.value);
+            setConfirmSend(false);
+          }}
+        />
+        <div className="row" style={{ justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+          <small>
+            <code>{namePlaceholder}</code> заменится на имя каждого пользователя.
+          </small>
+          <button type="button" className="glass-button" onClick={insertNamePlaceholder}>
+            Вставить {namePlaceholder}
+          </button>
+        </div>
+
+        <div className="stack">
+          <strong>Вложение</strong>
+          <label
+            className="glass-button"
+            style={{ alignSelf: "flex-start", display: "inline-flex", alignItems: "center", gap: 8 }}
+          >
+            <Paperclip size={18} weight="bold" />
+            {media ? "Заменить вложение" : "Прикрепить изображение, GIF, видео или файл"}
+            <input
+              ref={mediaInputRef}
+              type="file"
+              hidden
+              onChange={(e) => selectMedia(e.target.files?.[0] ?? null)}
+            />
+          </label>
+          {media && (
+            <div className="row" style={{ justifyContent: "space-between", gap: 8 }}>
+              <span>
+                {mediaKind(media)} · {media.name} · {(media.size / 1024 / 1024).toFixed(1)} МБ
+              </span>
+              <button type="button" className="glass-button" aria-label="Убрать вложение" onClick={removeMedia}>
+                <X size={16} weight="bold" />
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="stack admin-broadcast-buttons">
+          <div className="admin-section-heading">
+            <span>
+              <strong>Inline-кнопки</strong>
+              <small>Название, ссылка и цвет задаются отдельно для каждой кнопки.</small>
+            </span>
+            <span className="admin-count-badge">{buttons.length}/8</span>
+          </div>
+          <div className="admin-preset-grid" aria-label="Готовые кнопки">
+            {buttonPresets.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                className="glass-button admin-preset-button"
+                disabled={buttons.length >= 8 || buttons.some((button) => button.kind === "preset" && button.preset === preset.id)}
+                onClick={() => addPreset(preset.id)}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+          <button type="button" className="glass-button admin-add-custom" disabled={buttons.length >= 8} onClick={addCustomButton}>
+            <Plus size={16} weight="bold" /> Добавить кнопку со своей ссылкой
+          </button>
+
+          {buttons.length > 0 && (
+            <div className="admin-button-list">
+              {buttons.map((button, index) => (
+                <div className="admin-button-editor" key={`${button.kind}-${button.kind === "preset" ? button.preset : "url"}-${index}`}>
+                  <div className="admin-button-editor-head">
+                    <span>{button.kind === "preset" ? "Кнопка приложения" : "Своя ссылка"}</span>
+                    <button type="button" className="icon-btn" aria-label="Удалить кнопку" onClick={() => removeButton(index)}>
+                      <X size={16} weight="bold" />
+                    </button>
+                  </div>
+                  <label className="admin-field">
+                    <span>Название</span>
+                    <input
+                      className="glass-input"
+                      maxLength={64}
+                      value={button.text}
+                      onChange={(event) => updateButton(index, { text: event.target.value })}
+                    />
+                  </label>
+                  {button.kind === "url" && (
+                    <label className="admin-field admin-button-url">
+                      <span>Ссылка</span>
+                      <input
+                        className="glass-input"
+                        inputMode="url"
+                        placeholder="https://example.com"
+                        value={button.url}
+                        onChange={(event) => updateButton(index, { url: event.target.value } as Partial<AdminBroadcastButton>)}
+                      />
+                    </label>
+                  )}
+                  <label className="admin-field">
+                    <span>Цвет</span>
+                    <select
+                      className="glass-input"
+                      value={button.style ?? ""}
+                      onChange={(event) => updateButton(index, {
+                        style: (event.target.value || undefined) as AdminBroadcastButtonStyle | undefined,
+                      })}
+                    >
+                      <option value="">Обычный</option>
+                      <option value="primary">Синий</option>
+                      <option value="success">Зелёный</option>
+                      <option value="danger">Красный</option>
+                    </select>
+                  </label>
+                </div>
+              ))}
+            </div>
+          )}
+          {!buttonsValid && <small className="text-danger" role="alert">Заполните название и корректную http(s):// или tg:// ссылку.</small>}
+        </div>
+
         {confirmSend ? (
-          <div className="row">
-            <button type="button" className="glass-button primary" onClick={send} disabled={busy}>✓ Подтвердить</button>
-            <button type="button" className="glass-button" onClick={() => setConfirmSend(false)}>Отмена</button>
+          <div className="stack">
+            <small>
+              Всем пользователям уйдёт {media
+                ? `${mediaKind(media).toLowerCase()}${text.trim() ? " с подписью" : ""}`
+                : "текстовое сообщение"}
+              {buttons.length ? ` и кнопок: ${buttons.length}` : " без кнопок"}.
+              {text.includes(namePlaceholder) ? " Обращение будет персонализировано по имени." : ""}
+            </small>
+            <div className="row">
+              <button
+                type="button"
+                className="glass-button primary"
+                onClick={() => void send()}
+                disabled={busy || !buttonsValid}
+              >
+                Подтвердить отправку
+              </button>
+              <button type="button" className="glass-button" onClick={() => setConfirmSend(false)}>
+                Отмена
+              </button>
+            </div>
           </div>
         ) : (
-          <button type="button" className="glass-button primary" disabled={busy || text.trim().length === 0} onClick={() => setConfirmSend(true)}>Отправить всем</button>
+          <button
+            type="button"
+            className="glass-button primary"
+            disabled={busy || !buttonsValid || (!text.trim() && !media)}
+            onClick={() => setConfirmSend(true)}
+          >
+            Отправить всем
+          </button>
         )}
         {result && <p role="status">{result}</p>}
       </form>
@@ -375,99 +814,6 @@ function ShopSettingsPanel() {
         <button type="submit" className="glass-button primary" disabled={busy}>Сохранить</button>
         {status && <p role="status">{status}</p>}
       </form>
-    </GlassPanel>
-  );
-}
-
-// --- New panels ---
-
-function UsersPanel() {
-  const [users, setUsers] = useState<AdminUser[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [creditsInput, setCreditsInput] = useState<Record<number, string>>({});
-  const [subInput, setSubInput] = useState<Record<number, string>>({});
-  const [savingId, setSavingId] = useState<number | null>(null);
-
-  function refresh() {
-    api.adminUsers().then((r) => setUsers(r.users)).catch((e) => setError(e.message));
-  }
-
-  useEffect(refresh, []);
-
-  async function grantCredits(chatId: number) {
-    const n = Number(creditsInput[chatId]);
-    if (!Number.isFinite(n) || n === 0) return;
-    setSavingId(chatId);
-    try {
-      await api.adminGrantCredits(chatId, n);
-      setCreditsInput((prev) => ({ ...prev, [chatId]: "" }));
-      refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSavingId(null);
-    }
-  }
-
-  async function extendSub(chatId: number) {
-    const n = Number(subInput[chatId]);
-    if (!Number.isFinite(n) || n <= 0) return;
-    setSavingId(chatId);
-    try {
-      await api.adminExtendSubscription(chatId, n);
-      setSubInput((prev) => ({ ...prev, [chatId]: "" }));
-      refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSavingId(null);
-    }
-  }
-
-  const hasSub = (u: AdminUser) => u.subscriptionUntil && u.subscriptionUntil > Math.floor(Date.now() / 1000);
-
-  if (error) return <GlassPanel role="alert"><WarningCircle size={18} weight="bold" /> {error}</GlassPanel>;
-
-  return (
-    <GlassPanel className="reveal">
-      <h2>Пользователи</h2>
-      {users.length === 0 ? <p>Нет пользователей</p> : (
-        <div className="stack mt-12">
-          {users.map((u) => (
-            <div key={u.chatId}>
-              <div className="admin-user-row">
-                <span className="admin-user-info">
-                  <strong>{u.username ?? `#${u.chatId}`}</strong>
-                  <br />
-                  <small>Credits: {u.credits} | Подписка: {hasSub(u) ? `до ${new Date((u.subscriptionUntil!) * 1000).toLocaleDateString()}` : "нет"}</small>
-                </span>
-                <div className="row" style={{ gap: 4 }}>
-                  <input
-                    className="glass-input"
-                    style={{ width: 80, padding: "6px 8px", fontSize: 13 }}
-                    placeholder="credits"
-                    type="number"
-                    value={creditsInput[u.chatId] ?? ""}
-                    onChange={(e) => setCreditsInput((prev) => ({ ...prev, [u.chatId]: e.target.value }))}
-                    disabled={savingId === u.chatId}
-                  />
-                  <button className="glass-button" style={{ padding: "6px 10px", fontSize: 13 }} disabled={savingId === u.chatId} onClick={() => grantCredits(u.chatId)}>Выдать</button>
-                  <input
-                    className="glass-input"
-                    style={{ width: 80, padding: "6px 8px", fontSize: 13 }}
-                    placeholder="дней"
-                    type="number"
-                    value={subInput[u.chatId] ?? ""}
-                    onChange={(e) => setSubInput((prev) => ({ ...prev, [u.chatId]: e.target.value }))}
-                    disabled={savingId === u.chatId}
-                  />
-                  <button className="glass-button" style={{ padding: "6px 10px", fontSize: 13 }} disabled={savingId === u.chatId} onClick={() => extendSub(u.chatId)}>Подписка</button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
     </GlassPanel>
   );
 }
@@ -680,20 +1026,35 @@ function UnifiedSettingsPanel() {
     setEditValue(value);
   }
 
-  const hiddenKeys = new Set(["sessions"]);
+  const structuredKeys = new Set([
+    "sessions",
+    "active_provider",
+    "active_backend",
+    "shop_name",
+    "support_contact",
+    "about_text",
+    "header_icon",
+    "header_title",
+    "payments_enabled",
+    "open_access",
+  ]);
+  const visibleSettings = settings.filter((setting) => (
+    !structuredKeys.has(setting.key) && !setting.key.startsWith("provider:")
+  ));
 
   if (error) return <GlassPanel role="alert"><WarningCircle size={18} weight="bold" /> {error}</GlassPanel>;
 
   return (
     <GlassPanel className="reveal">
-      <h2>Все настройки</h2>
+      <h2>Дополнительные параметры</h2>
+      <p className="text-muted">Здесь только параметры без отдельного экрана — управляемые настройки больше не дублируются.</p>
       <div className="stack mt-12">
         <div className="row">
           <input className="glass-input" placeholder="Ключ" value={newKey} onChange={(e) => setNewKey(e.target.value)} />
           <input className="glass-input" placeholder="Значение" value={newValue} onChange={(e) => setNewValue(e.target.value)} />
           <button className="glass-button primary" onClick={add}>＋</button>
         </div>
-        {settings.filter((s) => !hiddenKeys.has(s.key)).map((s) => (
+        {visibleSettings.map((s) => (
           <div key={s.key}>
             {editingKey === s.key ? (
               <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
@@ -827,7 +1188,7 @@ function AccessModePanel() {
 
 // --- Issuance panel (grant credits, subscription, history) ---------------
 
-function IssuancePanel() {
+function UserManagementPanel() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<AdminUser | null>(null);
@@ -852,7 +1213,8 @@ function IssuancePanel() {
     ? users.filter(
         (u) =>
           String(u.chatId).includes(search) ||
-          (u.username ?? "").toLowerCase().includes(search.toLowerCase()),
+          (u.username ?? "").toLowerCase().includes(search.toLowerCase()) ||
+          (u.firstName ?? "").toLowerCase().includes(search.toLowerCase()),
       )
     : users;
 
@@ -861,11 +1223,11 @@ function IssuancePanel() {
     if (!Number.isFinite(n) || n === 0 || !selected) return;
     setBusy(true);
     try {
-      await api.adminGrantCredits(selected.chatId, n);
+      const result = await api.adminGrantCredits(selected.chatId, n);
       setCreditsAmount("");
+      setSelected((current) => current ? { ...current, credits: result.credits } : current);
       refreshUsers();
       refreshHistory(selected.chatId);
-      setSelected(getUpdatedUser(selected.chatId));
     } catch (err) {
       alert(err instanceof Error ? err.message : String(err));
     } finally {
@@ -878,11 +1240,11 @@ function IssuancePanel() {
     if (!Number.isFinite(n) || n <= 0 || !selected) return;
     setBusy(true);
     try {
-      await api.adminExtendSubscription(selected.chatId, n);
+      const result = await api.adminExtendSubscription(selected.chatId, n);
       setDaysAmount("");
+      setSelected((current) => current ? { ...current, subscriptionUntil: result.subscriptionUntil } : current);
       refreshUsers();
       refreshHistory(selected.chatId);
-      setSelected(getUpdatedUser(selected.chatId));
     } catch (err) {
       alert(err instanceof Error ? err.message : String(err));
     } finally {
@@ -896,19 +1258,14 @@ function IssuancePanel() {
     setBusy(true);
     try {
       await api.adminRevokeSubscription(selected.chatId);
+      setSelected((current) => current ? { ...current, subscriptionUntil: null } : current);
       refreshUsers();
       refreshHistory(selected.chatId);
-      setSelected(getUpdatedUser(selected.chatId));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
-  }
-
-  function getUpdatedUser(chatId: number): AdminUser | null {
-    const u = users.find((x) => x.chatId === chatId);
-    return u ?? null;
   }
 
   function selectUser(u: AdminUser) {
@@ -925,7 +1282,7 @@ function IssuancePanel() {
 
   return (
     <GlassPanel className="reveal">
-      <h2>Выдача</h2>
+      <h2>Пользователи и выдачи</h2>
 
       <input
         className="glass-input"
@@ -943,7 +1300,8 @@ function IssuancePanel() {
               style={{ textAlign: "left", width: "100%" }}
               onClick={() => selectUser(u)}
             >
-              <strong>{u.username ?? `#${u.chatId}`}</strong>
+              <strong>{u.firstName ?? (u.username ? `@${u.username}` : `#${u.chatId}`)}</strong>
+              {u.firstName && u.username ? ` · @${u.username}` : ""}
               <br />
               <small>Credits: {u.credits} | Подписка: {hasSub(u) ? `до ${fmtDate(u.subscriptionUntil!)}` : "нет"}</small>
             </button>
@@ -956,7 +1314,8 @@ function IssuancePanel() {
         <>
           <div className="stack mt-12">
             <p>
-              <strong>{selected.username ?? `#${selected.chatId}`}</strong>
+              <strong>{selected.firstName ?? (selected.username ? `@${selected.username}` : `#${selected.chatId}`)}</strong>
+              {selected.firstName && selected.username ? ` · @${selected.username}` : ""}
               <br />
               Credits: <strong>{selected.credits}</strong>
               {" | "}
@@ -1036,11 +1395,8 @@ function IssuancePanel() {
 // --- Tab bar for admin navigation ---
 
 function AdminTabBar({ tab, onTab }: { tab: AdminTab; onTab: (t: AdminTab) => void }) {
-  const tabsRef = useRef<HTMLElement>(null);
-  useScrollFade(tabsRef);
-
   return (
-    <nav className="admin-tabs" aria-label="Секции админки" ref={tabsRef}>
+    <nav className="admin-tabs" aria-label="Секции админки">
       {(SETTINGS_TABS as AdminTab[]).map((t) => (
         <button
           key={t}
@@ -1048,7 +1404,8 @@ function AdminTabBar({ tab, onTab }: { tab: AdminTab; onTab: (t: AdminTab) => vo
           className={`admin-tab${tab === t ? " active" : ""}`}
           onClick={() => onTab(t)}
         >
-          {SETTINGS_LABELS[t]}
+          <AdminTabIcon tab={t} />
+          <span>{SETTINGS_LABELS[t]}</span>
         </button>
       ))}
     </nav>
@@ -1058,12 +1415,16 @@ function AdminTabBar({ tab, onTab }: { tab: AdminTab; onTab: (t: AdminTab) => vo
 // --- Main AdminScreen with tab navigation ---
 
 export default function AdminScreen() {
-  const [tab, setTab] = useState<AdminTab>("stats");
+  const [tab, setTab] = useState<AdminTab>("overview");
   const [settings, setSettings] = useState<AdminSettings | null>(null);
 
   useEffect(() => {
     api.adminSettings().then(setSettings).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }, [tab]);
 
   function handleSettingChange(key: "activeProvider" | "activeBackend", value: string) {
     if (key === "activeProvider") {
@@ -1074,21 +1435,33 @@ export default function AdminScreen() {
   }
 
   return (
-    <div className="stack">
-      <AdminSettingsBar settings={settings} onChange={handleSettingChange} />
+    <div className="stack admin-shell">
+      <header className="admin-header">
+        <span className="admin-eyebrow">Управление</span>
+        <h1>Админка</h1>
+        <p>{SETTINGS_DESCRIPTIONS[tab]}</p>
+      </header>
       <AdminTabBar tab={tab} onTab={setTab} />
-      {tab === "stats" && <StatsPanel />}
-      {tab === "offers" && <OffersPanel />}
-      {tab === "shop" && <ShopSettingsPanel />}
-      {tab === "users" && <UsersPanel />}
-      {tab === "issuance" && <IssuancePanel />}
-      {tab === "access" && <AccessPanel />}
-      {tab === "providers" && <ProviderConfigPanel />}
-      {tab === "settings" && <UnifiedSettingsPanel />}
-      {tab === "payments" && (
+      {tab === "overview" && <StatsPanel />}
+      {tab === "audience" && (
         <>
-          <PaymentsPanel />
+          <UserManagementPanel />
           <AccessModePanel />
+          <AccessPanel />
+        </>
+      )}
+      {tab === "commerce" && (
+        <>
+          <OffersPanel />
+          <ShopSettingsPanel />
+          <PaymentsPanel />
+        </>
+      )}
+      {tab === "system" && (
+        <>
+          <AdminSettingsBar settings={settings} onChange={handleSettingChange} />
+          <ProviderConfigPanel />
+          <UnifiedSettingsPanel />
         </>
       )}
       {tab === "broadcast" && <BroadcastPanel />}

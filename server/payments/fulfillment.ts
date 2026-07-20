@@ -2,6 +2,7 @@ import type { AppDb } from "../db";
 import { getInvoice, markPaid, type InvoiceProvider } from "./invoices-store";
 import { getOffer } from "./offers-store";
 import { addCredits, extendSubscription, refundCredits } from "../access/users-store";
+import { recordEvent } from "../analytics/store";
 
 export interface FulfillResult {
   fulfilled: boolean;
@@ -25,6 +26,14 @@ export function fulfillPendingInvoice(db: AppDb, provider: InvoiceProvider, exte
     const invoice = getInvoice(db, provider, externalId);
     if (!invoice) return { fulfilled: false };
     if (!markPaid(db, provider, externalId)) return { fulfilled: false, chatId: invoice.chatId };
+
+    recordEvent(
+      db,
+      invoice.chatId,
+      "purchase_completed",
+      { provider, offerId: invoice.offerId, amount: invoice.amount, asset: invoice.asset },
+      `purchase:${invoice.id}`,
+    );
 
     const offer = getOffer(db, invoice.offerId);
     if (!offer) return { fulfilled: true, chatId: invoice.chatId, provider, amount: invoice.amount, asset: invoice.asset };
