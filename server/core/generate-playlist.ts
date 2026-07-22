@@ -6,7 +6,10 @@ import { mapWithConcurrency, withTimeout } from "./concurrency";
 
 export const DEFAULT_MAX_ITERATIONS = 12;
 const SEARCH_CONCURRENCY = 5;
-const LLM_CALL_TIMEOUT_MS = 30_000;
+// Reasoning models (e.g. deepseek-v4-flash's reasoning_content) can spend well
+// over 30s thinking before emitting tool_calls; keep this under the 120s
+// fetch-level abort in openai-compat.ts so a real timeout still wins.
+const LLM_CALL_TIMEOUT_MS = 90_000;
 const MAX_CONSECUTIVE_EMPTY_TURNS = 2;
 
 const LLM_TIMEOUT_SENTINEL = Symbol("llm-timeout");

@@ -1,4 +1,4 @@
-import type { AgentMessage, AgentResult, ToolCall, ToolSpec } from "./types";
+import { parseJsonText, type AgentMessage, type AgentResult, type ToolCall, type ToolSpec } from "./types";
 import { toolsForOpenAIChat } from "./tools";
 
 interface OpenAIChatMessage {
@@ -59,9 +59,13 @@ export async function openaiCompatChat(
   if (!res.ok) {
     throw new Error(`${config.baseUrl} chat completion failed: ${res.status} ${await res.text()}`);
   }
-  const data = (await res.json()) as {
+  // Some OpenAI-compatible proxies (observed on ru.cheapvibecode.ru) tack a
+  // stray SSE "data: [DONE]" terminator onto an otherwise-complete
+  // non-streaming JSON body — strip it before parsing rather than fail.
+  const rawBody = (await res.text()).replace(/\s*data:\s*\[DONE\]\s*$/, "");
+  const data = parseJsonText<{
     choices: Array<{ message: { content: string | null; tool_calls?: Array<{ id: string; function: { name: string; arguments: string } }> } }>;
-  };
+  }>(rawBody, config.baseUrl);
   const message = data.choices[0]?.message;
   const toolCalls: ToolCall[] | undefined = message?.tool_calls?.map((tc) => {
     let args: Record<string, unknown> = {};

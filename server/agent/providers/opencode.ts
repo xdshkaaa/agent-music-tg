@@ -1,4 +1,4 @@
-import type { AgentMessage, AgentProvider, AgentResult, ToolCall, ToolSpec } from "../types";
+import { parseJsonResponse, type AgentMessage, type AgentProvider, type AgentResult, type ToolCall, type ToolSpec } from "../types";
 import { toolsForAnthropic } from "../tools";
 import { openaiCompatChat } from "../openai-compat";
 
@@ -79,7 +79,7 @@ export function createOpencodeProvider(apiKey: string, baseUrl = DEFAULT_BASE_UR
       if (!res.ok) {
         throw new Error(`opencode API failed: ${res.status} ${await res.text()}`);
       }
-      const data = (await res.json()) as { content: AnthropicContentBlock[] };
+      const data = await parseJsonResponse<{ content: AnthropicContentBlock[] }>(res, "opencode");
       let text = "";
       const toolCalls: ToolCall[] = [];
       for (const block of data.content ?? []) {

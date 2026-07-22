@@ -50,7 +50,7 @@ export function humanizeError(raw: string): FriendlyError {
       detail: text,
     };
   }
-  if (/completion failed|chat completion|could not parse|tool call|invalid json/i.test(lower)) {
+  if (/completion failed|chat completion|could not parse|tool call|invalid json|non-json response|failed to parse json/i.test(lower)) {
     return {
       message: "Не удалось собрать плейлист. Попробуйте ещё раз.",
       detail: text,
