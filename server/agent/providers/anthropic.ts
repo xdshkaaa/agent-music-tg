@@ -1,4 +1,4 @@
-import type { AgentMessage, AgentProvider, AgentResult, ToolCall, ToolSpec } from "../types";
+import { parseJsonResponse, type AgentMessage, type AgentProvider, type AgentResult, type ToolCall, type ToolSpec } from "../types";
 import { toolsForAnthropic } from "../tools";
 
 const API_URL = "https://api.anthropic.com/v1/messages";
@@ -61,7 +61,7 @@ export function createAnthropicProvider(apiKey: string, model = DEFAULT_MODEL): 
       if (!res.ok) {
         throw new Error(`anthropic API failed: ${res.status} ${await res.text()}`);
       }
-      const data = (await res.json()) as { content: AnthropicContentBlock[] };
+      const data = await parseJsonResponse<{ content: AnthropicContentBlock[] }>(res, "anthropic");
       let text = "";
       const toolCalls: ToolCall[] = [];
       for (const block of data.content ?? []) {
