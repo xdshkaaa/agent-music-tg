@@ -17,6 +17,8 @@ interface AnthropicContentBlock {
   is_error?: boolean;
 }
 
+const CALL_TIMEOUT_MS = 90_000;
+
 function toAnthropicMessages(messages: AgentMessage[]): Array<{ role: string; content: AnthropicContentBlock[] | string }> {
   const out: Array<{ role: string; content: AnthropicContentBlock[] | string }> = [];
   for (const m of messages) {
@@ -43,6 +45,13 @@ export function createAnthropicProvider(apiKey: string, model = DEFAULT_MODEL): 
   return {
     id: "anthropic",
     async generateMessages(system: string, messages: AgentMessage[], tools: ToolSpec[]): Promise<AgentResult> {
+      // The system prompt and tool schema are identical on every turn of the
+      // up-to-12-iteration agent loop — mark both cacheable so turns after
+      // the first skip re-processing that static prefix (faster + cheaper).
+      const anthropicTools = tools.length > 0 ? (toolsForAnthropic(tools) as Record<string, unknown>[]) : undefined;
+      if (anthropicTools && anthropicTools.length > 0) {
+        anthropicTools[anthropicTools.length - 1]!.cache_control = { type: "ephemeral" };
+      }
       const res = await fetch(API_URL, {
         method: "POST",
         headers: {
@@ -53,10 +62,11 @@ export function createAnthropicProvider(apiKey: string, model = DEFAULT_MODEL): 
         body: JSON.stringify({
           model,
           max_tokens: MAX_TOKENS,
-          system,
+          system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
           messages: toAnthropicMessages(messages),
-          tools: tools.length > 0 ? toolsForAnthropic(tools) : undefined,
+          tools: anthropicTools,
         }),
+        signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
       });
       if (!res.ok) {
         throw new Error(`anthropic API failed: ${res.status} ${await res.text()}`);
