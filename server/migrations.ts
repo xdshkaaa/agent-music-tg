@@ -453,6 +453,30 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // generations has no index on chat_id despite every read query
+    // (history list, rate-limit counts, saved-playlists list, profile stats)
+    // filtering by it — was a full table scan on this ever-growing table.
+    version: 16,
+    run(db) {
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_generations_chat_created
+          ON generations(chat_id, created_at DESC);
+      `);
+    },
+  },
+  {
+    // invoices is queried by chat_id (profile purchase history) and by
+    // status+provider (payment poller fallback) with no supporting index —
+    // both were full table scans.
+    version: 17,
+    run(db) {
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_invoices_chat ON invoices(chat_id, id DESC);
+        CREATE INDEX IF NOT EXISTS idx_invoices_status_provider ON invoices(status, provider);
+      `);
+    },
+  },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;

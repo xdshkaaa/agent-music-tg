@@ -16,6 +16,18 @@ export interface VerifiedInitData {
 
 const MAX_INIT_DATA_AGE_SECONDS = 24 * 60 * 60;
 
+// botToken is static for the process lifetime — every authenticated request
+// (including the many Range requests one song's playback makes against
+// /api/stream) was re-deriving this HMAC key from scratch. Cache per token.
+let cachedSecretKey: { token: string; key: Buffer } | null = null;
+
+function secretKeyFor(botToken: string): Buffer {
+  if (cachedSecretKey && cachedSecretKey.token === botToken) return cachedSecretKey.key;
+  const key = createHmac("sha256", "WebAppData").update(botToken).digest();
+  cachedSecretKey = { token: botToken, key };
+  return key;
+}
+
 /**
  * Verifies Telegram Mini App initData per the Mini Apps spec:
  * https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
@@ -35,7 +47,7 @@ export function verifyInitData(initData: string, botToken: string): VerifiedInit
     .map(([key, value]) => `${key}=${value}`)
     .join("\n");
 
-  const secretKey = createHmac("sha256", "WebAppData").update(botToken).digest();
+  const secretKey = secretKeyFor(botToken);
   const computedHash = createHmac("sha256", secretKey).update(dataCheckString).digest("hex");
 
   if (!timingSafeEqualHex(computedHash, hash)) return null;

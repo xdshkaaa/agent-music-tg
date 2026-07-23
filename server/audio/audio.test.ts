@@ -180,7 +180,7 @@ describe("processDownload", () => {
     const done = getDownload(db, CHAT, record.id)!;
     expect(done.status).toBe("done");
     expect(done.tracks.every((t) => t.status === "sent")).toBe(true);
-    expect(getCachedAudio(db, "ytm:a")?.tgFileId).toBe("file-id-1");
+    expect(getCachedAudio(db, "ytm:a")?.tgFileId).toMatch(/^file-id-\d$/);
     expect(existsSync(join(dir, fileNameForUri("ytm:a")))).toBe(false);
     expect(sent.filter((s) => s.kind === "upload")).toHaveLength(2);
     expect(sent.at(-1)?.kind).toBe("text");

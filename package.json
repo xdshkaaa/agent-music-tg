@@ -9,10 +9,13 @@
     "test": "bun test",
     "openspec:commit": "bun run scripts/openspec-commit.ts",
     "typecheck": "tsc --noEmit",
-    "build:miniapp": "cd miniapp && bun run build"
+    "build:miniapp": "cd miniapp && bun run build",
+    "build:dashboard": "cd dashboard && bun run build",
+    "dashboard": "bun run --watch server/dashboard-server.ts"
   },
   "dependencies": {
     "grammy": "^1.28.0",
+    "headroom-ai": "^0.22.4",
     "hono": "^4.6.0",
     "ytmusic-api": "^5.2.4"
   },
