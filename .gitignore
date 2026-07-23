@@ -4,7 +4,9 @@ node_modules/
 data/*.sqlite
 data/*.sqlite-*
 miniapp/dist/
+dashboard/dist/
 *.log
+.DS_Store
 
 # Local Claude Code tooling, not project source
 .claude/

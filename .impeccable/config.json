@@ -1,0 +1,28 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [
+      "dashboard/**"
+    ],
+    "ignoreValues": [
+      {
+        "rule": "design-system-font",
+        "value": "barlow condensed",
+        "createdAt": "2026-07-23T18:50:12.392Z",
+        "reason": "Dashboard redesign: separate operator-console surface, own type system"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "inter",
+        "createdAt": "2026-07-23T18:50:12.435Z",
+        "reason": "Dashboard redesign: separate operator-console surface, own type system"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "jetbrains mono",
+        "createdAt": "2026-07-23T18:50:12.479Z",
+        "reason": "Dashboard redesign: separate operator-console surface, own type system"
+      }
+    ]
+  }
+}

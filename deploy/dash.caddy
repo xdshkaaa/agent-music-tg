@@ -1,0 +1,43 @@
+# Site block for dash.xdshka.party — the internal operator dashboard.
+# Appended to /etc/caddy/Caddyfile on the VPS as its own :PORT block, same
+# convention as miniapp.caddy/miniapp-dev.caddy: cloudflared's ingress maps
+# the public hostname to this local port, Caddy never does TLS itself.
+#
+# Unlike miniapp.caddy, this dashboard is its own standalone process
+# (server/dashboard-server.ts, its own systemd unit — not part of either the
+# prod or test bot service) because it reads BOTH environments' sqlite files
+# read-only and authenticates via the Telegram Login Widget + a cookie
+# session instead of Mini App initData. Point DASH_API_PORT below at
+# whatever `DASH_PORT` the dashboard-server process is actually running on
+# (default 8789 — see .env.example).
+:8097 {
+	root * /srv/www/dash.xdshka.party/current/dist
+	encode zstd gzip
+
+	@api path /api/*
+	handle @api {
+		reverse_proxy 127.0.0.1:8789
+	}
+
+	handle {
+		try_files {path} /index.html
+		file_server
+	}
+
+	@hashed path *.css *.js *.svg *.woff2 *.png *.jpg *.webp
+	header @hashed Cache-Control "public, max-age=31536000, immutable"
+
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		Cache-Control "no-cache"
+		-Server
+	}
+
+	log {
+		output file /var/log/caddy/dash.xdshka.party.access.log
+		format console
+	}
+}
