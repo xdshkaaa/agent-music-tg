@@ -10,6 +10,7 @@ miniapp/dist/
 .claude/
 .agents/
 skills-lock.json
+graphify-out/
 
 # Deploy config (infra details, optional)
 deploy/deploy.conf
