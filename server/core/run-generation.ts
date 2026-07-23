@@ -114,7 +114,7 @@ function fireVerification(playlist: FinalizedPlaylist): void {
   // Resolution also verifies availability, avoiding a duplicate yt-dlp probe.
   if (_streamResolver) {
     const resolver = _streamResolver;
-    void mapWithConcurrency(playlist.tracks, 2, async (t) => {
+    void mapWithConcurrency(playlist.tracks, 4, async (t) => {
       verificationStore.set(t.uri, "checking");
       try {
         await resolver.resolve(t.uri);
