@@ -1,5 +1,6 @@
 import type { Album, ArtistCard, MusicProvider, ProviderCapabilities, Track } from "./types";
 import { withTimeout } from "../core/concurrency";
+import { withTrackCache, withQueryCache } from "./search-cache";
 
 const SEARCH_TIMEOUT_MS = 15_000;
 
@@ -53,28 +54,34 @@ export class YouTubeMusicBackend implements MusicProvider {
   }
 
   async searchTrack(artist: string, title: string): Promise<Track | null> {
-    const api = await this.ensureApi();
-    const songs = await withTimeout(api.searchSongs(`${artist} ${title}`), SEARCH_TIMEOUT_MS, [] as any[]);
-    const want = normalizeName(artist);
-    const match =
-      songs.find((s) => {
-        const got = normalizeName(s.artist?.name ?? "");
-        return got === want || got.includes(want) || want.includes(got);
-      }) ?? songs[0];
-    return match ? toTrack(match) : null;
+    return withTrackCache("youtube-music", artist, title, async () => {
+      const api = await this.ensureApi();
+      const songs = await withTimeout(api.searchSongs(`${artist} ${title}`), SEARCH_TIMEOUT_MS, [] as any[]);
+      const want = normalizeName(artist);
+      const match =
+        songs.find((s) => {
+          const got = normalizeName(s.artist?.name ?? "");
+          return got === want || got.includes(want) || want.includes(got);
+        }) ?? songs[0];
+      return match ? toTrack(match) : null;
+    });
   }
 
   async searchTracks(query: string, limit = 10): Promise<Track[]> {
-    const api = await this.ensureApi();
-    const songs = await withTimeout(api.searchSongs(query), SEARCH_TIMEOUT_MS, [] as any[]);
-    return songs.slice(0, limit).map(toTrack);
+    return withQueryCache("youtube-music", "tracks", query, limit, async () => {
+      const api = await this.ensureApi();
+      const songs = await withTimeout(api.searchSongs(query), SEARCH_TIMEOUT_MS, [] as any[]);
+      return songs.slice(0, limit).map(toTrack);
+    });
   }
 
   async searchArtist(name: string): Promise<{ id: string; name: string } | null> {
-    const api = await this.ensureApi();
-    const artists = await api.searchArtists(name);
-    const item = artists[0];
-    return item?.artistId ? { id: item.artistId, name: item.name } : null;
+    return withQueryCache("youtube-music", "artist", name, 1, async () => {
+      const api = await this.ensureApi();
+      const artists = await api.searchArtists(name);
+      const item = artists[0];
+      return item?.artistId ? { id: item.artistId, name: item.name } : null;
+    });
   }
 
   async getArtistTopTracks(artistId: string, limit = 5): Promise<Track[]> {
@@ -84,13 +91,15 @@ export class YouTubeMusicBackend implements MusicProvider {
   }
 
   async searchArtists(query: string, limit = 5): Promise<ArtistCard[]> {
-    const api = await this.ensureApi();
-    const artists = await withTimeout(api.searchArtists(query), SEARCH_TIMEOUT_MS, [] as any[]);
-    return artists.slice(0, limit).map((a: any) => ({
-      id: a.artistId,
-      name: a.name,
-      artwork: a.thumbnails?.at(-1)?.url,
-    }));
+    return withQueryCache("youtube-music", "artists", query, limit, async () => {
+      const api = await this.ensureApi();
+      const artists = await withTimeout(api.searchArtists(query), SEARCH_TIMEOUT_MS, [] as any[]);
+      return artists.slice(0, limit).map((a: any) => ({
+        id: a.artistId,
+        name: a.name,
+        artwork: a.thumbnails?.at(-1)?.url,
+      }));
+    });
   }
 
   async getArtistAlbums(artistId: string, limit = 10): Promise<Album[]> {
@@ -106,15 +115,17 @@ export class YouTubeMusicBackend implements MusicProvider {
   }
 
   async searchAlbums(query: string, limit = 10): Promise<Album[]> {
-    const api = await this.ensureApi();
-    const albums = await withTimeout(api.searchAlbums(query), SEARCH_TIMEOUT_MS, [] as any[]);
-    return albums.slice(0, limit).map((a: any) => ({
-      uri: `ytm:album:${a.albumId}`,
-      title: a.name,
-      artist: a.artist?.name ?? "",
-      artwork: a.thumbnails?.at(-1)?.url,
-      deepLink: `https://music.youtube.com/browse/MPREb_${a.albumId}`,
-    }));
+    return withQueryCache("youtube-music", "albums", query, limit, async () => {
+      const api = await this.ensureApi();
+      const albums = await withTimeout(api.searchAlbums(query), SEARCH_TIMEOUT_MS, [] as any[]);
+      return albums.slice(0, limit).map((a: any) => ({
+        uri: `ytm:album:${a.albumId}`,
+        title: a.name,
+        artist: a.artist?.name ?? "",
+        artwork: a.thumbnails?.at(-1)?.url,
+        deepLink: `https://music.youtube.com/browse/MPREb_${a.albumId}`,
+      }));
+    });
   }
 
   async getAlbumTracks(albumId: string, limit = 30): Promise<Track[]> {

@@ -21,3 +21,15 @@ export function createMusicProvider(backend: MusicBackend): MusicProvider {
       return youtubeMusic;
   }
 }
+
+/**
+ * Fires a throwaway search against every backend at process startup so the
+ * first real user request doesn't pay for YTM API session init / SoundCloud
+ * client_id scraping (both otherwise happen lazily on first use per process).
+ * Best-effort — failures are swallowed, the lazy path still works as a fallback.
+ */
+export function prewarmMusicProviders(): void {
+  for (const backend of [soundcloud, youtubeMusic]) {
+    void backend.searchTrack("a", "a").catch(() => {});
+  }
+}

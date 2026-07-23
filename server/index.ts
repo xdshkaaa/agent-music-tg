@@ -21,6 +21,7 @@ import type { AudioDeps } from "./api/audio-routes";
 import { reconcileStaleDownloads } from "./audio/downloads-store";
 import { createTelegramBroadcastSender } from "./admin/telegram-broadcast";
 import { createShutdownHandler } from "./lifecycle";
+import { prewarmMusicProviders } from "./music/registry";
 
 const db = openDb(env.dbPath);
 bootstrapAllowlist(db);
@@ -38,6 +39,10 @@ const bot = createBot(db);
 // When emoji-symbols.json is empty or the fetch fails, the map stays empty
 // and bot replies fall back to clean text. See server/bot/emoji.ts.
 void loadCustomEmojis(bot);
+
+// Best-effort: warm both music backends' lazy session/client_id init so the
+// first real generation isn't the one paying that latency.
+prewarmMusicProviders();
 
 const send = createTelegramBroadcastSender(bot, env.publicOrigin);
 

@@ -1,4 +1,5 @@
 import type { Album, ArtistCard, MusicProvider, ProviderCapabilities, Track } from "./types";
+import { withTrackCache, withQueryCache } from "./search-cache";
 
 const API_BASE = "https://api-v2.soundcloud.com";
 
@@ -90,36 +91,44 @@ export class SoundCloudBackend implements MusicProvider {
   }
 
   async searchTrack(artist: string, title: string): Promise<Track | null> {
-    const q = encodeURIComponent(`${artist} ${title}`);
-    const data = await this.request(`/search/tracks?q=${q}&limit=10`);
-    const items = (data.collection ?? []) as any[];
-    const item = pickByArtist(items, artist) ?? items[0];
-    return item ? toTrack(item) : null;
+    return withTrackCache("soundcloud", artist, title, async () => {
+      const q = encodeURIComponent(`${artist} ${title}`);
+      const data = await this.request(`/search/tracks?q=${q}&limit=10`);
+      const items = (data.collection ?? []) as any[];
+      const item = pickByArtist(items, artist) ?? items[0];
+      return item ? toTrack(item) : null;
+    });
   }
 
   async searchTracks(query: string, rawLimit = 10): Promise<Track[]> {
-    const q = encodeURIComponent(query);
     const limit = clampLimit(rawLimit, 25);
-    const data = await this.request(`/search/tracks?q=${q}&limit=${limit}`);
-    return ((data.collection ?? []) as any[]).slice(0, limit).map(toTrack);
+    return withQueryCache("soundcloud", "tracks", query, limit, async () => {
+      const q = encodeURIComponent(query);
+      const data = await this.request(`/search/tracks?q=${q}&limit=${limit}`);
+      return ((data.collection ?? []) as any[]).slice(0, limit).map(toTrack);
+    });
   }
 
   async searchArtist(name: string): Promise<{ id: string; name: string } | null> {
-    const q = encodeURIComponent(name);
-    const data = await this.request(`/search/users?q=${q}&limit=1`);
-    const item = (data.collection ?? [])[0];
-    return item ? { id: String(item.id), name: item.username } : null;
+    return withQueryCache("soundcloud", "artist", name, 1, async () => {
+      const q = encodeURIComponent(name);
+      const data = await this.request(`/search/users?q=${q}&limit=1`);
+      const item = (data.collection ?? [])[0];
+      return item ? { id: String(item.id), name: item.username } : null;
+    });
   }
 
   async searchArtists(name: string, rawLimit = 5): Promise<ArtistCard[]> {
-    const q = encodeURIComponent(name);
     const limit = clampLimit(rawLimit, 10);
-    const data = await this.request(`/search/users?q=${q}&limit=${limit}`);
-    return ((data.collection ?? []) as any[]).slice(0, limit).map((item) => ({
-      id: String(item.id),
-      name: item.username,
-      artwork: item.avatar_url ?? undefined,
-    }));
+    return withQueryCache("soundcloud", "artists", name, limit, async () => {
+      const q = encodeURIComponent(name);
+      const data = await this.request(`/search/users?q=${q}&limit=${limit}`);
+      return ((data.collection ?? []) as any[]).slice(0, limit).map((item) => ({
+        id: String(item.id),
+        name: item.username,
+        artwork: item.avatar_url ?? undefined,
+      }));
+    });
   }
 
   /** SoundCloud has no album/latest-releases concept surfaced here — omitted client-side. */
@@ -139,16 +148,18 @@ export class SoundCloudBackend implements MusicProvider {
   }
 
   async searchAlbums(query: string, rawLimit = 10): Promise<Album[]> {
-    const q = encodeURIComponent(query);
     const limit = clampLimit(rawLimit, 25);
-    const data = await this.request(`/search/albums?q=${q}&limit=${limit}`);
-    return ((data.collection ?? []) as any[]).slice(0, limit).map((item) => ({
-      uri: `sc:${item.id}`,
-      title: item.title,
-      artist: item.user?.username ?? "",
-      artwork: item.artwork_url ?? undefined,
-      deepLink: item.permalink_url,
-    }));
+    return withQueryCache("soundcloud", "albums", query, limit, async () => {
+      const q = encodeURIComponent(query);
+      const data = await this.request(`/search/albums?q=${q}&limit=${limit}`);
+      return ((data.collection ?? []) as any[]).slice(0, limit).map((item) => ({
+        uri: `sc:${item.id}`,
+        title: item.title,
+        artist: item.user?.username ?? "",
+        artwork: item.artwork_url ?? undefined,
+        deepLink: item.permalink_url,
+      }));
+    });
   }
 
   async getAlbumTracks(albumId: string, rawLimit = 30): Promise<Track[]> {
