@@ -3,6 +3,7 @@ import type { AppDb } from "../db";
 import { getCachedAudio, setCachedAudio } from "./cache";
 import type { Extractor } from "./extractor";
 import { detailBlock, escapeHtml, messageTitle } from "../bot/message-format";
+import { mapWithConcurrency } from "../core/concurrency";
 import {
   finalStatusFor,
   setDownloadStatus,
@@ -118,16 +119,23 @@ function summaryText(playlistName: string, tracks: DownloadTrack[]): string {
   return `${messageTitle("warning", "Плейлист отправлен частично")}\n<b>${name}</b> · ${sent} из ${tracks.length}\n\n${detailBlock(lines)}`;
 }
 
+// How many tracks are delivered (cache-hit send or extract+upload) at once.
+// Actual yt-dlp extraction is further capped by deps.maxConcurrentExtractions
+// (default 2) via withExtractionSlot, so this only widens the win for
+// cache-hit sends, which need no extraction slot.
+const DELIVERY_CONCURRENCY = 3;
+
 /**
- * Processes one download job sequentially: per-track cache-hit send or
- * extract+upload, tolerating individual failures, then a summary message.
- * Persists per-track status after each track so progress survives restarts.
+ * Processes one download job: per-track cache-hit send or extract+upload,
+ * up to DELIVERY_CONCURRENCY at once, tolerating individual failures, then a
+ * summary message. Persists per-track status after each track completes so
+ * progress survives restarts.
  */
 export async function processDownload(db: AppDb, record: DownloadRecord, deps: DeliverDeps): Promise<void> {
   setDownloadStatus(db, record.id, "processing");
   const tracks = record.tracks.map((t) => ({ ...t }));
 
-  for (const track of tracks) {
+  await mapWithConcurrency(tracks, DELIVERY_CONCURRENCY, async (track) => {
     try {
       await deliverTrack(db, record.chatId, track, deps);
       track.status = "sent";
@@ -137,7 +145,7 @@ export async function processDownload(db: AppDb, record: DownloadRecord, deps: D
       track.error = e instanceof Error ? e.message : String(e);
     }
     setDownloadTracks(db, record.id, tracks);
-  }
+  });
 
   try {
     await deps.sender.sendText(record.chatId, summaryText(record.playlistName, tracks));
