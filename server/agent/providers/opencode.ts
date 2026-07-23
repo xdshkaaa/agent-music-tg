@@ -5,6 +5,7 @@ import { openaiCompatChat } from "../openai-compat";
 const DEFAULT_BASE_URL = "https://opencode.ai/zen/v1";
 const DEFAULT_MODEL = "claude-sonnet-5";
 const MAX_TOKENS = 4096;
+const CALL_TIMEOUT_MS = 90_000;
 
 interface AnthropicContentBlock {
   type: "text" | "tool_use" | "tool_result";
@@ -62,6 +63,13 @@ export function createOpencodeProvider(apiKey: string, baseUrl = DEFAULT_BASE_UR
   return {
     id: "opencode",
     async generateMessages(system: string, messages: AgentMessage[], tools: ToolSpec[]): Promise<AgentResult> {
+      // The system prompt and tool schema are identical on every turn of the
+      // up-to-12-iteration agent loop — mark both cacheable so turns after
+      // the first skip re-processing that static prefix (faster + cheaper).
+      const anthropicTools = tools.length > 0 ? (toolsForAnthropic(tools) as Record<string, unknown>[]) : undefined;
+      if (anthropicTools && anthropicTools.length > 0) {
+        anthropicTools[anthropicTools.length - 1]!.cache_control = { type: "ephemeral" };
+      }
       const res = await fetch(`${baseUrl.replace(/\/+$/, "")}/messages`, {
         method: "POST",
         headers: {
@@ -71,10 +79,11 @@ export function createOpencodeProvider(apiKey: string, baseUrl = DEFAULT_BASE_UR
         body: JSON.stringify({
           model,
           max_tokens: MAX_TOKENS,
-          system,
+          system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
           messages: toAnthropicMessages(messages),
-          tools: tools.length > 0 ? toolsForAnthropic(tools) : undefined,
+          tools: anthropicTools,
         }),
+        signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
       });
       if (!res.ok) {
         throw new Error(`opencode API failed: ${res.status} ${await res.text()}`);
