@@ -119,6 +119,32 @@ export async function loadCustomEmojis(bot: Bot<BotContext>): Promise<void> {
   }
 }
 
+/** A custom-emoji symbol that actually resolved at startup, with its unicode preview. */
+export interface EmojiSymbolOption {
+  symbol: string;
+  /** Unicode glyph clients can render as a stand-in for the premium sticker. */
+  fallback: string;
+}
+
+/**
+ * Lists every symbol whose custom_emoji_id resolved at startup, sorted for a
+ * stable picker order. This is the single source of truth for which symbols an
+ * operator may attach to a broadcast button — anything outside it would render
+ * as a plain label, so callers should reject unknown symbols rather than
+ * silently dropping them. Empty when `emoji-symbols.json` is missing or the
+ * startup fetch failed.
+ */
+export function listEmojiSymbols(): EmojiSymbolOption[] {
+  return [...symbolToEmojiId.keys()]
+    .sort()
+    .map((symbol) => ({ symbol, fallback: fallbackSymbol(symbol) }));
+}
+
+/** True when `symbol` resolved to a custom emoji at startup. */
+export function hasEmojiSymbol(symbol: string): boolean {
+  return symbolToEmojiId.has(symbol);
+}
+
 /**
  * Returns the inline-button first-arg object: `{ text, icon_custom_emoji_id?, style? }`.
  * When `symbol` is mapped, `icon_custom_emoji_id` is set (Telegram renders the

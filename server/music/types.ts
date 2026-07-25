@@ -8,6 +8,10 @@ export interface Track {
   artwork?: string;
   /** Present on resolve-only backends (SoundCloud/YouTube Music): open-in-app link. */
   deepLink?: string;
+  /** Play count, when the backend reports one (SoundCloud only). */
+  playbackCount?: number;
+  /** Like count, when the backend reports one (SoundCloud only). */
+  likeCount?: number;
 }
 
 export interface Album {
@@ -25,6 +29,17 @@ export interface ArtistCard {
   id: string;
   name: string;
   artwork?: string;
+}
+
+/**
+ * Richer artist metadata for the Mini App's artist screen. Every field beyond
+ * the ArtistCard base is optional because coverage differs per backend —
+ * neither service exposes anything like Spotify's monthly listeners.
+ */
+export interface ArtistDetails extends ArtistCard {
+  /** YouTube Music: subscribers. SoundCloud: followers. */
+  followers?: number;
+  description?: string;
 }
 
 export interface RemotePlaylist {
@@ -56,6 +71,12 @@ export interface MusicProvider {
   searchArtists(query: string, limit?: number): Promise<ArtistCard[]>;
   /** Latest albums for a resolved artist; empty when the backend has no such data. */
   getArtistAlbums(artistId: string, limit?: number): Promise<Album[]>;
+  /**
+   * Avatar, follower count and bio for a resolved artist. Optional: callers
+   * must render the artist screen fine without it, and it returns null
+   * whenever the backend has nothing to add.
+   */
+  getArtistDetails?(artistId: string): Promise<ArtistDetails | null>;
 
   /** Free-text search returning up to `limit` candidate albums for a phrase. */
   searchAlbums(query: string, limit?: number): Promise<Album[]>;

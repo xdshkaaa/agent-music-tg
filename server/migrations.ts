@@ -477,6 +477,19 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // Admin statistics and the operator dashboard filter by acquisition,
+    // generation and payment date ranges. None of those columns was indexed,
+    // so every stats panel scanned users, generations and invoices end to end.
+    version: 18,
+    run(db) {
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_users_first_seen ON users(first_seen);
+        CREATE INDEX IF NOT EXISTS idx_generations_created ON generations(created_at);
+        CREATE INDEX IF NOT EXISTS idx_invoices_paid_at ON invoices(paid_at) WHERE status = 'paid';
+      `);
+    },
+  },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;

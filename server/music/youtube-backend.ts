@@ -1,4 +1,4 @@
-import type { Album, ArtistCard, MusicProvider, ProviderCapabilities, Track } from "./types";
+import type { Album, ArtistCard, ArtistDetails, MusicProvider, ProviderCapabilities, Track } from "./types";
 import { withTimeout } from "../core/concurrency";
 import { withTrackCache, withQueryCache } from "./search-cache";
 
@@ -9,6 +9,7 @@ interface YtmApi {
   searchArtists(query: string): Promise<any[]>;
   getArtistSongs(artistId: string): Promise<any[]>;
   getArtistAlbums(artistId: string): Promise<any[]>;
+  getArtist(artistId: string): Promise<any>;
   searchAlbums(query: string): Promise<any[]>;
   getAlbum(albumId: string): Promise<any>;
 }
@@ -85,9 +86,29 @@ export class YouTubeMusicBackend implements MusicProvider {
   }
 
   async getArtistTopTracks(artistId: string, limit = 5): Promise<Track[]> {
-    const api = await this.ensureApi();
-    const songs = await api.getArtistSongs(artistId);
-    return songs.slice(0, limit).map(toTrack);
+    return withQueryCache("youtube-music", "artist-top", artistId, limit, async () => {
+      const api = await this.ensureApi();
+      const songs = await withTimeout(api.getArtistSongs(artistId), SEARCH_TIMEOUT_MS, [] as any[]);
+      return songs.slice(0, limit).map(toTrack);
+    });
+  }
+
+  /**
+   * Only the artist avatar is available here: ytmusic-api's ArtistFull carries
+   * no subscriber count and no bio, so `followers`/`description` stay undefined
+   * on this backend and the artist screen simply omits those rows.
+   */
+  async getArtistDetails(artistId: string): Promise<ArtistDetails | null> {
+    return withQueryCache("youtube-music", "artist-details", artistId, 1, async () => {
+      const api = await this.ensureApi();
+      const artist = await withTimeout(api.getArtist(artistId), SEARCH_TIMEOUT_MS, null as any);
+      if (!artist?.artistId) return null;
+      return {
+        id: artist.artistId,
+        name: artist.name ?? "",
+        artwork: artist.thumbnails?.at(-1)?.url,
+      };
+    });
   }
 
   async searchArtists(query: string, limit = 5): Promise<ArtistCard[]> {
@@ -132,9 +153,11 @@ export class YouTubeMusicBackend implements MusicProvider {
     // albumId is the opaque id returned verbatim by searchAlbums; reject
     // anything else to avoid path/SSRF manipulation of the API call.
     if (!/^[A-Za-z0-9_-]+$/.test(albumId)) throw new Error(`invalid albumId: ${albumId}`);
-    const api = await this.ensureApi();
-    const album = await withTimeout(api.getAlbum(albumId), SEARCH_TIMEOUT_MS, null as any);
-    const songs = (album?.songs ?? []) as any[];
-    return songs.slice(0, limit).map(toTrack);
+    return withQueryCache("youtube-music", "album-tracks", albumId, limit, async () => {
+      const api = await this.ensureApi();
+      const album = await withTimeout(api.getAlbum(albumId), SEARCH_TIMEOUT_MS, null as any);
+      const songs = (album?.songs ?? []) as any[];
+      return songs.slice(0, limit).map(toTrack);
+    });
   }
 }

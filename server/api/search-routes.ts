@@ -98,7 +98,7 @@ export function createSearchRoutes(db: AppDb): Hono<AppEnv> {
           artistId = resolved.id;
           artistName = resolved.name;
         }
-        const [topTracks, albums] = await Promise.all([
+        const [topTracks, albums, details] = await Promise.all([
           music.getArtistTopTracks(artistId, 10).catch((e: unknown) => {
             console.error("[artist/topTracks]", e);
             return [];
@@ -107,9 +107,24 @@ export function createSearchRoutes(db: AppDb): Hono<AppEnv> {
             console.error("[artist/albums]", e);
             return [];
           }),
+          // Optional per backend, and best-effort: a failure here must not cost
+          // the user the artist page, only its avatar/stats rows.
+          music.getArtistDetails?.(artistId).catch((e: unknown) => {
+            console.error("[artist/details]", e);
+            return null;
+          }) ?? null,
         ]);
-        const artwork = topTracks[0]?.artwork ?? albums[0]?.artwork;
-        return c.json({ id: artistId, name: artistName || topTracks[0]?.artist || "", artwork, topTracks, albums });
+        // Prefer the real artist avatar; fall back to borrowing a track/album cover.
+        const artwork = details?.artwork ?? topTracks[0]?.artwork ?? albums[0]?.artwork;
+        return c.json({
+          id: artistId,
+          name: artistName || details?.name || topTracks[0]?.artist || "",
+          artwork,
+          followers: details?.followers,
+          description: details?.description,
+          topTracks,
+          albums,
+        });
       } catch (e) {
         console.error("[artist]", e);
         return c.json({ error: "artist lookup failed" }, 502);

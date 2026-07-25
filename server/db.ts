@@ -18,6 +18,10 @@ export function openDb(path: string): AppDb {
   // timeout a writer collision throws SQLITE_BUSY immediately instead of
   // waiting briefly for the lock to clear.
   db.run("PRAGMA busy_timeout = 5000;");
+  // Read-heavy embedded workload: a larger page cache (negative = KiB, so 64 MiB)
+  // and in-memory temp tables keep the analytics aggregates off the disk.
+  db.run("PRAGMA cache_size = -65536;");
+  db.run("PRAGMA temp_store = MEMORY;");
   runMigrations(db);
   return db;
 }

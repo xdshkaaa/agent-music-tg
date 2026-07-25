@@ -1,7 +1,19 @@
-import type { Album, ArtistCard, MusicProvider, ProviderCapabilities, Track } from "./types";
+import type { Album, ArtistCard, ArtistDetails, MusicProvider, ProviderCapabilities, Track } from "./types";
 import { withTrackCache, withQueryCache } from "./search-cache";
 
 const API_BASE = "https://api-v2.soundcloud.com";
+
+/**
+ * Every SoundCloud call is on the agent's critical path, so none may hang: a
+ * stalled upstream would otherwise block a generation iteration until the
+ * 90 s LLM-loop timeout. AbortSignal actually cancels the socket, unlike the
+ * race-based withTimeout used elsewhere.
+ */
+const REQUEST_TIMEOUT_MS = 10_000;
+
+function fetchWithTimeout(url: string, timeoutMs = REQUEST_TIMEOUT_MS): Promise<Response> {
+  return fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+}
 
 function normalizeName(s: string): string {
   return s.normalize("NFKD").toLowerCase().trim();
@@ -23,12 +35,14 @@ function toTrack(item: any): Track {
     durationMs: item.duration,
     artwork: item.artwork_url ?? undefined,
     deepLink: item.permalink_url,
+    ...(typeof item.playback_count === "number" ? { playbackCount: item.playback_count } : {}),
+    ...(typeof item.likes_count === "number" ? { likeCount: item.likes_count } : {}),
   };
 }
 
 /** Scrapes a SoundCloud api-v2 client_id from the public site — ported from spotify-harness-tui. */
 async function scrapeClientId(): Promise<string | null> {
-  const page = await fetch("https://soundcloud.com/");
+  const page = await fetchWithTimeout("https://soundcloud.com/");
   if (!page.ok) return null;
   const html = await page.text();
   const scriptUrls = [...html.matchAll(/<script[^>]+src="([^"]+\.js)"/g)]
@@ -36,7 +50,7 @@ async function scrapeClientId(): Promise<string | null> {
     .filter((u) => u.includes("sndcdn.com"));
   for (const url of scriptUrls.reverse()) {
     try {
-      const res = await fetch(url);
+      const res = await fetchWithTimeout(url);
       if (!res.ok) continue;
       const js = await res.text();
       const match = js.match(/client_id\s*[:=]\s*"([a-zA-Z0-9]{16,})"/);
@@ -78,11 +92,11 @@ export class SoundCloudBackend implements MusicProvider {
     const clientId = await this.ensureClientId();
     const sep = path.includes("?") ? "&" : "?";
     const url = () => `${API_BASE}${path}${sep}client_id=${clientId}`;
-    let res = await fetch(url());
+    let res = await fetchWithTimeout(url());
     if (res.status === 401 || res.status === 403) {
       this.clientId = null;
       const fresh = await this.ensureClientId();
-      res = await fetch(`${API_BASE}${path}${sep}client_id=${fresh}`);
+      res = await fetchWithTimeout(`${API_BASE}${path}${sep}client_id=${fresh}`);
     }
     if (!res.ok) {
       throw new Error(`soundcloud API ${path.split("?")[0]} failed: ${res.status}`);
@@ -143,8 +157,27 @@ export class SoundCloudBackend implements MusicProvider {
     // path (path traversal / SSRF against an internal host).
     if (!/^\d+$/.test(artistId)) throw new Error(`invalid artistId: ${artistId}`);
     const limit = clampLimit(rawLimit, 20);
-    const data = await this.request(`/users/${artistId}/toptracks?limit=${limit}`);
-    return ((data.collection ?? []) as any[]).slice(0, limit).map(toTrack);
+    return withQueryCache("soundcloud", "artist-top", artistId, limit, async () => {
+      const data = await this.request(`/users/${artistId}/toptracks?limit=${limit}`);
+      return ((data.collection ?? []) as any[]).slice(0, limit).map(toTrack);
+    });
+  }
+
+  async getArtistDetails(artistId: string): Promise<ArtistDetails | null> {
+    // Same opaque-numeric-id guard as getArtistTopTracks: the value round-trips
+    // through the agent and the Mini App before landing in a request path.
+    if (!/^\d+$/.test(artistId)) throw new Error(`invalid artistId: ${artistId}`);
+    return withQueryCache("soundcloud", "artist-details", artistId, 1, async () => {
+      const item = await this.request(`/users/${artistId}`);
+      if (!item?.id) return null;
+      return {
+        id: String(item.id),
+        name: item.username ?? "",
+        artwork: item.avatar_url ?? undefined,
+        ...(typeof item.followers_count === "number" ? { followers: item.followers_count } : {}),
+        ...(item.description ? { description: String(item.description) } : {}),
+      };
+    });
   }
 
   async searchAlbums(query: string, rawLimit = 10): Promise<Album[]> {
@@ -167,8 +200,10 @@ export class SoundCloudBackend implements MusicProvider {
     // that isn't the opaque numeric id SoundCloud returns.
     if (!/^\d+$/.test(albumId)) throw new Error(`invalid albumId: ${albumId}`);
     const limit = clampLimit(rawLimit, 50);
-    const data = await this.request(`/playlists/${albumId}/tracks?limit=${limit}`);
-    return ((data.collection ?? []) as any[]).slice(0, limit).map(toTrack);
+    return withQueryCache("soundcloud", "album-tracks", albumId, limit, async () => {
+      const data = await this.request(`/playlists/${albumId}/tracks?limit=${limit}`);
+      return ((data.collection ?? []) as any[]).slice(0, limit).map(toTrack);
+    });
   }
 }
 

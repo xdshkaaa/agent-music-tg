@@ -34,6 +34,7 @@ import {
   type BroadcastButton,
   type BroadcastMedia,
 } from "../admin/broadcast";
+import { listEmojiSymbols } from "../bot/emoji";
 import { getGrantHistoryForUser, getAllGrantHistory, countGrantHistory } from "../admin/grant-history";
 import { getAllowlist, addToAllowlist, removeFromAllowlist, setChatAdminRole } from "../lib/access-control";
 import { env } from "../env";
@@ -206,6 +207,14 @@ export function createAdminRoutes(db: AppDb, deps: ApiDeps): Hono<AppEnv> {
     if (!Number.isFinite(id)) return c.json({ error: "invalid id" }, 400);
     deleteOffer(db, id);
     return c.json({ ok: true });
+  });
+
+  // Symbols an operator may attach to a broadcast button. Only symbols whose
+  // custom_emoji_id resolved at startup are offered, so any picked value is
+  // guaranteed to render as a premium emoji. Empty when the bot has no
+  // custom-emoji mapping — the picker then simply has nothing to show.
+  app.get("/admin/emoji-symbols", requireAdmin, (c) => {
+    return c.json({ symbols: listEmojiSymbols() });
   });
 
   app.post("/admin/broadcast", requireAdmin, async (c) => {

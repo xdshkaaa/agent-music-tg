@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { AppDb } from "../db";
 import type { AppEnv } from "./context";
@@ -27,11 +26,20 @@ export function createMeRoutes(db: AppDb): Hono<AppEnv> {
   // chat for a few minutes instead of re-resolving on every call.
   const AVATAR_CACHE_TTL_MS = 5 * 60_000;
   const avatarCache = new Map<number, { url: string | null; at: number }>();
+  // Chats whose avatar is being resolved right now, so a burst of /me polls
+  // starts exactly one refresh.
+  const avatarRefreshing = new Set<number>();
+  // Telegram is on the far side of the network; never let it hold a request.
+  const TELEGRAM_TIMEOUT_MS = 5_000;
+
+  function telegramFetch(url: string): Promise<Response> {
+    return fetch(url, { signal: AbortSignal.timeout(TELEGRAM_TIMEOUT_MS) });
+  }
 
   // Fetch the user's current profile photo file_id from Telegram and persist
   // it, so avatars work even for users who never sent /start (or changed photo).
   async function fetchAndStorePhotoFileId(chatId: number): Promise<string | null> {
-    const res = await fetch(`https://api.telegram.org/bot${env.telegramBotToken}/getUserProfilePhotos?user_id=${chatId}&limit=1`);
+    const res = await telegramFetch(`https://api.telegram.org/bot${env.telegramBotToken}/getUserProfilePhotos?user_id=${chatId}&limit=1`);
     const data = await res.json() as { ok: boolean; result?: { photos: { file_id: string }[][] } };
     const first = data.ok ? data.result?.photos?.[0] : undefined;
     const fileId = first && first.length > 0 ? first[first.length - 1]!.file_id : null;
@@ -39,11 +47,8 @@ export function createMeRoutes(db: AppDb): Hono<AppEnv> {
     return fileId;
   }
 
-  /** Resolves the chat's current avatar URL, hitting Telegram at most once per TTL window. */
+  /** Hits Telegram (and possibly ffmpeg) to resolve the chat's avatar URL. */
   async function resolvePhotoUrl(chatId: number, user: ReturnType<typeof getUser>): Promise<string | null> {
-    const cached = avatarCache.get(chatId);
-    if (cached && Date.now() - cached.at < AVATAR_CACHE_TTL_MS) return cached.url;
-
     let photoUrl: string | null = null;
     try {
       let fileId = user?.photoFileId ?? null;
@@ -51,13 +56,13 @@ export function createMeRoutes(db: AppDb): Hono<AppEnv> {
         fileId = await fetchAndStorePhotoFileId(chatId);
       }
       if (fileId) {
-        let res = await fetch(`https://api.telegram.org/bot${env.telegramBotToken}/getFile?file_id=${fileId}`);
+        let res = await telegramFetch(`https://api.telegram.org/bot${env.telegramBotToken}/getFile?file_id=${fileId}`);
         let data = await res.json() as { ok: boolean; result?: { file_path: string; file_unique_id: string } };
         if (!data.ok && user?.photoFileId) {
           // Stored file_id went stale (photo deleted/changed) — refresh it.
           fileId = await fetchAndStorePhotoFileId(chatId);
           if (fileId) {
-            res = await fetch(`https://api.telegram.org/bot${env.telegramBotToken}/getFile?file_id=${fileId}`);
+            res = await telegramFetch(`https://api.telegram.org/bot${env.telegramBotToken}/getFile?file_id=${fileId}`);
             data = await res.json() as { ok: boolean; result?: { file_path: string; file_unique_id: string } };
           }
         }
@@ -92,11 +97,48 @@ export function createMeRoutes(db: AppDb): Hono<AppEnv> {
     return photoUrl;
   }
 
+  /**
+   * Returns the avatar URL without ever blocking on Telegram: a fresh cache
+   * entry is served as-is, a stale one is served while a single background
+   * refresh runs, and a cold cache returns null and fills in by the next poll.
+   * Resolving inline used to cost up to two Telegram round-trips plus an ffmpeg
+   * spawn inside the request — on the Mini App's most-polled endpoint.
+   */
+  function photoUrlNow(chatId: number, user: ReturnType<typeof getUser>): string | null {
+    const cached = avatarCache.get(chatId);
+    if (cached && Date.now() - cached.at < AVATAR_CACHE_TTL_MS) return cached.url;
+    if (!avatarRefreshing.has(chatId)) {
+      avatarRefreshing.add(chatId);
+      resolvePhotoUrl(chatId, user)
+        .catch(() => null)
+        .finally(() => avatarRefreshing.delete(chatId));
+    }
+    return cached?.url ?? null;
+  }
+
+  // recordDailyEvent is idempotent per (chat, day) but still pays an
+  // INSERT OR IGNORE write on every /me poll. Remember the chats already
+  // counted today so repeat polls cost nothing; the set is dropped when the
+  // day rolls over (and on restart, which just re-does one write per chat).
+  let dailyEventDay = "";
+  const miniappOpenedToday = new Set<number>();
+
+  function recordMiniappOpened(chatId: number): void {
+    const day = new Date().toISOString().slice(0, 10);
+    if (day !== dailyEventDay) {
+      dailyEventDay = day;
+      miniappOpenedToday.clear();
+    }
+    if (miniappOpenedToday.has(chatId)) return;
+    miniappOpenedToday.add(chatId);
+    recordDailyEvent(db, chatId, "miniapp_opened");
+  }
+
   app.get("/me", async (c) => {
     const chatId = c.get("chatId");
-    recordDailyEvent(db, chatId, "miniapp_opened");
+    recordMiniappOpened(chatId);
     const user = getUser(db, chatId);
-    const photoUrl = await resolvePhotoUrl(chatId, user);
+    const photoUrl = photoUrlNow(chatId, user);
     return c.json({
       chatId,
       isAdmin: c.get("isAdmin"),
@@ -129,12 +171,15 @@ export function createMeRoutes(db: AppDb): Hono<AppEnv> {
     if (filename.includes("/") || filename.includes("\\") || filename.includes("..")) {
       return c.json({ error: "not found" }, 404);
     }
-    try {
-      const buf = await readFile(path.join(AVATAR_DIR, filename));
-      return c.newResponse(buf, 200, { "Content-Type": "image/jpeg" });
-    } catch {
-      return c.json({ error: "not found" }, 404);
-    }
+    // Avatar files are content-addressed by Telegram's file_unique_id, so a
+    // given filename never changes contents — cache it permanently and stream
+    // it instead of re-reading the whole file into memory on every request.
+    const file = Bun.file(path.join(AVATAR_DIR, filename));
+    if (!(await file.exists())) return c.json({ error: "not found" }, 404);
+    return c.newResponse(file.stream(), 200, {
+      "Content-Type": "image/jpeg",
+      "Cache-Control": "public, max-age=31536000, immutable",
+    });
   });
 
   // --- Referral program ---------------------------------------------------

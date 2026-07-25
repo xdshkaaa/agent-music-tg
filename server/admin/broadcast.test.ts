@@ -72,6 +72,65 @@ describe("broadcast message validation", () => {
     expect(parseBroadcastButtons("open_app")).toBeNull();
   });
 
+  test("accepts an operator-chosen custom emoji and rejects unknown or malformed ones", () => {
+    __resetForTests();
+    __setEmojiForTests("fire", "111");
+    __setEmojiForTests("crown", "222");
+    expect(parseBroadcastButtons([
+      { kind: "preset", preset: "open_app", text: "Открыть", symbol: "fire" },
+      { kind: "url", text: "Подробнее", url: "https://example.com", symbol: "crown" },
+    ])).toEqual([
+      { kind: "preset", preset: "open_app", text: "Открыть", symbol: "fire" },
+      { kind: "url", text: "Подробнее", url: "https://example.com", symbol: "crown" },
+    ]);
+    // Unknown symbol → error, not a silently plain button.
+    expect(parseBroadcastButtons([
+      { kind: "preset", preset: "open_app", text: "Открыть", symbol: "nope" },
+    ])).toBeNull();
+    expect(parseBroadcastButtons([
+      { kind: "url", text: "Тык", url: "https://example.com", symbol: "Fire!" },
+    ])).toBeNull();
+    // Omitted/empty means "use the button's default symbol".
+    expect(parseBroadcastButtons([
+      { kind: "preset", preset: "search", text: "Поиск" },
+      { kind: "url", text: "Тык", url: "https://example.com", symbol: "" },
+    ])).toEqual([
+      { kind: "preset", preset: "search", text: "Поиск" },
+      { kind: "url", text: "Тык", url: "https://example.com" },
+    ]);
+    __resetForTests();
+  });
+
+  test("keeps a symbol when the bot has no emoji mapping at all", () => {
+    // Without emoji-symbols.json every symbol is unmapped; rejecting here would
+    // block broadcasts instead of degrading to a clean-text button.
+    __resetForTests();
+    expect(parseBroadcastButtons([
+      { kind: "preset", preset: "open_app", text: "Открыть", symbol: "fire" },
+    ])).toEqual([
+      { kind: "preset", preset: "open_app", text: "Открыть", symbol: "fire" },
+    ]);
+  });
+
+  test("a chosen symbol overrides the preset default and the URL-button 'link'", () => {
+    __resetForTests();
+    __setEmojiForTests("app", "app-default");
+    __setEmojiForTests("link", "link-default");
+    __setEmojiForTests("fire", "111");
+    expect(
+      JSON.parse(JSON.stringify(buildBroadcastKeyboard([
+        { kind: "preset", preset: "open_app", text: "Открыть", symbol: "fire" },
+        { kind: "url", text: "Тык", url: "https://example.com", symbol: "fire" },
+      ], "https://miniapp.xdshka.party"))),
+    ).toEqual({
+      inline_keyboard: [
+        [{ text: "Открыть", icon_custom_emoji_id: "111", web_app: { url: "https://miniapp.xdshka.party" } }],
+        [{ text: "Тык", icon_custom_emoji_id: "111", url: "https://example.com" }],
+      ],
+    });
+    __resetForTests();
+  });
+
   test("requires text or media and applies Telegram text limits", () => {
     expect(validateBroadcastMessage({ text: "", buttons: [] })).toBe("Добавьте текст или вложение.");
     expect(validateBroadcastMessage({ text: "x".repeat(4097), buttons: [] })).toBe(

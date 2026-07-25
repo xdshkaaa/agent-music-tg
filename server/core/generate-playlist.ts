@@ -6,6 +6,11 @@ import { mapWithConcurrency, withTimeout } from "./concurrency";
 
 export const DEFAULT_MAX_ITERATIONS = 12;
 const SEARCH_CONCURRENCY = 5;
+// Finalize resolves the whole track list right before the response, so it sits
+// squarely on the critical path. The work is purely IO-bound against the music
+// backend (and largely cache-served), so it takes a wider lane than the
+// in-loop tool dispatch.
+const FINALIZE_CONCURRENCY = 10;
 // Reasoning models (e.g. deepseek-v4-flash's reasoning_content) can spend well
 // over 30s thinking before emitting tool_calls; keep this under the 120s
 // fetch-level abort in openai-compat.ts so a real timeout still wins.
@@ -162,7 +167,7 @@ async function resolveAndFinalize(
   cache: Map<string, unknown>,
   opts?: { baseProvided?: boolean; dislikedUris?: Set<string> },
 ): Promise<FinalizedPlaylist> {
-  const found = await mapWithConcurrency(args.tracks, SEARCH_CONCURRENCY, async (t) => {
+  const found = await mapWithConcurrency(args.tracks, FINALIZE_CONCURRENCY, async (t) => {
     const key = callKey("searchTrack", { artist: t.artist, title: t.title });
     let track = cache.get(key) as Track | null | undefined;
     if (track === undefined) {

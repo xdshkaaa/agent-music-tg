@@ -9,6 +9,32 @@ import { usePlayer } from "../lib/player";
 type LoadState = { kind: "loading" } | { kind: "error" } | { kind: "ok"; data: ArtistDetail };
 type AlbumState = { tracks: Track[]; status: "idle" | "loading" | "error" };
 
+const compactRu = new Intl.NumberFormat("ru", { notation: "compact", maximumFractionDigits: 1 });
+
+// Russian plural forms: 1 слушатель / 2 слушателя / 5 слушателей.
+function pluralRu(n: number, [one, few, many]: [string, string, string]): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return one;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return few;
+  return many;
+}
+
+/**
+ * Neither backend exposes anything like Spotify's monthly listeners, so this is
+ * the raw follower/subscriber count — phrased as listeners because that is what
+ * it means to a user browsing an artist.
+ */
+function followersLabel(n: number): string {
+  return `${compactRu.format(n)} ${pluralRu(n, ["слушатель", "слушателя", "слушателей"])}`;
+}
+
+function playsLabel(n: number): string {
+  return `${compactRu.format(n)} ${pluralRu(n, ["прослушивание", "прослушивания", "прослушиваний"])}`;
+}
+
+const BIO_PREVIEW_CHARS = 180;
+
 export function ArtistScreen({
   target,
   onClose,
@@ -23,6 +49,7 @@ export function ArtistScreen({
   const [expanded, setExpanded] = useState<Record<string, AlbumState>>({});
   const [savedTracks, setSavedTracks] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
+  const [bioOpen, setBioOpen] = useState(false);
 
   useEffect(() => {
     api.myMusic().then(({ tracks }) => setSavedTracks(Object.fromEntries(tracks.map((t) => [t.uri, true])))).catch(() => {});
@@ -116,8 +143,33 @@ export function ArtistScreen({
               <span className="artist-screen-avatar" aria-hidden>
                 {state.data.artwork ? <img src={state.data.artwork} alt="" /> : <User size={32} weight="bold" />}
               </span>
-              <h1 className="artist-screen-name">{state.data.name}</h1>
+              <span className="artist-screen-identity">
+                <h1 className="artist-screen-name">{state.data.name}</h1>
+                {/* Coverage differs per backend: SoundCloud reports followers,
+                    YouTube Music reports none — so this row simply disappears. */}
+                {typeof state.data.followers === "number" && state.data.followers > 0 && (
+                  <span className="artist-screen-stat">{followersLabel(state.data.followers)}</span>
+                )}
+              </span>
             </div>
+
+            {state.data.description && (
+              <p className="artist-screen-bio">
+                {bioOpen || state.data.description.length <= BIO_PREVIEW_CHARS
+                  ? state.data.description
+                  : `${state.data.description.slice(0, BIO_PREVIEW_CHARS).trimEnd()}…`}
+                {state.data.description.length > BIO_PREVIEW_CHARS && (
+                  <button
+                    type="button"
+                    className="artist-screen-bio-toggle"
+                    aria-expanded={bioOpen}
+                    onClick={() => setBioOpen((v) => !v)}
+                  >
+                    {bioOpen ? "Свернуть" : "Ещё"}
+                  </button>
+                )}
+              </p>
+            )}
 
             {state.data.topTracks.length > 0 && (
               <section className="search-section">
@@ -130,7 +182,11 @@ export function ArtistScreen({
                       onClick={() => player.toggle(track, queue)}
                       artwork={track.artwork}
                       title={track.title}
-                      meta={track.artist}
+                      meta={
+                        typeof track.playbackCount === "number" && track.playbackCount > 0
+                          ? `${track.artist} · ${playsLabel(track.playbackCount)}`
+                          : track.artist
+                      }
                       metaClassName="search-row-meta"
                       trailing={
                         <>
@@ -203,7 +259,11 @@ export function ArtistScreen({
                                 }
                                 artwork={track.artwork || album.artwork}
                                 title={track.title}
-                                meta={track.artist}
+                                meta={
+                        typeof track.playbackCount === "number" && track.playbackCount > 0
+                          ? `${track.artist} · ${playsLabel(track.playbackCount)}`
+                          : track.artist
+                      }
                                 metaClassName="search-row-meta"
                                 trailing={
                                   <>
