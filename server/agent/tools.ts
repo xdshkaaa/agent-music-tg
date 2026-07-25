@@ -193,12 +193,19 @@ export interface ToolDispatcherDeps {
   onClarify: (question: string, options: string[]) => Promise<string>;
 }
 
+/**
+ * Shapes a track for the model. Artwork is deliberately omitted: the URLs are
+ * long and opaque, they carry no signal the model can reason about, and every
+ * tool result is replayed in the message history on each of the loop's up-to-12
+ * turns — so including them would inflate prompt tokens (and latency) for
+ * nothing. The final playlist re-resolves each track via searchTrack, which
+ * restores the artwork for the response.
+ */
 function trackToResult(t: Track | null): Record<string, unknown> | null {
   if (!t) return null;
   const out: Record<string, unknown> = { uri: t.uri, title: t.title, artist: t.artist };
   if (t.album) out.album = t.album;
   if (typeof t.durationMs === "number") out.durationMs = t.durationMs;
-  if (t.artwork) out.artwork = t.artwork;
   return out;
 }
 
@@ -240,8 +247,8 @@ export async function dispatchTool(
       const query = String(args.query ?? "");
       const limit = typeof args.limit === "number" ? args.limit : 10;
       return (await deps.music.searchAlbums(query, limit)).map((a) => {
+        // Artwork omitted for the same prompt-size reason as in trackToResult.
         const out: Record<string, unknown> = { uri: a.uri, title: a.title, artist: a.artist };
-        if (a.artwork) out.artwork = a.artwork;
         if (a.deepLink) out.deepLink = a.deepLink;
         return out;
       });

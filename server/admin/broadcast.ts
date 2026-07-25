@@ -1,5 +1,6 @@
 import type { AppDb } from "../db";
 import { listUsers, type User } from "../access/users-store";
+import { hasEmojiSymbol, listEmojiSymbols } from "../bot/emoji";
 
 export interface BroadcastResult {
   sent: number;
@@ -23,12 +24,16 @@ export type BroadcastButton =
       preset: BroadcastButtonPreset;
       text: string;
       style?: BroadcastButtonStyle;
+      /** Custom-emoji symbol chosen by the operator; falls back to the preset's. */
+      symbol?: string;
     }
   | {
       kind: "url";
       text: string;
       url: string;
       style?: BroadcastButtonStyle;
+      /** Custom-emoji symbol chosen by the operator; falls back to "link". */
+      symbol?: string;
     };
 export type BroadcastMediaKind = "photo" | "animation" | "video" | "document";
 
@@ -96,6 +101,19 @@ function parseButtonStyle(value: unknown): BroadcastButtonStyle | undefined | nu
     : null;
 }
 
+/**
+ * Validates an operator-chosen custom-emoji symbol. Unknown symbols are
+ * rejected so a typo surfaces as an error instead of a silently plain button —
+ * but only while a symbol map exists at all, since a missing/failed
+ * `emoji-symbols.json` must degrade to clean text, not block broadcasts.
+ */
+function parseButtonSymbol(value: unknown): string | undefined | null {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value !== "string" || !/^[a-z0-9_]{1,32}$/.test(value)) return null;
+  if (listEmojiSymbols().length > 0 && !hasEmojiSymbol(value)) return null;
+  return value;
+}
+
 function validButtonUrl(value: string): boolean {
   try {
     const url = new URL(value);
@@ -128,6 +146,8 @@ export function parseBroadcastButtons(value: unknown): BroadcastButton[] | null 
     const candidate = item as Record<string, unknown>;
     const style = parseButtonStyle(candidate.style);
     if (style === null) return null;
+    const symbol = parseButtonSymbol(candidate.symbol);
+    if (symbol === null) return null;
     const text = typeof candidate.text === "string" ? candidate.text.trim() : "";
     if (!text || text.length > 64) return null;
 
@@ -135,7 +155,7 @@ export function parseBroadcastButtons(value: unknown): BroadcastButton[] | null 
       if (typeof candidate.preset !== "string" || !BUTTON_PRESET_SET.has(candidate.preset)) return null;
       const preset = candidate.preset as BroadcastButtonPreset;
       if (!seenPresets.has(preset)) {
-        result.push({ kind: "preset", preset, text, ...(style ? { style } : {}) });
+        result.push({ kind: "preset", preset, text, ...(style ? { style } : {}), ...(symbol ? { symbol } : {}) });
         seenPresets.add(preset);
       }
       continue;
@@ -143,7 +163,7 @@ export function parseBroadcastButtons(value: unknown): BroadcastButton[] | null 
     if (candidate.kind === "url") {
       const url = typeof candidate.url === "string" ? candidate.url.trim() : "";
       if (url.length > 2048 || !validButtonUrl(url)) return null;
-      result.push({ kind: "url", text, url, ...(style ? { style } : {}) });
+      result.push({ kind: "url", text, url, ...(style ? { style } : {}), ...(symbol ? { symbol } : {}) });
       continue;
     }
     return null;

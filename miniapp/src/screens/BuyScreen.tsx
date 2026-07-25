@@ -6,18 +6,9 @@ import { ErrorBanner } from "../components/ErrorBanner";
 import { InlineNotice } from "../components/InlineNotice";
 import { IconOrEmoji } from "../components/IconOrEmoji";
 import { TrackSkeleton } from "../components/TrackSkeleton";
-import { Segmented } from "../components/Segmented";
 import { SbpPayPopup } from "../components/SbpPayPopup";
 import { api, type Offer, type Invoice, type PaymentMethod, type TrialStatus } from "../lib/api";
 import { openPayUrl, openStarsInvoice, openSupport } from "../lib/telegram";
-
-type CategoryFilter = "all" | "credits" | "subscription";
-const CATEGORY_LABELS: Record<CategoryFilter, string> = {
-  all: "Все",
-  credits: "Генерации",
-  subscription: "Подписка",
-};
-const CATEGORY_OPTIONS: CategoryFilter[] = ["all", "credits", "subscription"];
 
 // Russian plural forms: 1 генерация / 2 генерации / 5 генераций.
 function pluralRu(n: number, [one, few, many]: [string, string, string]): string {
@@ -42,7 +33,6 @@ export default function BuyScreen({ reason, isAdmin = false }: { reason?: string
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [trialBusy, setTrialBusy] = useState(false);
-  const [category, setCategory] = useState<CategoryFilter>("all");
   const [showSuccess, setShowSuccess] = useState(false);
   const [trialSuccess, setTrialSuccess] = useState(false);
   const [offerErrors, setOfferErrors] = useState<Record<number, string>>({});
@@ -76,9 +66,11 @@ export default function BuyScreen({ reason, isAdmin = false }: { reason?: string
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // The shop sells subscriptions only; credit packs stay in the DB (and remain
+  // purchasable from the bot) but are not surfaced here.
   const visible = useMemo(() => {
-    return (offers ?? []).filter((o) => category === "all" || o.grantKind === category);
-  }, [offers, category]);
+    return (offers ?? []).filter((o) => o.grantKind === "subscription");
+  }, [offers]);
 
   async function buy(offerId: number, method: PaymentMethod = "stars") {
     setBusyId(offerId);
@@ -165,7 +157,7 @@ export default function BuyScreen({ reason, isAdmin = false }: { reason?: string
     <div className="stack">
       <GlassPanel className="reveal">
         <h1 className="screen-title">Магазин</h1>
-        <p className="text-muted screen-subtitle">Генерации и подписки на сервис</p>
+        <p className="text-muted screen-subtitle">Подписка на сервис</p>
       </GlassPanel>
 
       {reason && (
@@ -189,7 +181,7 @@ export default function BuyScreen({ reason, isAdmin = false }: { reason?: string
         <GlassPanel className="reveal trial-card" tone="tinted">
           <div className="trial-card-row">
             <span className="trial-card-info">
-              <span className="trial-card-title"><Gift size={16} weight="bold" /> Бесплатный пакет</span>
+              <span className="trial-card-title"><Gift size={16} weight="bold" /> Пробный доступ</span>
               <span className="trial-card-label">10 генераций на 3 дня</span>
             </span>
             <button
@@ -204,23 +196,12 @@ export default function BuyScreen({ reason, isAdmin = false }: { reason?: string
         </GlassPanel>
       )}
 
-      <Segmented
-        options={CATEGORY_OPTIONS}
-        value={category}
-        onChange={setCategory}
-        labels={CATEGORY_LABELS}
-        tinted
-        fill
-        role="radiogroup"
-        ariaLabel="Категория предложений"
-      />
-
       <GlassPanel className="reveal">
         {error && <ErrorBanner message={error} onClose={() => setError(null)} isAdmin={isAdmin} />}
         {offers === null ? (
           <TrackSkeleton rows={3} />
         ) : visible.length === 0 ? (
-          <EmptyState icon={<MagnifyingGlass size={40} weight="bold" />} label="В этой категории пока нет предложений" />
+          <EmptyState icon={<MagnifyingGlass size={40} weight="bold" />} label="Подписки пока недоступны" />
         ) : (
           <div className="stack reveal-stagger">
             {visible.map((o, i) => (

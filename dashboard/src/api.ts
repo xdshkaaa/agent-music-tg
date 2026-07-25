@@ -113,14 +113,39 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export { ApiError };
 
+/**
+ * Overview and Attribution both need the same heavy stats payload, and every
+ * tab switch remounts them — without this, flipping tabs re-ran ~20 aggregate
+ * queries server-side. Shares one in-flight promise per URL and keeps the
+ * settled result briefly; failures are evicted so a retry actually retries.
+ */
+const SHARED_TTL_MS = 30_000;
+const shared = new Map<string, { at: number; promise: Promise<unknown> }>();
+
+function sharedRequest<T>(path: string): Promise<T> {
+  const hit = shared.get(path);
+  if (hit && Date.now() - hit.at < SHARED_TTL_MS) return hit.promise as Promise<T>;
+  const promise = request<T>(path).catch((e) => {
+    shared.delete(path);
+    throw e;
+  });
+  shared.set(path, { at: Date.now(), promise });
+  return promise;
+}
+
+/** Drops every memoized response so the next render refetches. */
+export function invalidateDashboardCache(): void {
+  shared.clear();
+}
+
 export const api = {
   config: () => request<{ botUsername: string }>("/dash/config"),
   me: () => request<DashSession>("/dash/me"),
   logout: () => request<{ ok: true }>("/dash/logout", { method: "POST" }),
   loginWithWidget: (payload: Record<string, string>) =>
     request<{ ok: true; session: DashSession }>("/dash/login", { method: "POST", body: JSON.stringify(payload) }),
-  stats: (env: DashEnvId, period: StatsPeriod) => request<AdminStats>(`/dash/${env}/stats?period=${period}`),
-  series: (env: DashEnvId, days = 30) => request<{ series: DailySeriesPoint[] }>(`/dash/${env}/series?days=${days}`),
+  stats: (env: DashEnvId, period: StatsPeriod) => sharedRequest<AdminStats>(`/dash/${env}/stats?period=${period}`),
+  series: (env: DashEnvId, days = 30) => sharedRequest<{ series: DailySeriesPoint[] }>(`/dash/${env}/series?days=${days}`),
   offers: (env: DashEnvId) => request<{ offers: Offer[] }>(`/dash/${env}/offers`),
   purchases: (env: DashEnvId, limit = 25) => request<{ purchases: RecentPurchaseRow[] }>(`/dash/${env}/purchases?limit=${limit}`),
   grantHistory: (env: DashEnvId, limit = 25) =>

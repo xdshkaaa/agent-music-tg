@@ -21,7 +21,10 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
   app.use("*", requireAuth(db));
 
   // Record every authenticated caller as a known user (audience + stats).
+  // Streaming is exempt: one played track fires many Range requests, and the
+  // user is already recorded by whatever request opened the player.
   app.use("*", async (c, next) => {
+    if (c.req.path.startsWith("/api/stream/")) return next();
     const chatId = c.get("chatId");
     const telegramUser = c.get("telegramUser");
     const isNew = upsertUser(db, chatId, telegramUser.username, telegramUser.first_name);

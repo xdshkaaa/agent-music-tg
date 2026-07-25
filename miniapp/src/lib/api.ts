@@ -1,6 +1,16 @@
 import { getInitData } from "./telegram";
 import type { AgentEvent } from "./reasoning";
 
+/**
+ * Builds the Error for a failed response. Prefers the server's `error` field,
+ * then the status line — `statusText` is empty on HTTP/2, so an empty string
+ * must fall through to the status code rather than becoming the message.
+ */
+async function responseError(res: Response): Promise<Error> {
+  const body = (await res.json().catch(() => ({}))) as { error?: string };
+  return new Error(body.error || res.statusText || `request failed: ${res.status}`);
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const isFormData = init?.body instanceof FormData;
   const res = await fetch(path, {
@@ -11,10 +21,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...init?.headers,
     },
   });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(body.error ?? `request failed: ${res.status}`);
-  }
+  if (!res.ok) throw await responseError(res);
   return res.json() as Promise<T>;
 }
 
@@ -147,6 +154,10 @@ export interface Track {
   durationMs?: number;
   artwork?: string;
   deepLink?: string;
+  /** Play count — SoundCloud only; YouTube Music reports none. */
+  playbackCount?: number;
+  /** Like count — SoundCloud only. */
+  likeCount?: number;
 }
 
 export type MusicFeedbackEvent = "play_started" | "play_completed" | "skipped";
@@ -243,13 +254,22 @@ export type AdminBroadcastButton =
       preset: AdminBroadcastButtonPreset;
       text: string;
       style?: AdminBroadcastButtonStyle;
+      symbol?: string;
     }
   | {
       kind: "url";
       text: string;
       url: string;
       style?: AdminBroadcastButtonStyle;
+      symbol?: string;
     };
+
+/** A premium custom emoji the bot can attach to a broadcast button. */
+export interface EmojiSymbolOption {
+  symbol: string;
+  /** Unicode stand-in — the Mini App cannot render the premium sticker itself. */
+  fallback: string;
+}
 
 export interface AdminBroadcastInput {
   text: string;
@@ -296,6 +316,9 @@ export interface ArtistDetail {
   id: string;
   name: string;
   artwork?: string;
+  /** Subscribers (YouTube Music) or followers (SoundCloud); absent when unknown. */
+  followers?: number;
+  description?: string;
   topTracks: Track[];
   albums: Album[];
 }
@@ -363,10 +386,7 @@ async function requestSSE<T>(path: string, body: unknown, onEvent: (e: AgentEven
     headers: { "content-type": "application/json", "X-Telegram-Init-Data": getInitData() },
     body: JSON.stringify(body),
   });
-  if (!res.ok || !res.body) {
-    const parsed = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(parsed.error ?? `request failed: ${res.status}`);
-  }
+  if (!res.ok || !res.body) throw await responseError(res);
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -475,10 +495,7 @@ export const api = {
       const body = (await res.json().catch(() => ({}))) as { limit?: number; starsPrice?: number };
       throw new PlaylistLimitReachedError(body.limit ?? 2, body.starsPrice ?? 5);
     }
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({ error: res.statusText }));
-      throw new Error(body.error ?? `request failed: ${res.status}`);
-    }
+    if (!res.ok) throw await responseError(res);
     return res.json() as Promise<{ playlist: Playlist }>;
   },
   renamePlaylist: (id: number, name: string) =>
@@ -490,10 +507,7 @@ export const api = {
       headers: { "content-type": "application/json", "X-Telegram-Init-Data": getInitData() },
       body: JSON.stringify(track),
     });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({ error: res.statusText }));
-      throw new Error(body.error ?? `request failed: ${res.status}`);
-    }
+    if (!res.ok) throw await responseError(res);
     return res.json() as Promise<{ ok: boolean; duplicate: boolean }>;
   },
   removeTrackFromPlaylist: (id: number, uri: string) =>
@@ -542,6 +556,7 @@ export const api = {
     request<{ offer: Offer }>(`/api/admin/offers/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   adminDeleteOffer: (id: number) =>
     request<{ ok: boolean }>(`/api/admin/offers/${id}`, { method: "DELETE" }),
+  adminEmojiSymbols: () => request<{ symbols: EmojiSymbolOption[] }>("/api/admin/emoji-symbols"),
   adminBroadcast: (input: AdminBroadcastInput) => {
     const body = new FormData();
     body.set("text", input.text);

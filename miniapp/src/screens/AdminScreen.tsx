@@ -23,6 +23,7 @@ import type {
   AdminBroadcastButton,
   AdminBroadcastButtonPreset,
   AdminBroadcastButtonStyle,
+  EmojiSymbolOption,
 } from "../lib/api";
 import { api } from "../lib/api";
 import { buildTelegramUtmLink, buildTelegramUtmPayload, TELEGRAM_START_PARAM_LIMIT } from "../lib/utm";
@@ -482,8 +483,17 @@ function BroadcastPanel() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [confirmSend, setConfirmSend] = useState(false);
+  // Premium emoji the bot resolved at startup. Empty when the bot has no
+  // custom-emoji mapping — the picker is then hidden entirely.
+  const [emojiSymbols, setEmojiSymbols] = useState<EmojiSymbolOption[]>([]);
   const mediaInputRef = useRef<HTMLInputElement>(null);
   const textInputRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    api.adminEmojiSymbols()
+      .then((r) => setEmojiSymbols(r.symbols))
+      .catch(() => setEmojiSymbols([]));
+  }, []);
 
   const buttonPresets: Array<{ id: AdminBroadcastButtonPreset; label: string }> = [
     { id: "open_app", label: "Открыть приложение" },
@@ -730,6 +740,40 @@ function BroadcastPanel() {
                       <option value="danger">Красный</option>
                     </select>
                   </label>
+                  {emojiSymbols.length > 0 && (
+                    <div className="admin-field admin-button-emoji">
+                      <span>
+                        Эмодзи
+                        <small className="text-muted"> — в Telegram отрисуется премиум-версия</small>
+                      </span>
+                      <div className="admin-emoji-grid" role="radiogroup" aria-label="Эмодзи кнопки">
+                        <button
+                          type="button"
+                          className={`glass-button admin-emoji-option${button.symbol ? "" : " is-selected"}`}
+                          role="radio"
+                          aria-checked={!button.symbol}
+                          title="По умолчанию"
+                          onClick={() => updateButton(index, { symbol: undefined })}
+                        >
+                          <Prohibit size={16} weight="bold" aria-hidden="true" />
+                        </button>
+                        {emojiSymbols.map((option) => (
+                          <button
+                            key={option.symbol}
+                            type="button"
+                            className={`glass-button admin-emoji-option${button.symbol === option.symbol ? " is-selected" : ""}`}
+                            role="radio"
+                            aria-checked={button.symbol === option.symbol}
+                            aria-label={option.symbol}
+                            title={option.symbol}
+                            onClick={() => updateButton(index, { symbol: option.symbol })}
+                          >
+                            {option.fallback}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

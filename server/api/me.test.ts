@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHmac } from "node:crypto";
+import { rmSync } from "node:fs";
+import { join } from "node:path";
 
 // Set env BEFORE importing env.ts (it reads process.env at load and caches).
 // In the full test suite, env may already be cached by another file with no
@@ -12,6 +14,7 @@ const { env } = await import("../env");
 const { openDb } = await import("../db");
 const { getUser, upsertUser, SIGNUP_BONUS_CREDITS } = await import("../access/users-store");
 const { createApiRoutes } = await import("./routes");
+const { AVATAR_DIR } = await import("../avatar");
 
 /** Builds a valid Telegram Mini App initData string signed with the bot token. */
 function buildInitData(chatId: number, username?: string): string {
@@ -41,28 +44,48 @@ function freshDb() {
 }
 
 describe("GET /api/me", () => {
-  // /me calls out to api.telegram.org (getUserProfilePhotos / getFile) — stub
-  // fetch so tests never touch the network. Default: Telegram says "no photos".
+  // /me calls out to api.telegram.org (getUserProfilePhotos / getFile, then the
+  // /file/bot<token>/... download) — stub fetch so tests never touch the
+  // network. Default: Telegram says "no photos".
   const realFetch = globalThis.fetch;
   let telegramResponses: Record<string, unknown>;
+  /** file_unique_ids whose cached avatar this test wrote, cleaned up after. */
+  const cachedAvatars = new Set<string>();
+
+  function stubTelegram(handler?: (url: string) => Response | undefined) {
+    globalThis.fetch = ((input: string | URL | Request) => {
+      const url = String(input instanceof Request ? input.url : input);
+      const custom = handler?.(url);
+      if (custom) return Promise.resolve(custom);
+      const method = Object.keys(telegramResponses).find((m) => url.includes(`/${m}`));
+      if (url.includes("api.telegram.org") && method) {
+        return Promise.resolve(Response.json(telegramResponses[method]));
+      }
+      // Avatar image download (/file/bot<token>/<path>) — serve bytes, never the network.
+      if (url.includes("api.telegram.org/file/")) {
+        return Promise.resolve(new Response(new Uint8Array([0xff, 0xd8, 0xff])));
+      }
+      throw new Error(`unexpected network call in test: ${url}`);
+    }) as typeof fetch;
+  }
+
+  /** Lets the background avatar resolution (Telegram fetches + cache write) finish. */
+  async function settleBackgroundAvatar() {
+    for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 1));
+  }
 
   beforeEach(() => {
     telegramResponses = {
       getUserProfilePhotos: { ok: true, result: { total_count: 0, photos: [] } },
       getFile: { ok: false },
     };
-    globalThis.fetch = ((input: string | URL | Request) => {
-      const url = String(input instanceof Request ? input.url : input);
-      const method = Object.keys(telegramResponses).find((m) => url.includes(`/${m}`));
-      if (url.includes("api.telegram.org") && method) {
-        return Promise.resolve(Response.json(telegramResponses[method]));
-      }
-      return realFetch(input as never);
-    }) as typeof fetch;
+    stubTelegram();
   });
 
   afterEach(() => {
     globalThis.fetch = realFetch;
+    for (const id of cachedAvatars) rmSync(join(AVATAR_DIR, `${id}.jpg`), { force: true });
+    cachedAvatars.clear();
   });
 
   test("returns chatId, isAdmin, credits, subscriptionUntil, and username when set", async () => {
@@ -111,14 +134,29 @@ describe("GET /api/me", () => {
       result: { file_path: "photos/file_1.jpg", file_unique_id: "uniq1" },
     };
 
+    cachedAvatars.add("uniq1");
+
     const app = createApiRoutes(db);
+    // Avatar resolution runs in the background so Telegram never blocks /me:
+    // the first call returns null and kicks off the lookup, the next one has it.
+    const first = await app.request("/me", {
+      headers: { "X-Telegram-Init-Data": buildInitData(TEST_CHAT) },
+    });
+    expect(first.status).toBe(200);
+    expect((await first.json() as Record<string, unknown>).photoUrl).toBeNull();
+
+    await settleBackgroundAvatar();
     const res = await app.request("/me", {
       headers: { "X-Telegram-Init-Data": buildInitData(TEST_CHAT) },
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
-    expect(body.photoUrl).toContain("photos/file_1.jpg");
+    // Avatars are proxied through /avatar/<file_unique_id>.jpg — the raw
+    // Telegram file URL must never be handed to the client, it embeds the token.
+    expect(body.photoUrl).toBe("/avatar/uniq1.jpg");
+    expect(body.photoUrl).not.toContain(env.telegramBotToken);
 
+    // Highest-resolution photo (last entry) is the one persisted.
     const row = db.query("SELECT photo_file_id FROM users WHERE chat_id = ?").get(TEST_CHAT) as { photo_file_id: string };
     expect(row.photo_file_id).toBe("big-id");
   });
@@ -143,26 +181,30 @@ describe("GET /api/me", () => {
       ok: true,
       result: { total_count: 1, photos: [[{ file_id: "fresh-id" }]] },
     };
+    cachedAvatars.add("uniq2");
     let getFileCalls = 0;
     const responsesByCall = [
       { ok: false }, // stale-id lookup fails
       { ok: true, result: { file_path: "photos/fresh.jpg", file_unique_id: "uniq2" } },
     ];
-    const baseFetch = globalThis.fetch;
-    globalThis.fetch = ((input: string | URL | Request) => {
-      const url = String(input instanceof Request ? input.url : input);
-      if (url.includes("/getFile")) {
-        return Promise.resolve(Response.json(responsesByCall[Math.min(getFileCalls++, 1)]));
-      }
-      return baseFetch(input as never);
-    }) as typeof fetch;
+    stubTelegram((url) =>
+      url.includes("/getFile")
+        ? Response.json(responsesByCall[Math.min(getFileCalls++, 1)])
+        : undefined,
+    );
 
     const app = createApiRoutes(db);
+    await app.request("/me", {
+      headers: { "X-Telegram-Init-Data": buildInitData(TEST_CHAT) },
+    });
+    await settleBackgroundAvatar();
     const res = await app.request("/me", {
       headers: { "X-Telegram-Init-Data": buildInitData(TEST_CHAT) },
     });
     const body = (await res.json()) as Record<string, unknown>;
-    expect(body.photoUrl).toContain("photos/fresh.jpg");
+    // Refreshed photo is re-cached under the NEW file_unique_id.
+    expect(body.photoUrl).toBe("/avatar/uniq2.jpg");
+    expect(getFileCalls).toBe(2); // stale lookup, then retry after refresh
     const row = db.query("SELECT photo_file_id FROM users WHERE chat_id = ?").get(TEST_CHAT) as { photo_file_id: string };
     expect(row.photo_file_id).toBe("fresh-id");
   });

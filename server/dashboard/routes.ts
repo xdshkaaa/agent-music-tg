@@ -74,18 +74,40 @@ export function createDashboardRoutes(dbs: Record<DashEnvId, AppDb | null>): Hon
     return raw === "today" || raw === "week" || raw === "month" || raw === "all" ? raw : "all";
   }
 
+  /**
+   * getAdminStats and getDailySeries are the two expensive endpoints — together
+   * roughly twenty aggregate scans over users/generations/invoices/analytics.
+   * Operators switch tabs and periods constantly, and the numbers do not need
+   * to be second-accurate, so memoize each (env, period) answer briefly.
+   */
+  const STATS_TTL_MS = 30_000;
+  const statsCache = new Map<string, { at: number; payload: unknown }>();
+
+  function cached<T>(key: string, compute: () => T): T {
+    const hit = statsCache.get(key);
+    const now = Date.now();
+    if (hit && now - hit.at < STATS_TTL_MS) return hit.payload as T;
+    const payload = compute();
+    statsCache.set(key, { at: now, payload });
+    return payload;
+  }
+
+  const CACHE_HEADER = `private, max-age=${Math.floor(STATS_TTL_MS / 1000)}`;
+
   app.get("/dash/:env/stats", (c) => {
     const db = resolveDb(c);
     if (!db) return c.json({ error: "environment database unavailable" }, 503);
     const period = validPeriod(c.req.query("period"));
-    return c.json(getAdminStats(db, period));
+    c.header("Cache-Control", CACHE_HEADER);
+    return c.json(cached(`stats:${c.req.param("env")}:${period}`, () => getAdminStats(db, period)));
   });
 
   app.get("/dash/:env/series", (c) => {
     const db = resolveDb(c);
     if (!db) return c.json({ error: "environment database unavailable" }, 503);
     const days = Math.min(Math.max(Number(c.req.query("days")) || 30, 7), 90);
-    return c.json({ series: getDailySeries(db, days) });
+    c.header("Cache-Control", CACHE_HEADER);
+    return c.json(cached(`series:${c.req.param("env")}:${days}`, () => ({ series: getDailySeries(db, days) })));
   });
 
   app.get("/dash/:env/offers", (c) => {

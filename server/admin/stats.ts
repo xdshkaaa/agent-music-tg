@@ -165,7 +165,7 @@ export function getAdminStats(db: AppDb, period: StatsPeriod = "all"): AdminStat
 
   return {
     period,
-    totalUsers: countUsers(db),
+    totalUsers: totalUsersCount,
     newUsers,
     activeSubscriptions,
     paidPurchases,

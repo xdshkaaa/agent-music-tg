@@ -23,6 +23,7 @@ import { DualLineChart, LineChart } from "./charts";
 import {
   api,
   ApiError,
+  invalidateDashboardCache,
   type AdminStats,
   type DashEnvId,
   type DailySeriesPoint,
@@ -86,6 +87,15 @@ function Dashboard({ session, onLoggedOut }: { session: DashSession; onLoggedOut
   const [envAvailable, setEnvAvailable] = useState<{ prod: boolean; dev: boolean }>({ prod: true, dev: true });
   const [period, setPeriod] = useState<StatsPeriod>("week");
   const [tab, setTab] = useState<Tab>("overview");
+  // Nothing auto-refreshes: the queries behind these panels are expensive, so
+  // the operator asks for fresh numbers explicitly. Bumping this drops the
+  // memoized responses and re-runs every visible panel's fetch.
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  function refresh() {
+    invalidateDashboardCache();
+    setRefreshKey((n) => n + 1);
+  }
 
   useEffect(() => {
     api.environments().then(setEnvAvailable).catch(() => {});
@@ -140,17 +150,27 @@ function Dashboard({ session, onLoggedOut }: { session: DashSession; onLoggedOut
                 dev{!envAvailable.dev && <span className="env-off-label"> · нет связи</span>}
               </button>
             </div>
+            <button className="refresh-btn" onClick={refresh} title="Обновить данные">
+              Обновить
+            </button>
           </div>
         </div>
 
-        {tab === "overview" && <Overview envId={envId} period={period} />}
-        {tab === "offers" && <OffersTab envId={envId} />}
-        {tab === "purchases" && <PurchasesTab envId={envId} />}
-        {tab === "grants" && <GrantsTab envId={envId} />}
-        {tab === "attribution" && <AttributionTab envId={envId} period={period} />}
+        {tab === "overview" && <Overview envId={envId} period={period} refreshKey={refreshKey} />}
+        {tab === "offers" && <OffersTab envId={envId} period={period} refreshKey={refreshKey} />}
+        {tab === "purchases" && <PurchasesTab envId={envId} period={period} refreshKey={refreshKey} />}
+        {tab === "grants" && <GrantsTab envId={envId} period={period} refreshKey={refreshKey} />}
+        {tab === "attribution" && <AttributionTab envId={envId} period={period} refreshKey={refreshKey} />}
       </main>
     </div>
   );
+}
+
+/** Shared shape for every tab panel; refreshKey re-runs its fetches on demand. */
+interface TabProps {
+  envId: DashEnvId;
+  period: StatsPeriod;
+  refreshKey: number;
 }
 
 // ---------- data-fetch hook ----------
@@ -184,9 +204,9 @@ function StateGuard({ loading, error, empty, children }: { loading: boolean; err
 
 // ---------- Overview ----------
 
-function Overview({ envId, period }: { envId: DashEnvId; period: StatsPeriod }) {
-  const stats = useEnvData<AdminStats>(() => api.stats(envId, period), [envId, period]);
-  const series = useEnvData<{ series: DailySeriesPoint[] }>(() => api.series(envId, 30), [envId]);
+function Overview({ envId, period, refreshKey }: TabProps) {
+  const stats = useEnvData<AdminStats>(() => api.stats(envId, period), [envId, period, refreshKey]);
+  const series = useEnvData<{ series: DailySeriesPoint[] }>(() => api.series(envId, 30), [envId, refreshKey]);
 
   return (
     <div>
@@ -355,8 +375,8 @@ function Segments({ stats }: { stats: AdminStats }) {
 
 // ---------- Offers ----------
 
-function OffersTab({ envId }: { envId: DashEnvId }) {
-  const offers = useEnvData<{ offers: Offer[] }>(() => api.offers(envId), [envId]);
+function OffersTab({ envId, refreshKey }: TabProps) {
+  const offers = useEnvData<{ offers: Offer[] }>(() => api.offers(envId), [envId, refreshKey]);
   return (
     <div className="panel">
       <div className="panel-title">Офферы</div>
@@ -389,8 +409,8 @@ function OffersTab({ envId }: { envId: DashEnvId }) {
 
 // ---------- Purchases ----------
 
-function PurchasesTab({ envId }: { envId: DashEnvId }) {
-  const purchases = useEnvData<{ purchases: RecentPurchaseRow[] }>(() => api.purchases(envId, 50), [envId]);
+function PurchasesTab({ envId, refreshKey }: TabProps) {
+  const purchases = useEnvData<{ purchases: RecentPurchaseRow[] }>(() => api.purchases(envId, 50), [envId, refreshKey]);
   return (
     <div className="panel">
       <div className="panel-title">Последние покупки <span className="hint">до 50 записей</span></div>
@@ -423,8 +443,8 @@ function PurchasesTab({ envId }: { envId: DashEnvId }) {
 
 // ---------- Grants ----------
 
-function GrantsTab({ envId }: { envId: DashEnvId }) {
-  const grants = useEnvData<{ history: GrantHistoryRecord[]; total: number }>(() => api.grantHistory(envId, 50), [envId]);
+function GrantsTab({ envId, refreshKey }: TabProps) {
+  const grants = useEnvData<{ history: GrantHistoryRecord[]; total: number }>(() => api.grantHistory(envId, 50), [envId, refreshKey]);
   const typeLabel: Record<GrantHistoryRecord["type"], string> = {
     credits: "кредиты",
     subscription: "подписка",
@@ -459,8 +479,8 @@ function GrantsTab({ envId }: { envId: DashEnvId }) {
 
 // ---------- Attribution ----------
 
-function AttributionTab({ envId, period }: { envId: DashEnvId; period: StatsPeriod }) {
-  const stats = useEnvData<AdminStats>(() => api.stats(envId, period), [envId, period]);
+function AttributionTab({ envId, period, refreshKey }: TabProps) {
+  const stats = useEnvData<AdminStats>(() => api.stats(envId, period), [envId, period, refreshKey]);
   return (
     <div>
       <div className="panel panel-stacked">

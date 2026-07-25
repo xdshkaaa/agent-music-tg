@@ -33,9 +33,12 @@ export function buildBroadcastKeyboard(
   buttons.forEach((button, index) => {
     if (button.kind === "preset") {
       const preset = BUTTONS[button.preset];
-      keyboard.webApp(btnText(button.text, preset.symbol, button.style), `${publicOrigin}${preset.query}`);
+      keyboard.webApp(
+        btnText(button.text, button.symbol ?? preset.symbol, button.style),
+        `${publicOrigin}${preset.query}`,
+      );
     } else {
-      keyboard.url(btnText(button.text, "link", button.style), button.url);
+      keyboard.url(btnText(button.text, button.symbol ?? "link", button.style), button.url);
     }
     if (index < buttons.length - 1) keyboard.row();
   });
