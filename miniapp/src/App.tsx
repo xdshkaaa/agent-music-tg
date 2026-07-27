@@ -57,18 +57,6 @@ function activeTab(screen: Screen): "create" | "shop" | "playlists" | "profile" 
   }
 }
 
-const TAB_ORDER: Record<string, number> = {
-  create: 0,
-  prompt: 0,
-  clarify: 0,
-  results: 0,
-  buy: 2,
-  playlists: 3,
-  profile: 4,
-  help: 4,
-  admin: 5,
-};
-
 export function App() {
   return (
     <PlayerProvider>
@@ -92,7 +80,6 @@ function AppInner() {
   const [shopConfig, setShopConfig] = useState<ShopConfig | null>(null);
   const [history, setHistory] = useState<Screen[]>([{ kind: "prompt" }]);
   const screen = history[history.length - 1];
-  const [transitionDir, setTransitionDir] = useState<"forward" | "back">("forward");
   const [showPlayer, setShowPlayer] = useState(false);
   // `fromPlayer` is fixed at open time (not derived from the live `showPlayer`
   // flag) so the artist screen only sits above the full player when it was
@@ -180,7 +167,6 @@ function AppInner() {
         setShowPlayer(false);
       } else {
         setHistory(prev => (prev.length > 1 ? prev.slice(0, -1) : prev));
-        setTransitionDir("back");
       }
     };
     bb.onClick(handler);
@@ -258,16 +244,13 @@ function AppInner() {
     setArtistTarget(null);
     setShowPlayer(false);
     if (dir === "back") {
-      setTransitionDir("back");
       setHistory([target]);
       return;
     }
-    const newTab = activeTab(target);
-    if (newTab !== tab) {
-      setTransitionDir(TAB_ORDER[newTab] >= TAB_ORDER[tab] ? "forward" : "back");
+    if (activeTab(target) !== tab) {
+      // Switching tabs resets the stack: each tab is its own root, not a push.
       setHistory([target]);
     } else {
-      setTransitionDir("forward");
       setHistory(prev => {
         const next = [...prev, target];
         return next.length > 10 ? next.slice(next.length - 10) : next;
@@ -297,6 +280,20 @@ function AppInner() {
     }
   }
 
+  /**
+   * Opens a past generation as a results screen. `saved` is explicit because
+   * the library lists saved generations only, while the create screen's
+   * "Продолжить" rail also surfaces unsaved ones.
+   */
+  function openGeneration(entry: HistoryEntry, saved: boolean) {
+    navigate({
+      kind: "results",
+      generationId: entry.id,
+      saved,
+      playlist: { name: entry.playlistName ?? entry.prompt, tracks: entry.tracks },
+    });
+  }
+
   function renderScreen(): ReactNode | null {
     switch (screen.kind) {
       case "prompt":
@@ -307,6 +304,7 @@ function AppInner() {
             events={events}
             isAdmin={isAdmin}
             onOpenArtist={(target) => setArtistTarget(target)}
+            onOpenGeneration={(entry) => openGeneration(entry, entry.saved ?? false)}
             initialMode={screen.initialMode}
             initialQuery={screen.initialQuery}
           />
@@ -336,14 +334,7 @@ function AppInner() {
       case "playlists":
         return (
           <PlaylistsScreen
-            onOpenHistory={(entry: HistoryEntry) =>
-              navigate({
-                kind: "results",
-                generationId: entry.id,
-                saved: true,
-                playlist: { name: entry.playlistName ?? entry.prompt, tracks: entry.tracks },
-              })
-            }
+            onOpenHistory={(entry: HistoryEntry) => openGeneration(entry, true)}
           />
         );
       case "profile":
@@ -442,7 +433,7 @@ function AppInner() {
         <ErrorBanner message={error} onClose={() => setError(null)} onRetry={retryLast} isAdmin={isAdmin} />
       )}
 
-      <ScreenTransition kind={screen.kind} direction={transitionDir}>
+      <ScreenTransition kind={screen.kind}>
         {renderScreen()}
       </ScreenTransition>
 

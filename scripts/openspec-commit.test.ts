@@ -1,9 +1,26 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
 import { join } from "path";
 
 const { buildMessage, listChanges, detectMetadata, listArtifacts } = await import("./openspec-commit");
 
-const fixtures = join(import.meta.dir, "..", "openspec", "changes", "commit-openspec-to-git");
+/**
+ * A change directory built on disk for the test, so these cases don't depend
+ * on any particular change still living in openspec/changes.
+ */
+const CHANGE = "commit-openspec-to-git";
+const changesRoot = mkdtempSync(join(tmpdir(), "openspec-changes-"));
+const fixtures = join(changesRoot, CHANGE);
+
+mkdirSync(join(fixtures, "specs", "git-commit"), { recursive: true });
+writeFileSync(join(fixtures, ".openspec.yaml"), "schema: spec-driven\ncreated: 2026-07-14\n");
+for (const f of ["proposal.md", "design.md", "tasks.md"]) writeFileSync(join(fixtures, f), `# ${f}\n`);
+writeFileSync(join(fixtures, "specs", "git-commit", "spec.md"), "# spec\n");
+// A sibling without .openspec.yaml — listChanges must skip it.
+mkdirSync(join(changesRoot, "not-a-change"), { recursive: true });
+
+afterAll(() => rmSync(changesRoot, { recursive: true, force: true }));
 
 describe("buildMessage", () => {
   test("auto-generates subject with change name", () => {
@@ -42,10 +59,12 @@ describe("buildMessage", () => {
 });
 
 describe("listChanges", () => {
-  test("returns commit-openspec-to-git as a known change", () => {
-    const dir = join(import.meta.dir, "..", "openspec", "changes");
-    const changes = listChanges(dir);
-    expect(changes).toContain("commit-openspec-to-git");
+  test("lists directories that carry an .openspec.yaml", () => {
+    expect(listChanges(changesRoot)).toEqual([CHANGE]);
+  });
+
+  test("skips directories without an .openspec.yaml", () => {
+    expect(listChanges(changesRoot)).not.toContain("not-a-change");
   });
 
   test("returns empty array for nonexistent dir", () => {

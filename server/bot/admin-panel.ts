@@ -362,8 +362,16 @@ export async function handleAdminText(ctx: BotContext, db: AppDb, send: Broadcas
   if (flow.kind === "admin_broadcast") {
     clearSession(db, chatId);
     await ctx.reply("Отправляю рассылку…");
-    const res = await broadcast(db, { text, buttons: [] }, send);
-    await ctx.reply(`Готово. Доставлено: ${res.sent}, ошибок: ${res.failed}.`);
+    // One paced Bot API call per recipient — minutes for a real user base.
+    // Awaiting it here wedged this admin's chat for the whole run; the summary
+    // arrives as its own message when the send finishes.
+    void broadcast(db, { text, buttons: [] }, send)
+      .then((res) => ctx.reply(`Готово. Доставлено: ${res.sent}, ошибок: ${res.failed}.`))
+      .catch((e) => {
+        console.error("[broadcast]", e);
+        return ctx.reply("Рассылка прервалась с ошибкой.");
+      })
+      .catch(() => { /* admin may have blocked the bot — nothing left to do */ });
     return true;
   }
 

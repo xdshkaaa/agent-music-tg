@@ -44,14 +44,25 @@ export class YouTubeMusicBackend implements MusicProvider {
   };
 
   private api: YtmApi | null = null;
+  /** Init in progress, so a burst of cold requests shares one handshake. */
+  private apiInit: Promise<YtmApi> | null = null;
 
   private async ensureApi(): Promise<YtmApi> {
     if (this.api) return this.api;
-    const { default: YTMusic } = await import("ytmusic-api");
-    const api = new YTMusic();
-    await api.initialize();
-    this.api = api as unknown as YtmApi;
-    return this.api;
+    // `initialize()` is a remote handshake: without this, every request that
+    // arrives before the first one finishes builds its own client and repeats it.
+    if (!this.apiInit) {
+      this.apiInit = (async () => {
+        const { default: YTMusic } = await import("ytmusic-api");
+        const api = new YTMusic();
+        await api.initialize();
+        this.api = api as unknown as YtmApi;
+        return this.api;
+      })().finally(() => {
+        this.apiInit = null;
+      });
+    }
+    return this.apiInit;
   }
 
   async searchTrack(artist: string, title: string): Promise<Track | null> {
@@ -79,7 +90,9 @@ export class YouTubeMusicBackend implements MusicProvider {
   async searchArtist(name: string): Promise<{ id: string; name: string } | null> {
     return withQueryCache("youtube-music", "artist", name, 1, async () => {
       const api = await this.ensureApi();
-      const artists = await api.searchArtists(name);
+      // ytmusic-api's axios client carries no timeout of its own, so without
+      // this a stalled socket hangs /api/artist forever.
+      const artists = await withTimeout(api.searchArtists(name), SEARCH_TIMEOUT_MS, [] as any[]);
       const item = artists[0];
       return item?.artistId ? { id: item.artistId, name: item.name } : null;
     });
@@ -124,15 +137,20 @@ export class YouTubeMusicBackend implements MusicProvider {
   }
 
   async getArtistAlbums(artistId: string, limit = 10): Promise<Album[]> {
-    const api = await this.ensureApi();
-    const albums = await withTimeout(api.getArtistAlbums(artistId), SEARCH_TIMEOUT_MS, [] as any[]);
-    return albums.slice(0, limit).map((a: any) => ({
-      uri: `ytm:album:${a.albumId}`,
-      title: a.name,
-      artist: a.artist?.name ?? "",
-      artwork: a.thumbnails?.at(-1)?.url,
-      deepLink: `https://music.youtube.com/browse/MPREb_${a.albumId}`,
-    }));
+    // Cached like the sibling artist lookups: /api/artist awaits albums in the
+    // same Promise.all as topTracks and details, so leaving this one uncached
+    // made it the sole network-bound leg of every repeat artist view.
+    return withQueryCache("youtube-music", "artist-albums", artistId, limit, async () => {
+      const api = await this.ensureApi();
+      const albums = await withTimeout(api.getArtistAlbums(artistId), SEARCH_TIMEOUT_MS, [] as any[]);
+      return albums.slice(0, limit).map((a: any) => ({
+        uri: `ytm:album:${a.albumId}`,
+        title: a.name,
+        artist: a.artist?.name ?? "",
+        artwork: a.thumbnails?.at(-1)?.url,
+        deepLink: `https://music.youtube.com/browse/MPREb_${a.albumId}`,
+      }));
+    });
   }
 
   async searchAlbums(query: string, limit = 10): Promise<Album[]> {

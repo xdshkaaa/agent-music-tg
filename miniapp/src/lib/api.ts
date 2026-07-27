@@ -363,6 +363,29 @@ export interface HistoryEntry {
   trackCount: number | null;
   tracks: Track[];
   createdAt: number;
+  /** Present on /api/suggestions, where the list is not saved-only. */
+  saved?: boolean;
+}
+
+export interface SuggestedArtist {
+  name: string;
+  artwork: string | null;
+}
+
+export interface LibraryTrack {
+  uri: string;
+  title: string;
+  artist: string;
+  artwork: string | null;
+}
+
+export interface SuggestionsResponse {
+  /** All recent generations, saved or not — unlike `fetchHistory`. */
+  recentGenerations: HistoryEntry[];
+  topArtists: SuggestedArtist[];
+  libraryTracks: LibraryTrack[];
+  /** Russian genre labels, the fallback when the user has no history yet. */
+  genres: string[];
 }
 
 /**
@@ -539,6 +562,9 @@ export const api = {
   renameGeneration: (id: number, name: string) =>
     request<{ ok: boolean }>(`/api/generations/${id}`, { method: "PATCH", body: JSON.stringify({ name }) }),
   fetchHistory: () => request<{ history: HistoryEntry[] }>("/api/history"),
+
+  /** Personalized fill for the create/search empty states. One SQLite-only call. */
+  suggestions: () => request<SuggestionsResponse>("/api/suggestions"),
 
   // --- Saved tracks ("Плейлисты") ---
   myMusic: () => request<{ tracks: SavedTrack[] }>("/api/my-music"),

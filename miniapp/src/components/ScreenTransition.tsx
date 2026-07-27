@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
+/**
+ * Cross-fades between screens. Deliberately has no direction: a forward/back
+ * horizontal slide reads as the whole app drifting sideways inside Telegram's
+ * narrow viewport, so the outgoing screen only fades out under the incoming one.
+ */
 export function ScreenTransition({
   kind,
-  direction = "forward",
   children,
 }: {
   kind: string;
-  direction?: "forward" | "back";
   children: ReactNode;
 }) {
   const [exiting, setExiting] = useState<{
@@ -35,21 +38,11 @@ export function ScreenTransition({
   return (
     <div className="screen-stack">
       {exiting && (
-        <div
-          className={`screen-exit ${direction === "back" ? "screen-exit-back" : "screen-exit-forward"}`}
-          key={`exit-${exiting.kind}`}
-        >
+        <div className="screen-exit" key={`exit-${exiting.kind}`}>
           {exiting.content}
         </div>
       )}
-      <div
-        className={
-          exiting
-            ? `screen-enter ${direction === "back" ? "screen-enter-back" : "screen-enter-forward"}`
-            : ""
-        }
-        key={kind}
-      >
+      <div className={exiting ? "screen-enter" : ""} key={kind}>
         {children}
       </div>
     </div>

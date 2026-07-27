@@ -79,7 +79,7 @@ export function listArtifacts(changeDir: string, changeName: string): string[] {
   if (existsSync(specsDir)) {
     for (const cap of readdirSync(specsDir)) {
       const specFile = join(specsDir, cap, "spec.md");
-      if (existsSync(specFile)) specs.push(relative(CHANGES_DIR, specFile));
+      if (existsSync(specFile)) specs.push(`${changeName}/specs/${cap}/spec.md`);
     }
   }
   return [...top.map((f) => `${changeName}/${f}`), ...specs];

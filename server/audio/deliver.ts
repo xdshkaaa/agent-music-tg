@@ -4,6 +4,7 @@ import { getCachedAudio, setCachedAudio } from "./cache";
 import type { Extractor } from "./extractor";
 import { detailBlock, escapeHtml, messageTitle } from "../bot/message-format";
 import { mapWithConcurrency } from "../core/concurrency";
+import { extractionSemaphore } from "./ytdlp-limits";
 import {
   finalStatusFor,
   setDownloadStatus,
@@ -34,24 +35,6 @@ export interface DeliverDeps {
   sender: AudioSender;
   extractor: Extractor;
   scratchDir: string;
-  /** Max simultaneous yt-dlp extractions across all jobs. */
-  maxConcurrentExtractions?: number;
-}
-
-// Global extraction semaphore: protects the VPS CPU/disk regardless of how
-// many user jobs run. FIFO queue of waiters.
-let running = 0;
-const waiters: (() => void)[] = [];
-
-async function withExtractionSlot<T>(cap: number, fn: () => Promise<T>): Promise<T> {
-  if (running >= cap) await new Promise<void>((resolve) => waiters.push(resolve));
-  running++;
-  try {
-    return await fn();
-  } finally {
-    running--;
-    waiters.shift()?.();
-  }
 }
 
 function metaFor(track: DownloadTrack): AudioMeta {
@@ -69,8 +52,7 @@ async function extractUploadCache(
   track: DownloadTrack,
   deps: DeliverDeps,
 ): Promise<void> {
-  const cap = deps.maxConcurrentExtractions ?? 2;
-  const { filePath, sizeBytes } = await withExtractionSlot(cap, () =>
+  const { filePath, sizeBytes } = await extractionSemaphore.run(() =>
     deps.extractor.extract(track.uri, deps.scratchDir),
   );
   try {
@@ -120,9 +102,9 @@ function summaryText(playlistName: string, tracks: DownloadTrack[]): string {
 }
 
 // How many tracks are delivered (cache-hit send or extract+upload) at once.
-// Actual yt-dlp extraction is further capped by deps.maxConcurrentExtractions
-// (default 2) via withExtractionSlot, so this only widens the win for
-// cache-hit sends, which need no extraction slot.
+// Actual yt-dlp extraction is further capped process-wide by
+// extractionSemaphore, so this only widens the win for cache-hit sends, which
+// need no extraction slot.
 const DELIVERY_CONCURRENCY = 3;
 
 /**

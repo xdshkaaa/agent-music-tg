@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import type { AppDb } from "../db";
 import type { AppEnv } from "./context";
 import { hasAccess } from "../access/entitlements";
+import { ownsTrack } from "../access/track-ownership";
+import { streamRateLimiter } from "../lib/rate-limit";
 import { isValidTrackUri, type Extractor } from "../audio/extractor";
 import { processDownload, type AudioSender } from "../audio/deliver";
 import type { StreamResolver } from "../audio/stream-resolver";
@@ -116,13 +118,38 @@ export function createAudioRoutes(db: AppDb, deps: AudioDeps): Hono<AppEnv> {
     const uri = c.req.param("uri");
     if (!isValidTrackUri(uri)) return c.json({ error: "invalid uri" }, 400);
 
+    const chatId = c.get("chatId");
+    // Tracks already in the user's library stay playable forever; anything else
+    // needs live entitlement, matching the gate on POST /download. Same boolean
+    // either way, but hasAccess is one indexed row read while ownsTrack scans
+    // the chat's generations with json_each — and this route is re-entered for
+    // every Range seek, so the cheap arm has to go first.
+    if (!hasAccess(db, chatId) && !ownsTrack(db, chatId, uri)) {
+      return c.json({ error: "нет доступа, пополните баланс" }, 403);
+    }
+    // The limiter exists to bound yt-dlp spawns, so only a resolve that will
+    // actually spawn one may cost budget. Charging cached tracks meant seeking
+    // around inside a couple of songs could spend the whole per-minute budget
+    // and 429 a user who never triggered a single subprocess.
+    const alreadyResolved = deps.streamResolver.isCached?.(uri) ?? false;
+    if (!alreadyResolved && streamRateLimiter.check(chatId)) {
+      return c.json({ error: "too many requests" }, 429);
+    }
+
     try {
       for (let attempt = 0; attempt < 2; attempt++) {
         const resolved = await deps.streamResolver.resolve(uri);
         const requestHeaders = new Headers(resolved.headers);
         const range = c.req.header("Range");
         if (range) requestHeaders.set("Range", range);
-        const upstream = await (deps.streamFetch ?? fetch)(resolved.url, { headers: requestHeaders, redirect: "follow" });
+        // Forward the client's abort: when a listener skips a track or closes
+        // the app mid-buffer, the upstream transfer should stop with them
+        // instead of streaming the rest of the file into a dead socket.
+        const upstream = await (deps.streamFetch ?? fetch)(resolved.url, {
+          headers: requestHeaders,
+          redirect: "follow",
+          signal: c.req.raw.signal,
+        });
         if (attempt === 0 && (upstream.status === 403 || upstream.status === 410)) {
           await upstream.body?.cancel();
           deps.streamResolver.invalidate(uri);
@@ -146,7 +173,10 @@ export function createAudioRoutes(db: AppDb, deps: AudioDeps): Hono<AppEnv> {
       }
       return c.json({ error: "upstream audio failed" }, 502);
     } catch (e) {
-      return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
+      // yt-dlp stderr carries filesystem paths and upstream URLs — log it,
+      // don't hand it to the client.
+      console.error(`[stream] ${uri}`, e);
+      return c.json({ error: "stream unavailable" }, 502);
     }
   });
 

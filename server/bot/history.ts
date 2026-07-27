@@ -1,6 +1,6 @@
 import { Bot, InlineKeyboard } from "grammy";
 import type { AppDb } from "../db";
-import type { BotContext } from "./context";
+import { ackCallback, type BotContext } from "./context";
 import { listDownloads, getDownload, insertDownload, hasActiveDownload, type DownloadRecord } from "../audio/downloads-store";
 import { processDownload } from "../audio/deliver";
 import { createTelegramAudioSender } from "../audio/telegram-sender";
@@ -126,7 +126,7 @@ export function registerHistory(bot: Bot<BotContext>, db: AppDb): void {
   });
 
   bot.callbackQuery("hist:back", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    ackCallback(ctx);
     const chatId = ctx.chat!.id;
     const view = buildDatesView(listDownloads(db, chatId));
     await ctx.editMessageText(view.text, { parse_mode: "HTML", reply_markup: view.keyboard });
@@ -147,7 +147,7 @@ export function registerHistory(bot: Bot<BotContext>, db: AppDb): void {
       return;
     }
 
-    await ctx.answerCallbackQuery();
+    ackCallback(ctx);
     const view = buildPlaylistsView(day, items);
     await ctx.editMessageText(view.text, { parse_mode: "HTML", reply_markup: view.keyboard });
   });

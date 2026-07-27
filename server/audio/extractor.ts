@@ -39,11 +39,40 @@ export interface Extractor {
 const PROBE_TIMEOUT_MS = 15_000;
 const EXTRACT_TIMEOUT_MS = 45_000;
 
-/** Kills proc if it doesn't exit within timeoutMs; returns its exit code either way. */
-async function waitWithTimeout(proc: { exited: Promise<number>; kill: () => void }, timeoutMs: number): Promise<number> {
+interface SpawnedProc {
+  stdout?: ReadableStream<Uint8Array> | number;
+  stderr?: ReadableStream<Uint8Array> | number;
+  exited: Promise<number>;
+  kill: () => void;
+}
+
+function readPipe(pipe: SpawnedProc["stdout"]): Promise<string> {
+  // "ignore"/"inherit" hand back a number instead of a stream.
+  if (!pipe || typeof pipe === "number") return Promise.resolve("");
+  return new Response(pipe).text();
+}
+
+/**
+ * Runs proc to completion, killing it if it outlives timeoutMs.
+ *
+ * The kill timer is armed *before* the pipes are drained, and the drains are
+ * awaited together with `exited`. Reading a pipe to EOF first would mean a
+ * yt-dlp that stalls with its pipes still open never reaches the timeout at
+ * all — and both callers run inside a semaphore of 2-4 slots (ytdlp-limits.ts),
+ * so a single hung process permanently removed capacity for every user.
+ */
+async function runWithTimeout(
+  proc: SpawnedProc,
+  timeoutMs: number,
+): Promise<{ stdout: string; stderr: string; code: number }> {
   const timer = setTimeout(() => proc.kill(), timeoutMs);
   try {
-    return await proc.exited;
+    const [stdout, stderr, code] = await Promise.all([
+      readPipe(proc.stdout),
+      readPipe(proc.stderr),
+      proc.exited,
+    ]);
+    return { stdout, stderr, code };
   } finally {
     clearTimeout(timer);
   }
@@ -55,9 +84,7 @@ async function runProbe(uri: string): Promise<ProbeResult> {
     ["yt-dlp", "--no-playlist", "--quiet", "--js-runtimes", "node", "-f", "bestaudio/best", "--dump-json", url],
     { stdout: "pipe", stderr: "pipe" },
   );
-  const stdout = await new Response(proc.stdout).text();
-  const stderr = await new Response(proc.stderr).text();
-  const code = await waitWithTimeout(proc, PROBE_TIMEOUT_MS);
+  const { stdout, stderr, code } = await runWithTimeout(proc, PROBE_TIMEOUT_MS);
 
   if (code !== 0) {
     const msg = stderr.trim().slice(0, 300);
@@ -115,8 +142,7 @@ export class YtDlpExtractor implements Extractor {
       ],
       { stdout: "ignore", stderr: "pipe" },
     );
-    const stderr = await new Response(proc.stderr).text();
-    const code = await waitWithTimeout(proc, EXTRACT_TIMEOUT_MS);
+    const { stderr, code } = await runWithTimeout(proc, EXTRACT_TIMEOUT_MS);
     if (code !== 0) {
       const timedOut = proc.killed;
       const detail = timedOut ? "timed out" : stderr.trim().slice(0, 500);

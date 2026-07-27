@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHmac } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
@@ -16,6 +16,9 @@ const { createApiRoutes } = await import("./routes");
 const { setCachedAudio, getCachedAudio } = await import("../audio/cache");
 const { insertDownload, getDownload, setDownloadStatus } = await import("../audio/downloads-store");
 const { fileNameForUri } = await import("../audio/extractor");
+const { addSavedTrack } = await import("../access/saved-tracks-store");
+const { insertGeneration } = await import("../access/generations-store");
+const { streamRateLimiter } = await import("../lib/rate-limit");
 
 import type { Extractor } from "../audio/extractor";
 import type { AudioSender } from "../audio/deliver";
@@ -214,7 +217,7 @@ describe("downloads history API", () => {
 });
 
 describe("GET /api/stream/:uri", () => {
-  function makeProxyHarness(responses: Response[]) {
+  function makeProxyHarness(responses: Response[], db = freshDb(), opts: { cached?: boolean } = {}) {
     let extractCalls = 0;
     let resolveCalls = 0;
     let invalidateCalls = 0;
@@ -239,6 +242,9 @@ describe("GET /api/stream/:uri", () => {
         invalidate() {
           invalidateCalls++;
         },
+        // Omitted unless a case asks for it, so the default harness exercises
+        // the resolver-shaped double that predates isCached.
+        ...(opts.cached ? { isCached: () => true } : {}),
       },
       async streamFetch(_url: string | URL | Request, init?: RequestInit) {
         upstreamRanges.push(new Headers(init?.headers).get("Range"));
@@ -248,7 +254,7 @@ describe("GET /api/stream/:uri", () => {
       },
     } as AudioDeps;
     return {
-      app: createApiRoutes(freshDb(), { audio }),
+      app: createApiRoutes(db, { audio }),
       calls: () => ({ extractCalls, resolveCalls, invalidateCalls, upstreamRanges }),
     };
   }
@@ -313,5 +319,115 @@ describe("GET /api/stream/:uri", () => {
     expect(bad.status).toBe(400);
     const anon = await app.request("/stream/ytm:abc");
     expect(anon.status).toBe(401);
+  });
+
+  test("hides yt-dlp stderr from the client when resolving fails", async () => {
+    const audio = {
+      sender: fakeSender(),
+      extractor: fakeExtractor(),
+      scratchDir: mkdtempSync(join(tmpdir(), "audio-scratch-")),
+      streamResolver: {
+        async resolve() {
+          throw new Error("yt-dlp stream resolve failed for ytm:abc (exit 1): /opt/secret/path cookies missing");
+        },
+        invalidate() {},
+      },
+    } as unknown as AudioDeps;
+    const app = createApiRoutes(freshDb(), { audio });
+    const res = await app.request("/stream/ytm:abc", { headers: authHeaders(TEST_CHAT) });
+    expect(res.status).toBe(502);
+    const body = await res.text();
+    expect(body).not.toContain("/opt/secret/path");
+    expect(body).not.toContain("yt-dlp");
+  });
+
+  describe("entitlement", () => {
+    /** Allowlisted chat with no credits, no trial and no subscription. */
+    function brokeDb() {
+      const db = freshDb();
+      db.run(
+        "UPDATE users SET credits = 0, trial_credits = 0, trial_until = NULL, subscription_until = NULL WHERE chat_id = ?",
+        [TEST_CHAT],
+      );
+      return db;
+    }
+
+    let paymentsWasEnabled = true;
+    beforeEach(() => {
+      paymentsWasEnabled = env.paymentsEnabled;
+      env.paymentsEnabled = true;
+      streamRateLimiter.reset();
+    });
+    afterEach(() => {
+      env.paymentsEnabled = paymentsWasEnabled;
+      streamRateLimiter.reset();
+    });
+
+    test("refuses a track the user neither owns nor can pay for", async () => {
+      const { app, calls } = makeProxyHarness([], brokeDb());
+      const res = await app.request("/stream/ytm:abc", { headers: authHeaders(TEST_CHAT) });
+      expect(res.status).toBe(403);
+      // The gate must run before yt-dlp is ever spawned.
+      expect(calls().resolveCalls).toBe(0);
+    });
+
+    test("still streams a track the user saved earlier, with no credits left", async () => {
+      const db = brokeDb();
+      addSavedTrack(db, TEST_CHAT, { uri: "ytm:abc", title: "T", artist: "A", artwork: null });
+      const { app } = makeProxyHarness([new Response("owned", { headers: { "Content-Type": "audio/mp4" } })], db);
+      const res = await app.request("/stream/ytm:abc", { headers: authHeaders(TEST_CHAT) });
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe("owned");
+    });
+
+    test("still streams a track from the user's own past generation", async () => {
+      const db = brokeDb();
+      insertGeneration(db, TEST_CHAT, "прогулка", "Вечер", 1, [
+        { uri: "ytm:gen_1", title: "T", artist: "A" },
+      ]);
+      const { app } = makeProxyHarness([new Response("owned", { headers: { "Content-Type": "audio/mp4" } })], db);
+      const res = await app.request("/stream/ytm:gen_1", { headers: authHeaders(TEST_CHAT) });
+      expect(res.status).toBe(200);
+    });
+
+    test("does not leak another chat's generation as ownership", async () => {
+      const db = brokeDb();
+      insertGeneration(db, OTHER_CHAT, "чужое", "Чужой", 1, [{ uri: "ytm:other_1", title: "T", artist: "A" }]);
+      const { app } = makeProxyHarness([], db);
+      const res = await app.request("/stream/ytm:other_1", { headers: authHeaders(TEST_CHAT) });
+      expect(res.status).toBe(403);
+    });
+
+    test("a cached track never spends throttle budget, however often it is re-requested", async () => {
+      // The limiter exists to bound yt-dlp spawns. Scrubbing around inside one
+      // already-resolved song issues many Range requests that spawn nothing, so
+      // charging them would 429 a listener who cost the box no work at all.
+      const db = freshDb();
+      const responses = Array.from({ length: 90 }, () => new Response("a", { headers: { "Content-Type": "audio/mp4" } }));
+      const { app } = makeProxyHarness(responses, db, { cached: true });
+      const statuses: number[] = [];
+      for (let i = 0; i < 80; i++) {
+        const res = await app.request("/stream/ytm:abc", {
+          headers: { ...authHeaders(TEST_CHAT), Range: `bytes=${i * 100}-` },
+        });
+        statuses.push(res.status);
+        await res.arrayBuffer();
+      }
+      expect(statuses.every((s) => s === 200)).toBe(true);
+    });
+
+    test("throttles a caller walking distinct uris", async () => {
+      const db = freshDb(); // has credits, so only the throttle can stop it
+      const responses = Array.from({ length: 80 }, () => new Response("a", { headers: { "Content-Type": "audio/mp4" } }));
+      const { app } = makeProxyHarness(responses, db);
+      const statuses: number[] = [];
+      for (let i = 0; i < 65; i++) {
+        const res = await app.request(`/stream/ytm:t${i}`, { headers: authHeaders(TEST_CHAT) });
+        statuses.push(res.status);
+        await res.arrayBuffer();
+      }
+      expect(statuses.filter((s) => s === 200).length).toBe(60);
+      expect(statuses.filter((s) => s === 429).length).toBe(5);
+    });
   });
 });

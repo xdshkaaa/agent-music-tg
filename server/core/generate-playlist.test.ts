@@ -196,6 +196,43 @@ describe("generatePlaylist", () => {
     expect(music.searchTrackCalls).toEqual(["A|One"]);
   });
 
+  test("a track already returned by searchTracks is not re-searched at finalize", async () => {
+    // The fake searchTracks answers with artist "Q" and the query as the title,
+    // which is exactly what the agent then finalizes — so the finalize resolve
+    // must reuse that track rather than issuing a fresh per-track lookup.
+    const provider = fakeProvider([
+      searchTracksResult("c1", "dream pop"),
+      finalizeResult("Vibes", [{ artist: "Q", title: "dream pop" }]),
+    ]);
+    const music = fakeMusic({ remotePlaylists: false });
+    const { playlist } = await generatePlaylist({ provider, music, prompt: "dream pop" });
+    expect(music.searchTrackCalls).toEqual([]);
+    expect(playlist.tracks[0]?.uri).toBe("ytm:q-dream pop");
+  });
+
+  test("finalize still searches a track the backend never returned this run", async () => {
+    const provider = fakeProvider([
+      searchTracksResult("c1", "dream pop"),
+      finalizeResult("Vibes", [{ artist: "Unseen", title: "Elsewhere" }]),
+    ]);
+    const music = fakeMusic({ remotePlaylists: false });
+    await generatePlaylist({ provider, music, prompt: "dream pop" });
+    expect(music.searchTrackCalls).toEqual(["Unseen|Elsewhere"]);
+  });
+
+  test("knownTracks seeds the resolution index so stored tracks are never re-searched", async () => {
+    const provider = fakeProvider([finalizeResult("Vibes", [{ artist: "Stored", title: "Track" }])]);
+    const music = fakeMusic({ remotePlaylists: false });
+    const { playlist } = await generatePlaylist({
+      provider,
+      music,
+      prompt: "extend it",
+      knownTracks: [{ uri: "ytm:stored-1", title: "Track", artist: "Stored" }],
+    });
+    expect(music.searchTrackCalls).toEqual([]);
+    expect(playlist.tracks[0]?.uri).toBe("ytm:stored-1");
+  });
+
   test("first clarify call surfaces as ClarifyNeededError with round 1", async () => {
     const provider = fakeProvider([
       { text: "", toolCalls: [{ id: "c1", name: "clarify", args: { question: "Which mood?", options: ["a", "b", "c"] } }] },
