@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { run } from "@grammyjs/runner";
 import { env } from "./env";
 import { openDb } from "./db";
 import { bootstrapAllowlist } from "./lib/access-control";
@@ -161,14 +162,23 @@ setPrewarmStreamResolver(streamResolver);
 
 app.route("/api", createApiRoutes(db, { send, createStarsInvoiceLink, audio }));
 
-bot.start();
+// grammY's built-in polling awaits each update's full middleware chain before
+// touching the next one, so a single 30-120s generation froze every other
+// user's taps (and could push pre_checkout_query past Telegram's 10s deadline).
+// The runner processes updates concurrently; sequentialize() in createBot keeps
+// per-chat ordering intact. The concurrency cap is a pile-up backstop — the
+// library default of 500 in-flight updates would let a burst spawn far more
+// simultaneous agent runs than this box should carry.
+const runner = run(bot, { sink: { concurrency: 64 } });
 
 const stopPoller = startPoller(db, notifyFulfilled);
 const stopPlategaPoller = startPlategaPoller(db, notifyFulfilled);
 const shutdown = createShutdownHandler({
   stopPoller,
   stopPlategaPoller,
-  stopBot: () => bot.stop(),
+  // Resolves once in-flight middleware finishes, so a systemd restart doesn't
+  // cut a generation mid-run any earlier than the shutdown budget allows.
+  stopBot: () => runner.stop(),
   exit: (code) => process.exit(code),
 });
 process.once("SIGTERM", () => void shutdown("SIGTERM"));

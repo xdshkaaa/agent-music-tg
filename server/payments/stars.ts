@@ -21,6 +21,38 @@ export function parseStarsPayload(raw: string): StarsPayload | null {
   }
 }
 
+/** `slots:<chatId>:<slots>:<uuid>` — issued by POST /api/playlists/slots/invoice. */
+const SLOTS_PAYLOAD_PATTERN = /^slots:(-?\d+):(\d+):/;
+
+/**
+ * Every kind of Telegram Stars invoice this bot issues.
+ *
+ * Two independent flows share the single `pre_checkout_query` /
+ * `successful_payment` update stream, and grammY stops the middleware chain at
+ * the first handler that does not call `next()`. Classifying the payload in one
+ * place keeps each handler able to recognise — and pass on — the other's
+ * invoices, instead of silently rejecting them.
+ */
+export type StarsInvoiceKind =
+  | { kind: "offer"; chatId: number; offerId: number }
+  | { kind: "slots"; chatId: number; slots: number }
+  | { kind: "unknown" };
+
+export function classifyStarsPayload(raw: string): StarsInvoiceKind {
+  const offer = parseStarsPayload(raw);
+  if (offer) return { kind: "offer", chatId: offer.chatId, offerId: offer.offerId };
+
+  const slots = SLOTS_PAYLOAD_PATTERN.exec(raw);
+  if (slots) {
+    const chatId = Number(slots[1]);
+    const count = Number(slots[2]);
+    if (Number.isInteger(chatId) && Number.isInteger(count) && count > 0) {
+      return { kind: "slots", chatId, slots: count };
+    }
+  }
+  return { kind: "unknown" };
+}
+
 /**
  * Idempotently fulfills a Telegram Stars payment. The INSERT OR IGNORE on the
  * unique (provider, external_id) is the guard: only the caller that actually

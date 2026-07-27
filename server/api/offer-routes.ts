@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { AppDb } from "../db";
-import type { AppEnv, ApiDeps } from "./context";
+import type { AppContext, AppEnv, ApiDeps } from "./context";
 import { env } from "../env";
 import { getPaymentsEnabled, getShopSettings } from "../lib/settings";
 import { claimTrial, getUser } from "../access/users-store";
@@ -10,6 +10,16 @@ import { UnsupportedAssetError } from "../payments/crypto-pay";
 import { plategaEnabled } from "../payments/platega";
 import { trialStatus, readJsonBody } from "./shared";
 import { recordDailyEvent, recordEvent } from "../analytics/store";
+
+/**
+ * Payment-gateway failures carry the provider's raw error body (and, for
+ * Crypto Pay, the request context around the API token). Log the detail, return
+ * a generic message.
+ */
+function paymentGatewayError(c: AppContext, e: unknown) {
+  console.error("[checkout]", e);
+  return c.json({ error: "платёжный сервис недоступен, попробуйте позже" }, 502);
+}
 
 /** User-facing shop: trial claim, offer listing, and invoice creation. */
 export function createOfferRoutes(db: AppDb, deps: ApiDeps): Hono<AppEnv> {
@@ -63,7 +73,7 @@ export function createOfferRoutes(db: AppDb, deps: ApiDeps): Hono<AppEnv> {
         if (e instanceof OfferUnavailableError || e instanceof RubPriceMissingError) {
           return c.json({ error: e.message }, 400);
         }
-        return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
+        return paymentGatewayError(c, e);
       }
     }
 
@@ -83,7 +93,7 @@ export function createOfferRoutes(db: AppDb, deps: ApiDeps): Hono<AppEnv> {
         recordEvent(db, c.get("chatId"), "checkout_started", { method: "stars", offerId });
         return c.json({ payUrl, method: "stars", offerTitle: offer.title });
       } catch (e) {
-        return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
+        return paymentGatewayError(c, e);
       }
     }
 
@@ -95,7 +105,7 @@ export function createOfferRoutes(db: AppDb, deps: ApiDeps): Hono<AppEnv> {
       if (e instanceof UnsupportedAssetError) {
         return c.json({ error: "crypto asset unsupported", asset: e.asset }, 400);
       }
-      return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
+      return paymentGatewayError(c, e);
     }
   });
 

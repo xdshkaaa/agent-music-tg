@@ -7,7 +7,9 @@ import { isMusicBackend } from "../music/registry";
 import { getUser, setPhotoFileId, setUserMusicBackend } from "../access/users-store";
 import { getReferralStats } from "../access/referral-store";
 import { getReferralSettings } from "../lib/settings";
-import { countGenerations, saveGeneration, unsaveGeneration, listSavedGenerations, renameGeneration } from "../access/generations-store";
+import { countGenerations, saveGeneration, unsaveGeneration, listGenerations, listSavedGenerations, renameGeneration } from "../access/generations-store";
+import { topArtistsForChat, libraryTracksForChat } from "../access/suggestions-store";
+import { genreBrowseLabels } from "../recommendation/genre-knowledge";
 import { addSavedTrack, removeSavedTrack, listSavedTracks, isSavedTrack } from "../access/saved-tracks-store";
 import { addDislike, removeDislike, isDisliked } from "../access/reactions-store";
 import { listInvoicesForChat, getInvoiceById } from "../payments/invoices-store";
@@ -253,6 +255,24 @@ export function createMeRoutes(db: AppDb): Hono<AppEnv> {
 
   app.get("/history", (c) => {
     return c.json({ history: listSavedGenerations(db, c.get("chatId")) });
+  });
+
+  /**
+   * Everything the create/search screens need to fill their empty states.
+   *
+   * Deliberately one round-trip and pure SQLite: past generations already store
+   * their full track list with artwork, so a personalized screen needs no music
+   * backend call and stays instant on open. `genres` is the fallback for a user
+   * with no history yet, so the screen is never blank.
+   */
+  app.get("/suggestions", (c) => {
+    const chatId = c.get("chatId");
+    return c.json({
+      recentGenerations: listGenerations(db, chatId, 6),
+      topArtists: topArtistsForChat(db, chatId, 10),
+      libraryTracks: libraryTracksForChat(db, chatId, 8),
+      genres: genreBrowseLabels(16),
+    });
   });
 
   // --- Saved tracks ("Плейлисты" tab) ------------------------------------

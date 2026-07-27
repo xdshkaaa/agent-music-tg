@@ -100,7 +100,9 @@ export function incrementExtendCount(db: AppDb, id: number): void {
 export function listGenerations(db: AppDb, chatId: number, limit = 10): GenerationRow[] {
   return db
     .query<GenerationRowRaw, [number, number]>(
-      `SELECT * FROM generations WHERE chat_id = ? ORDER BY created_at DESC LIMIT ?`
+      // created_at has one-second resolution, so id breaks ties — without it
+      // two generations made in the same second come back in arbitrary order.
+      `SELECT * FROM generations WHERE chat_id = ? ORDER BY created_at DESC, id DESC LIMIT ?`
     )
     .all(chatId, limit)
     .map(toGeneration);
@@ -156,7 +158,7 @@ export function unsaveGeneration(db: AppDb, chatId: number, id: number): boolean
 export function listSavedGenerations(db: AppDb, chatId: number): GenerationRow[] {
   return db
     .query<GenerationRowRaw, [number]>(
-      `SELECT * FROM generations WHERE chat_id = ? AND saved = 1 ORDER BY created_at DESC`
+      `SELECT * FROM generations WHERE chat_id = ? AND saved = 1 ORDER BY created_at DESC, id DESC`
     )
     .all(chatId)
     .map(toGeneration);

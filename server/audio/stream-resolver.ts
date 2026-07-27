@@ -1,4 +1,5 @@
 import { sourceUrlForUri } from "./extractor";
+import { streamResolveSemaphore } from "./ytdlp-limits";
 
 export interface ResolvedStream {
   url: string;
@@ -8,6 +9,11 @@ export interface ResolvedStream {
 export interface StreamResolver {
   resolve(uri: string): Promise<ResolvedStream>;
   invalidate(uri: string): void;
+  /**
+   * Whether `resolve` would answer from cache — i.e. without spawning yt-dlp.
+   * Optional so lightweight test doubles need not implement it.
+   */
+  isCached?(uri: string): boolean;
 }
 
 export interface YtDlpStreamResolverOptions {
@@ -16,9 +22,14 @@ export interface YtDlpStreamResolverOptions {
   timeoutMs?: number;
 }
 
+/** Only used when the upstream URL carries no expiry of its own. */
 const DEFAULT_TTL_MS = 10 * 60 * 1000;
 const DEFAULT_TIMEOUT_MS = 12_000;
 const EXPIRY_SAFETY_MS = 60_000;
+/** Ceiling on a self-described expiry, so one entry can't outlive a deploy's worth of listening. */
+const MAX_TTL_MS = 6 * 60 * 60 * 1000;
+/** Cache is keyed by track uri and holds only a URL plus headers; this bounds it anyway. */
+const MAX_CACHE_ENTRIES = 2_000;
 const PROGRESSIVE_AUDIO_FORMAT =
   "bestaudio[ext=m4a][protocol^=http][protocol!*=m3u8]/bestaudio[protocol^=http][protocol!*=m3u8]";
 
@@ -56,7 +67,24 @@ export class YtDlpStreamResolver implements StreamResolver {
     this.cache.delete(uri);
   }
 
-  private async resolveFresh(uri: string): Promise<ResolvedStream> {
+  isCached(uri: string): boolean {
+    const cached = this.cache.get(uri);
+    if (!cached) return false;
+    if (cached.expiresAt <= Date.now()) {
+      this.cache.delete(uri);
+      return false;
+    }
+    return true;
+  }
+
+  private resolveFresh(uri: string): Promise<ResolvedStream> {
+    // Every resolve spawns yt-dlp plus a Node runtime. `inflight` only
+    // deduplicates identical URIs, so without this a caller walking distinct
+    // URIs would spawn one process per request.
+    return streamResolveSemaphore.run(() => this.spawnResolve(uri));
+  }
+
+  private async spawnResolve(uri: string): Promise<ResolvedStream> {
     const proc = Bun.spawn(
       [
         this.binary,
@@ -111,11 +139,19 @@ export class YtDlpStreamResolver implements StreamResolver {
     }
 
     const resolvedStream = { url, headers };
+    // The URL states its own lifetime (googlevideo `expire` is typically ~6h).
+    // Clamping that down to ttlMs meant re-spawning yt-dlp every 10 minutes for
+    // a URL that was still perfectly good — a 1-3s stall mid-listening-session,
+    // and a semaphore slot taken from someone else's first tap. ttlMs now only
+    // covers URLs that carry no expiry at all.
     const upstreamExpiry = Number(new URL(url).searchParams.get("expire")) * 1000 - EXPIRY_SAFETY_MS;
-    const ttlExpiry = Date.now() + this.ttlMs;
     const expiresAt = Number.isFinite(upstreamExpiry) && upstreamExpiry > Date.now()
-      ? Math.min(ttlExpiry, upstreamExpiry)
-      : ttlExpiry;
+      ? Math.min(upstreamExpiry, Date.now() + MAX_TTL_MS)
+      : Date.now() + this.ttlMs;
+    if (this.cache.size >= MAX_CACHE_ENTRIES) {
+      const oldest = this.cache.keys().next().value;
+      if (oldest !== undefined) this.cache.delete(oldest);
+    }
     this.cache.set(uri, { value: resolvedStream, expiresAt });
     return resolvedStream;
   }

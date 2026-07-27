@@ -494,3 +494,26 @@ export function appendGenreHint(systemPrompt: string, context: GenreRecommendati
   if (!context) return systemPrompt;
   return `${systemPrompt}\n\n${formatGenreHint(context)}`;
 }
+
+const CYRILLIC = /\p{Script=Cyrillic}/u;
+
+/**
+ * Russian-facing genre labels for browse chips, taken from the aliases this
+ * ontology already carries. The interface is Russian, so a Cyrillic alias wins;
+ * genres that have none fall back to their canonical (Latin) name.
+ *
+ * Returned in ontology order, which groups related genres together — that reads
+ * better as a browse rail than alphabetical would.
+ */
+export function genreBrowseLabels(limit = GENRE_KNOWLEDGE.length): string[] {
+  const labels: string[] = [];
+  for (const genre of GENRE_KNOWLEDGE) {
+    if (labels.length >= limit) break;
+    const cyrillic = genre.aliases.filter((alias) => CYRILLIC.test(alias) && !alias.includes(" музыка"));
+    // Prefer a hyphenated spelling where the ontology carries one ("хип-хоп"
+    // over "хип хоп") — that is the conventional Russian rendering.
+    const label = cyrillic.find((alias) => alias.includes("-")) ?? cyrillic[0] ?? genre.name;
+    labels.push(label.charAt(0).toLocaleUpperCase("ru-RU") + label.slice(1));
+  }
+  return labels;
+}

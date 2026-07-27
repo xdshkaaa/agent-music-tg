@@ -10,6 +10,15 @@ export interface PendingClarify {
   round: number;
 }
 
+/**
+ * The bot is waiting for the next plain text message to be a search query or an
+ * AI prompt, because the user arrived via a menu button rather than typing
+ * `/search …` or `/ai …` with the text already attached.
+ */
+export interface PendingInput {
+  kind: "awaiting_search" | "awaiting_prompt";
+}
+
 /** Admin multi-step flows keyed off the same per-chat session row. */
 export type AdminFlow =
   | { kind: "admin_add_offer"; step: "title" | "amount" | "asset" | "starsAmount" | "rubAmount" | "grantKind" | "grantAmount"; draft: Record<string, string> }
@@ -30,7 +39,7 @@ export type AdminFlow =
   | { kind: "admin_issuance_sub_days"; targetId: number }
   | { kind: "admin_issuance_revoke_chatid" };
 
-export type SessionState = PendingClarify | AdminFlow;
+export type SessionState = PendingClarify | PendingInput | AdminFlow;
 
 function readState<T extends SessionState>(db: AppDb, chatId: number, kinds: string[]): T | null {
   const row = db.query<{ state: string }, [number]>(`SELECT state FROM sessions WHERE chat_id = ?`).get(chatId);
@@ -56,6 +65,14 @@ export function getPendingClarify(db: AppDb, chatId: number): PendingClarify | n
 
 export function setPendingClarify(db: AppDb, chatId: number, pending: PendingClarify): void {
   writeState(db, chatId, pending);
+}
+
+export function getPendingInput(db: AppDb, chatId: number): PendingInput | null {
+  return readState<PendingInput>(db, chatId, ["awaiting_search", "awaiting_prompt"]);
+}
+
+export function setPendingInput(db: AppDb, chatId: number, kind: PendingInput["kind"]): void {
+  writeState(db, chatId, { kind });
 }
 
 const ADMIN_FLOW_KINDS = [

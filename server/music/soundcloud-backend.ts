@@ -75,6 +75,8 @@ export class SoundCloudBackend implements MusicProvider {
   };
 
   private clientId: string | null;
+  /** Scrape in progress, so concurrent callers share one instead of each running their own. */
+  private clientIdScrape: Promise<string> | null = null;
 
   constructor(clientId?: string) {
     this.clientId = clientId ?? null;
@@ -82,10 +84,25 @@ export class SoundCloudBackend implements MusicProvider {
 
   private async ensureClientId(): Promise<string> {
     if (this.clientId) return this.clientId;
-    const scraped = await scrapeClientId();
-    if (!scraped) throw new Error("could not auto-detect a SoundCloud client_id");
-    this.clientId = scraped;
-    return scraped;
+    // A scrape fetches the homepage plus JS bundles until one yields an id —
+    // hundreds of KB. SoundCloud also rotates ids, so this recurs mid-life and
+    // every in-flight request would otherwise re-scrape independently.
+    if (!this.clientIdScrape) {
+      this.clientIdScrape = (async () => {
+        const scraped = await scrapeClientId();
+        if (!scraped) throw new Error("could not auto-detect a SoundCloud client_id");
+        this.clientId = scraped;
+        return scraped;
+      })().finally(() => {
+        this.clientIdScrape = null;
+      });
+    }
+    return this.clientIdScrape;
+  }
+
+  /** Drops `used` only if it is still current, so a slow 401 can't discard a fresh id. */
+  private invalidateClientId(used: string): void {
+    if (this.clientId === used) this.clientId = null;
   }
 
   private async request(path: string): Promise<any> {
@@ -94,7 +111,7 @@ export class SoundCloudBackend implements MusicProvider {
     const url = () => `${API_BASE}${path}${sep}client_id=${clientId}`;
     let res = await fetchWithTimeout(url());
     if (res.status === 401 || res.status === 403) {
-      this.clientId = null;
+      this.invalidateClientId(clientId);
       const fresh = await this.ensureClientId();
       res = await fetchWithTimeout(`${API_BASE}${path}${sep}client_id=${fresh}`);
     }

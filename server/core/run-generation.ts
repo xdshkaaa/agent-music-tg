@@ -104,7 +104,11 @@ async function toOutcome(run: () => Promise<GeneratePlaylistResult>): Promise<Ru
     if (e instanceof MissingCredentialError) {
       return { status: "error", message: e.message };
     }
-    return { status: "error", message: e instanceof Error ? e.message : String(e) };
+    // Anything else is an internal failure: the LLM layer builds these messages
+    // from the provider base URL and the full upstream response body, so log
+    // the detail and hand the client a generic message.
+    console.error("[generation]", e);
+    return { status: "error", message: "Внутренняя ошибка сервера. Попробуйте ещё раз." };
   }
 }
 
@@ -114,7 +118,12 @@ function fireVerification(playlist: FinalizedPlaylist): void {
   // Resolution also verifies availability, avoiding a duplicate yt-dlp probe.
   if (_streamResolver) {
     const resolver = _streamResolver;
-    void mapWithConcurrency(playlist.tracks, 4, async (t) => {
+    // Deliberately below streamResolveSemaphore's capacity of 4: this prewarm
+    // is background work, and at 4 it held every slot, so the user's first tap
+    // queued behind a batch of resolves for tracks they hadn't reached yet.
+    // mapWithConcurrency walks in playlist order, so the tracks played first
+    // are still the ones warmed first.
+    void mapWithConcurrency(playlist.tracks, 2, async (t) => {
       verificationStore.set(t.uri, "checking");
       try {
         await resolver.resolve(t.uri);
@@ -232,6 +241,9 @@ export async function extendGeneration(
       mode: "extend",
       baseTracks,
       baseName: existing.playlistName ?? undefined,
+      // The stored playlist already holds fully resolved tracks, so the base
+      // half of an extend never needs to be searched again.
+      knownTracks: existing.tracks,
       onEvent,
       ...buildRecommendationOpts(
         db,

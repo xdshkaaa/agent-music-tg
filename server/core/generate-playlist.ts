@@ -75,6 +75,12 @@ export interface GeneratePlaylistOptions {
   dislikedUris?: Set<string>;
   /** Pure precomputed candidate ranker; performs no I/O inside the tool loop. */
   rankTracks?: (tracks: Track[]) => Track[];
+  /**
+   * Fully resolved tracks already known to the caller (extend mode passes the
+   * stored playlist). Seeds the finalize resolution index, so a track this app
+   * resolved once is never searched again.
+   */
+  knownTracks?: Track[];
 }
 
 export interface GeneratePlaylistResult {
@@ -144,6 +150,30 @@ function trackKey(t: { artist: string; title: string }): string {
   return `${t.artist.toLowerCase().trim()}|${t.title.toLowerCase().trim()}`;
 }
 
+/** Tools whose results are Track objects (not albums or artist cards). */
+const TRACK_RESULT_TOOLS = new Set(["searchTrack", "searchTracks", "getArtistTopTracks", "getAlbumTracks"]);
+
+/**
+ * Records every track the backend has already handed us this run, keyed by
+ * (artist,title).
+ *
+ * The agent finds tracks through searchTracks / getArtistTopTracks /
+ * getAlbumTracks, all of which return complete Track objects with URIs — but
+ * finalize_playlist reports only artist and title, so without this index
+ * resolving the final list re-queried the backend for tracks it had just
+ * returned: a whole extra round of remote searches on the critical path.
+ */
+function indexTrackResults(index: Map<string, Track>, result: unknown): void {
+  for (const item of Array.isArray(result) ? result : [result]) {
+    if (!item || typeof item !== "object") continue;
+    const t = item as Track;
+    if (typeof t.uri !== "string" || typeof t.title !== "string" || typeof t.artist !== "string") continue;
+    const key = trackKey(t);
+    // First writer wins: earlier results ranked higher for this key.
+    if (!index.has(key)) index.set(key, t);
+  }
+}
+
 /** Returns only the tracks whose (artist,title) are not already present in `existing`. */
 function dedupeAgainst(
   incoming: { artist: string; title: string }[],
@@ -165,9 +195,15 @@ async function resolveAndFinalize(
   music: MusicProvider,
   args: FinalizeArgs,
   cache: Map<string, unknown>,
+  trackIndex: Map<string, Track>,
   opts?: { baseProvided?: boolean; dislikedUris?: Set<string> },
 ): Promise<FinalizedPlaylist> {
   const found = await mapWithConcurrency(args.tracks, FINALIZE_CONCURRENCY, async (t) => {
+    // A track the backend already returned this run needs no second lookup —
+    // and it is the exact track the agent chose, not searchTrack's fuzzy
+    // re-match of the same artist and title.
+    const known = trackIndex.get(trackKey(t));
+    if (known) return known;
     const key = callKey("searchTrack", { artist: t.artist, title: t.title });
     let track = cache.get(key) as Track | null | undefined;
     if (track === undefined) {
@@ -216,6 +252,10 @@ export async function generatePlaylist(opts: GeneratePlaylistOptions): Promise<G
   }
   let clarifyCount = opts.resumeClarifyRound ?? 0;
   const seenCalls = new Map<string, unknown>();
+  // Seeded with what the caller already resolved (extend mode's stored tracks),
+  // then filled from every track-returning tool result during the run.
+  const trackIndex = new Map<string, Track>();
+  for (const t of opts.knownTracks ?? []) indexTrackResults(trackIndex, t);
   let consecutiveEmptyTurns = 0;
 
   if (opts.resumeClarifyAnswer !== undefined) {
@@ -324,6 +364,7 @@ export async function generatePlaylist(opts: GeneratePlaylistOptions): Promise<G
           },
         });
         seenCalls.set(key, dispatchResult);
+        if (TRACK_RESULT_TOOLS.has(call.name)) indexTrackResults(trackIndex, dispatchResult);
         slots[slot] = {
           role: "tool",
           callId: call.id,
@@ -361,6 +402,7 @@ export async function generatePlaylist(opts: GeneratePlaylistOptions): Promise<G
           opts.music,
           { name, tracks: allTracks },
           seenCalls,
+          trackIndex,
           { baseProvided: isExtend && baseTracks.length > 0, dislikedUris: opts.dislikedUris },
         );
         return { playlist, messages };
@@ -401,6 +443,7 @@ export async function generatePlaylist(opts: GeneratePlaylistOptions): Promise<G
         opts.music,
         { name: opts.baseName || "Playlist", tracks: fallbackTracks },
         seenCalls,
+        trackIndex,
         { baseProvided: isExtend && baseTracks.length > 0, dislikedUris: opts.dislikedUris },
       );
       return { playlist, messages };

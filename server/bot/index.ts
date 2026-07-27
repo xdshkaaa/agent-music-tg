@@ -1,7 +1,8 @@
 import { Bot, InlineKeyboard } from "grammy";
+import { sequentialize } from "@grammyjs/runner";
 import type { AppDb } from "../db";
 import { env } from "../env";
-import type { BotContext } from "./context";
+import { ackCallback, type BotContext } from "./context";
 import { allowlistGate } from "./middleware";
 import { channelSubscriptionGate } from "./channel-subscription-gate";
 import { AVAILABLE_PROVIDERS, isProviderId } from "../agent/registry";
@@ -16,8 +17,12 @@ import { registerModel } from "./model";
 import { registerReset } from "./reset";
 import { registerHistory, buildHistoryView } from "./history";
 import { registerReferral, buildReferralView, applyReferral, formatGenerationCount } from "./referral";
+import { registerSearch, performSearch } from "./search";
+import { registerGenerate, performGeneration } from "./generate";
+import { getPendingInput, clearSession } from "./session";
 import { btnText, heading } from "./emoji";
 import { grantPlaylistSlotsForPayment } from "../access/stars-payments-store";
+import { classifyStarsPayload } from "../payments/stars";
 import { createTelegramBroadcastSender } from "../admin/telegram-broadcast";
 import { parseStartAttribution, recordAttributionTouch, recordEvent, recordFirstTouch } from "../analytics/store";
 import { detailBlock, escapeHtml, messageHint, messageTitle, statusMessage } from "./message-format";
@@ -27,6 +32,12 @@ export function createBot(db: AppDb): Bot<BotContext> {
   bot.catch((err) => {
     console.error(`Bot handler error for update ${err.ctx.update.update_id}:`, err.error);
   });
+  // The runner in server/index.ts handles updates from different chats
+  // concurrently, so a 30-120s generation for one user no longer stalls
+  // everyone else's taps. Within a single chat, order still has to hold: the
+  // "armed the next message as a search query" session flow and the
+  // active-download guard both read state a previous update just wrote.
+  bot.use(sequentialize((ctx) => String(ctx.chat?.id ?? ctx.from?.id ?? "")));
   bot.use(allowlistGate(db));
   bot.use(channelSubscriptionGate(db));
 
@@ -35,11 +46,15 @@ export function createBot(db: AppDb): Bot<BotContext> {
   function buildStartKeyboard(ctx: BotContext): InlineKeyboard {
     const kb = new InlineKeyboard()
       .webApp(btnText("Открыть приложение", "app"), env.publicOrigin).row()
+      // Both work entirely inside the chat — no Mini App needed. They replace
+      // the old webApp "Поиск" shortcut so two buttons never share a label
+      // while doing different things.
+      .text(btnText("Собрать плейлист", "star"), "nav:generate")
+      .text(btnText("Найти музыку", "search"), "nav:search").row()
       // Deep-link into a specific screen. Uses the same inline webApp button
       // type as "Открыть приложение" — a persistent reply-keyboard's webApp
       // buttons don't reliably deliver initData on all Telegram clients,
       // which broke auth for these shortcuts.
-      .webApp(btnText("Поиск", "search"), `${env.publicOrigin}?tab=create&mode=search`)
       .webApp(btnText("Мои плейлисты", "music"), `${env.publicOrigin}?tab=playlists`).row()
       .text(btnText("Купить", "money"), "nav:buy")
       .text(btnText("Профиль", "profile"), "nav:profile")
@@ -132,13 +147,19 @@ export function createBot(db: AppDb): Bot<BotContext> {
         ).catch(() => {});
       }
     }
-    try {
-      const photos = await bot.api.getUserProfilePhotos(ctx.chat.id, { limit: 1 });
-      const first = photos.photos[0];
-      if (first && first.length > 0) {
-        setPhotoFileId(db, ctx.chat.id, first[first.length - 1]!.file_id);
-      }
-    } catch { /* non-critical; profile will show placeholder */ }
+    // Fire-and-forget: the file_id is only read later by the profile view, so a
+    // full Telegram round-trip must not sit in front of the menu reply — /start
+    // is the first thing a user from an ad deep link ever sees.
+    const startChatId = ctx.chat.id;
+    void bot.api
+      .getUserProfilePhotos(startChatId, { limit: 1 })
+      .then((photos) => {
+        const first = photos.photos[0];
+        if (first && first.length > 0) {
+          setPhotoFileId(db, startChatId, first[first.length - 1]!.file_id);
+        }
+      })
+      .catch(() => { /* non-critical; profile will show placeholder */ });
 
     // Clear the old persistent reply keyboard ("Мои плейлисты" / "Моя
     // музыка") from earlier builds — Telegram clients keep it displayed
@@ -187,6 +208,10 @@ export function createBot(db: AppDb): Bot<BotContext> {
   registerReset(bot, db);
   registerHistory(bot, db);
   registerReferral(bot, db);
+  registerGenerate(bot, db);
+  // Registered before the generic nav:* router below, so nav:search reaches
+  // this handler rather than falling through to the menu switch.
+  registerSearch(bot, db, (ctx, prompt) => performGeneration(ctx, db, prompt));
 
   async function editOrReply(ctx: BotContext, view: ShopView): Promise<void> {
     try {
@@ -197,7 +222,7 @@ export function createBot(db: AppDb): Bot<BotContext> {
   }
 
   bot.callbackQuery(/^nav:(\w+)$/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    ackCallback(ctx);
     const chatId = ctx.chat!.id;
     switch (ctx.match[1]) {
       case "menu":
@@ -273,6 +298,8 @@ export function createBot(db: AppDb): Bot<BotContext> {
 
   bot.api.setMyCommands([
     { command: "start", description: "Главное меню" },
+    { command: "ai", description: "Собрать AI-плейлист" },
+    { command: "search", description: "Найти трек или исполнителя" },
     { command: "credits", description: "Мои кредиты и подписка" },
     { command: "model", description: "Выбрать AI модель" },
     { command: "history", description: "История генераций" },
@@ -285,18 +312,24 @@ export function createBot(db: AppDb): Bot<BotContext> {
     { command: "help", description: "Помощь и частые вопросы" },
   ]).catch(() => {});
 
-  // Telegram Stars (XTR): approve every checkout our own bot issued, then grant
-  // the purchased playlist slots idempotently by charge id on confirmation.
+  // Telegram Stars (XTR) for playlist slots. Offer invoices are answered by
+  // registerShop above and never reach here; an unrecognised payload is
+  // rejected rather than blanket-approved, so a checkout can only succeed for
+  // an invoice this bot actually issued.
   bot.on("pre_checkout_query", async (ctx) => {
+    const payload = classifyStarsPayload(ctx.preCheckoutQuery.invoice_payload);
+    if (payload.kind !== "slots") {
+      await ctx.answerPreCheckoutQuery(false, "Этот счёт больше недоступен.").catch(() => {});
+      return;
+    }
     await ctx.answerPreCheckoutQuery(true).catch(() => {});
   });
 
   bot.on("message:successful_payment", async (ctx) => {
     const payment = ctx.message.successful_payment;
-    const match = payment.invoice_payload.match(/^slots:(-?\d+):(\d+):/);
-    if (!match) return;
-    const chatId = Number(match[1]);
-    const slots = Number(match[2]);
+    const payload = classifyStarsPayload(payment.invoice_payload);
+    if (payload.kind !== "slots") return;
+    const { chatId, slots } = payload;
     const granted = grantPlaylistSlotsForPayment(db, payment.telegram_payment_charge_id, chatId, slots);
     if (granted) {
       await ctx
@@ -317,11 +350,17 @@ export function createBot(db: AppDb): Bot<BotContext> {
     // Admin multi-step flows (add offer / broadcast / settings) consume text first.
     if (await handleAdminText(ctx, db, send)) return;
 
-    // Playlist generation happens only in the Mini App now.
-    await ctx.reply(
-      `${messageTitle("app", "Создание плейлиста")}\n${messageHint("Откройте мини-приложение и опишите настроение или ситуацию.")}`,
-      { parse_mode: "HTML" },
-    );
+    // A menu button may have armed the next message as a search query or a
+    // prompt; otherwise plain text is treated as a generation request, which is
+    // what a user typing into a music bot almost always means.
+    const pending = getPendingInput(db, chatId);
+    if (pending?.kind === "awaiting_search") {
+      clearSession(db, chatId);
+      await performSearch(ctx, db, text);
+      return;
+    }
+    clearSession(db, chatId);
+    await performGeneration(ctx, db, text);
   });
 
   return bot;

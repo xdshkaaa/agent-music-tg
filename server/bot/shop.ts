@@ -1,6 +1,6 @@
 import { Bot, InlineKeyboard } from "grammy";
 import type { AppDb } from "../db";
-import type { BotContext } from "./context";
+import { ackCallback, type BotContext } from "./context";
 import { listActiveOffers, getOffer, type Offer } from "../payments/offers-store";
 import { listInvoicesForChat } from "../payments/invoices-store";
 import { getUser, claimTrial, TRIAL_CREDITS, TRIAL_DAYS } from "../access/users-store";
@@ -208,7 +208,7 @@ export function registerShop(bot: Bot<BotContext>, db: AppDb): void {
   }
 
   bot.callbackQuery("trial:claim", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    ackCallback(ctx);
     if (!getPaymentsEnabled(db, env.paymentsEnabled)) {
       await ctx.reply("Магазин временно недоступен.");
       return;
@@ -233,7 +233,7 @@ export function registerShop(bot: Bot<BotContext>, db: AppDb): void {
 
   bot.callbackQuery(/^buy:(\d+)$/, async (ctx) => {
     const offerId = Number(ctx.match[1]);
-    await ctx.answerCallbackQuery();
+    ackCallback(ctx);
     const offer = getOffer(db, offerId);
     if (!offer || !offer.active) {
       await ctx.reply("Этот пакет больше недоступен.");
@@ -254,35 +254,38 @@ export function registerShop(bot: Bot<BotContext>, db: AppDb): void {
   });
 
   bot.callbackQuery(/^buyc:(\d+)$/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    ackCallback(ctx);
     await startCryptoPurchase(ctx, Number(ctx.match[1]));
   });
 
   bot.callbackQuery(/^buys:(\d+)$/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    ackCallback(ctx);
     await startStarsPurchase(ctx, Number(ctx.match[1]));
   });
 
   bot.callbackQuery(/^buyp:(\d+)$/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    ackCallback(ctx);
     await startPlategaPurchase(ctx, Number(ctx.match[1]));
   });
 
   // Telegram re-validates every Stars checkout here; must answer within 10s.
-  bot.on("pre_checkout_query", async (ctx) => {
+  // Only offer invoices are ours — anything else (playlist slots) belongs to a
+  // later handler, so pass it on rather than rejecting the checkout.
+  bot.on("pre_checkout_query", async (ctx, next) => {
     const payload = parseStarsPayload(ctx.preCheckoutQuery.invoice_payload);
-    const offer = payload ? getOffer(db, payload.offerId) : null;
-    if (!payload || !offer || !offer.active || !offer.starsAmount) {
+    if (!payload) return next();
+    const offer = getOffer(db, payload.offerId);
+    if (!offer || !offer.active || !offer.starsAmount) {
       await ctx.answerPreCheckoutQuery(false, "Этот пакет больше недоступен.");
       return;
     }
     await ctx.answerPreCheckoutQuery(true);
   });
 
-  bot.on("message:successful_payment", async (ctx) => {
+  bot.on("message:successful_payment", async (ctx, next) => {
     const sp = ctx.message.successful_payment;
     const payload = parseStarsPayload(sp.invoice_payload);
-    if (!payload) return;
+    if (!payload) return next();
     const result = fulfillStarsPayment(db, {
       chargeId: sp.telegram_payment_charge_id,
       chatId: payload.chatId,

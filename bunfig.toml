@@ -1,0 +1,3 @@
+[test]
+# Seeds env defaults before any module loads — see server/test-preload.ts for why.
+preload = ["./server/test-preload.ts"]
