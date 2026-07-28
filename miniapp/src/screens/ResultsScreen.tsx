@@ -389,10 +389,10 @@ export function ResultsScreen({
             {extendBusy ? <CircleNotch size={20} weight="bold" className="spin" /> : <Plus size={20} weight="bold" />}
           </button>
         </div>
-      <div className="row mt-16 wrap">
-        <button className="glass-button" onClick={onNewPrompt}>
+      <div className="row mt-16 results-actions">
+        <button className="glass-button results-actions-label" onClick={onNewPrompt} title="Новый плейлист">
           <Plus size={18} />
-          Новый плейлист
+          <span>Новый</span>
         </button>
         <button
           className="glass-button icon-only"
