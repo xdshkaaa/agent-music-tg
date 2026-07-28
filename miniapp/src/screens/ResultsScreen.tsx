@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { BookmarkSimple, CheckCircle, CircleNotch, DownloadSimple, ListPlus, PencilSimple, Plus, WarningCircle } from "@phosphor-icons/react";
+import { BookmarkSimple, CheckCircle, CircleNotch, DownloadSimple, ListPlus, PencilSimple, Plus, ShareNetwork, WarningCircle } from "@phosphor-icons/react";
 import { GlassPanel } from "../components/GlassPanel";
 import { TrackRow } from "../components/TrackRow";
 import { TrackOverflowMenu } from "../components/TrackOverflowMenu";
 import { requestAddToPlaylist } from "../components/AddToPlaylistButton";
 import { usePlayer } from "../lib/player";
 import { api, type FinalizedPlaylist, type Track, type TrackVerificationStatus } from "../lib/api";
+import { shareUrlToChat } from "../lib/share";
 
 type DownloadState = { kind: "idle" } | { kind: "sending" } | { kind: "sent" } | { kind: "error"; message: string };
 
@@ -29,6 +30,8 @@ export function ResultsScreen({
   const downloadedUris = useRef<Set<string>>(new Set());
   const [saved, setSaved] = useState(initialSaved);
   const [saveBusy, setSaveBusy] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const [shareError, setShareError] = useState<string | null>(null);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(playlist.name);
   const [renameBusy, setRenameBusy] = useState(false);
@@ -95,6 +98,20 @@ export function ResultsScreen({
     if (s === "checking") return <CircleNotch size={14} className="spin" style={{ color: "var(--text-muted)" }} />;
     if (s === "verified") return <CheckCircle size={14} weight="fill" style={{ color: "var(--accent)" }} />;
     return <WarningCircle size={14} weight="fill" style={{ color: "var(--danger)" }} />;
+  }
+
+  /** Publishing is idempotent server-side, so re-sharing reuses the same link. */
+  async function handleShare() {
+    setSharing(true);
+    setShareError(null);
+    try {
+      const { url } = await api.createShare("generation", generationId);
+      shareUrlToChat(url, current.name);
+    } catch (e) {
+      setShareError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSharing(false);
+    }
   }
 
   async function handleDownload() {
@@ -324,6 +341,19 @@ export function ResultsScreen({
           </button>
         </div>
       )}
+      {shareError && (
+        <div className="error-row mt-12">
+          <span className="error-row-icon">
+            <WarningCircle size={16} weight="bold" />
+          </span>
+          <p role="alert" className="error-row-message">
+            {shareError}
+          </p>
+          <button className="glass-button" onClick={() => void handleShare()} style={{ padding: "6px 12px" }}>
+            Повторить
+          </button>
+        </div>
+      )}
       {extendError && (
         <div className="error-row mt-12">
           <span className="error-row-icon">
@@ -372,6 +402,15 @@ export function ResultsScreen({
           title={saved ? "Убрать из истории" : "Сохранить в историю"}
         >
           {saveBusy ? <CircleNotch size={18} className="spin" /> : <BookmarkSimple size={18} weight={saved ? "fill" : "regular"} />}
+        </button>
+        <button
+          className="glass-button icon-only"
+          onClick={() => void handleShare()}
+          disabled={sharing}
+          aria-label="Поделиться плейлистом"
+          title="Поделиться плейлистом"
+        >
+          {sharing ? <CircleNotch size={18} className="spin" /> : <ShareNetwork size={18} />}
         </button>
         <button
           className="glass-button primary icon-only"

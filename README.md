@@ -64,6 +64,16 @@ Endpoints (all under initData auth): `POST /api/download`, `GET /api/downloads`,
 
 Config (`.env`): `AUDIO_SCRATCH_DIR` (temporary files for chat downloads, deleted after upload).
 
+## Sharing playlists
+
+Any generation result or saved playlist can be published as a link («Поделиться»). Publishing snapshots the tracklist, so editing or deleting the source never changes a link already in circulation, and publishing the same source twice returns the same link. Recipients open it in Telegram, see the tracklist with the author and the original prompt, play it in the Mini App, and can save it to their own playlists or generate their own.
+
+Links take the form `https://t.me/<bot>?start=pl_<token>`. Set the optional `TELEGRAM_MINIAPP_NAME` (the Mini App short name from BotFather) to have them open the Mini App directly as `https://t.me/<bot>/<name>?startapp=pl_<token>` instead.
+
+Arrivals are attributed to `share / telegram / shared-playlist` in admin statistics and credit the author through the existing referral reward, with the same per-invitee dedupe and cap. `GET /api/shares/:token` is the one route that serves callers who are not on the allowlist — that is what lets a link work for someone who is not a user yet; publishing, listing, and revoking stay behind the normal gate. Authors can revoke a link at any time (it then answers 410) and see its view count.
+
+Endpoints: `POST /api/shares`, `GET /api/shares`, `GET /api/shares/:token`, `DELETE /api/shares/:token`.
+
 ## Payments (CryptoBot)
 
 Playlist generation is paywalled: a user needs either generation credits or an active subscription, both sold as offers paid through [Crypto Pay](https://help.crypt.bot/crypto-pay-api) (@CryptoBot). Payment confirmation comes from a signed webhook at `POST /api/crypto/webhook`, with a polling fallback (`getInvoices`) that fulfills invoices if a webhook is missed. Fulfillment is idempotent per invoice — duplicate webhook + poll events grant exactly once.
