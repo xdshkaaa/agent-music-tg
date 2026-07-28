@@ -1,7 +1,9 @@
 import { unlink } from "node:fs/promises";
 import type { AppDb } from "../db";
 import { getCachedAudio, setCachedAudio } from "./cache";
-import type { Extractor } from "./extractor";
+import type { ExtractedAudio, Extractor } from "./extractor";
+import { alternateFinder, type AlternateFinder } from "./alternate-source";
+import { getAlternate, setAlternate } from "./alternates-store";
 import { detailBlock, escapeHtml, messageTitle } from "../bot/message-format";
 import { mapWithConcurrency } from "../core/concurrency";
 import { extractionSemaphore } from "./ytdlp-limits";
@@ -35,6 +37,8 @@ export interface DeliverDeps {
   sender: AudioSender;
   extractor: Extractor;
   scratchDir: string;
+  /** Cross-platform repair for unextractable tracks; defaults to the real search. */
+  alternateFinder?: AlternateFinder;
 }
 
 function metaFor(track: DownloadTrack): AudioMeta {
@@ -46,15 +50,38 @@ function metaFor(track: DownloadTrack): AudioMeta {
   };
 }
 
+/**
+ * Extracts the track's audio, falling back to the same song on another
+ * platform when its own source has none — a pulled video or dead SoundCloud
+ * id should cost the user a slightly different master, not a missing track.
+ * A working substitution is remembered for playback too.
+ */
+async function extractWithFallback(
+  db: AppDb,
+  track: DownloadTrack,
+  deps: DeliverDeps,
+): Promise<ExtractedAudio> {
+  const source = getAlternate(db, track.uri) ?? track.uri;
+  try {
+    return await extractionSemaphore.run(() => deps.extractor.extract(source, deps.scratchDir));
+  } catch (e) {
+    const meta = { title: track.title, artist: track.artist, durationMs: track.durationMs };
+    const altUri = await (deps.alternateFinder ?? alternateFinder).find(track.uri, meta, { exclude: [source] });
+    if (!altUri) throw e;
+    const extracted = await extractionSemaphore.run(() => deps.extractor.extract(altUri, deps.scratchDir));
+    setAlternate(db, track.uri, altUri, meta);
+    console.info(`[download] ${track.uri} unextractable, used ${altUri} instead`);
+    return extracted;
+  }
+}
+
 async function extractUploadCache(
   db: AppDb,
   chatId: number,
   track: DownloadTrack,
   deps: DeliverDeps,
 ): Promise<void> {
-  const { filePath, sizeBytes } = await extractionSemaphore.run(() =>
-    deps.extractor.extract(track.uri, deps.scratchDir),
-  );
+  const { filePath, sizeBytes } = await extractWithFallback(db, track, deps);
   try {
     if (sizeBytes > MAX_UPLOAD_BYTES) {
       throw new Error(`file too large for Telegram (${Math.round(sizeBytes / 1024 / 1024)} MB > 50 MB)`);

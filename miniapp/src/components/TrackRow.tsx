@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
+import { ARTWORK_ROW, artworkUrl } from "../lib/artwork";
 
 /**
  * Shared visual shell for every clickable track/playlist/download row across
@@ -49,7 +50,13 @@ export function TrackRow({
       }
     >
       {artwork ? (
-        <img className="track-artwork" src={artwork} alt="" />
+        <img
+          className="track-artwork"
+          src={artworkUrl(artwork, ARTWORK_ROW)}
+          alt=""
+          loading="lazy"
+          decoding="async"
+        />
       ) : (
         <div className={fallbackIcon ? "track-artwork track-artwork--icon" : "track-artwork"}>{fallbackIcon}</div>
       )}

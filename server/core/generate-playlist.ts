@@ -150,9 +150,6 @@ function trackKey(t: { artist: string; title: string }): string {
   return `${t.artist.toLowerCase().trim()}|${t.title.toLowerCase().trim()}`;
 }
 
-/** Tools whose results are Track objects (not albums or artist cards). */
-const TRACK_RESULT_TOOLS = new Set(["searchTrack", "searchTracks", "getArtistTopTracks", "getAlbumTracks"]);
-
 /**
  * Records every track the backend has already handed us this run, keyed by
  * (artist,title).
@@ -162,12 +159,15 @@ const TRACK_RESULT_TOOLS = new Set(["searchTrack", "searchTracks", "getArtistTop
  * finalize_playlist reports only artist and title, so without this index
  * resolving the final list re-queried the backend for tracks it had just
  * returned: a whole extra round of remote searches on the critical path.
+ *
+ * Must be fed the backend's own tracks (via dispatchTool's `onTracks`), never
+ * the tool results the model sees: those are stripped of artwork, and since a
+ * hit here skips the searchTrack fallback entirely, indexing them left every
+ * finalized track without a cover.
  */
-function indexTrackResults(index: Map<string, Track>, result: unknown): void {
-  for (const item of Array.isArray(result) ? result : [result]) {
-    if (!item || typeof item !== "object") continue;
-    const t = item as Track;
-    if (typeof t.uri !== "string" || typeof t.title !== "string" || typeof t.artist !== "string") continue;
+function indexTracks(index: Map<string, Track>, tracks: readonly Track[]): void {
+  for (const t of tracks) {
+    if (!t || typeof t.uri !== "string" || typeof t.title !== "string" || typeof t.artist !== "string") continue;
     const key = trackKey(t);
     // First writer wins: earlier results ranked higher for this key.
     if (!index.has(key)) index.set(key, t);
@@ -255,7 +255,7 @@ export async function generatePlaylist(opts: GeneratePlaylistOptions): Promise<G
   // Seeded with what the caller already resolved (extend mode's stored tracks),
   // then filled from every track-returning tool result during the run.
   const trackIndex = new Map<string, Track>();
-  for (const t of opts.knownTracks ?? []) indexTrackResults(trackIndex, t);
+  indexTracks(trackIndex, opts.knownTracks ?? []);
   let consecutiveEmptyTurns = 0;
 
   if (opts.resumeClarifyAnswer !== undefined) {
@@ -362,9 +362,9 @@ export async function generatePlaylist(opts: GeneratePlaylistOptions): Promise<G
           onClarify: async () => {
             throw new Error("unreachable: clarify handled above");
           },
+          onTracks: (tracks) => indexTracks(trackIndex, tracks),
         });
         seenCalls.set(key, dispatchResult);
-        if (TRACK_RESULT_TOOLS.has(call.name)) indexTrackResults(trackIndex, dispatchResult);
         slots[slot] = {
           role: "tool",
           callId: call.id,

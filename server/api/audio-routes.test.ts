@@ -19,6 +19,7 @@ const { fileNameForUri } = await import("../audio/extractor");
 const { addSavedTrack } = await import("../access/saved-tracks-store");
 const { insertGeneration } = await import("../access/generations-store");
 const { streamRateLimiter } = await import("../lib/rate-limit");
+const { getAlternate, setAlternate, __resetAlternatesMemoForTests } = await import("../audio/alternates-store");
 
 import type { Extractor } from "../audio/extractor";
 import type { AudioSender } from "../audio/deliver";
@@ -41,6 +42,12 @@ function buildInitData(chatId: number): string {
 function authHeaders(chatId: number): Record<string, string> {
   return { "X-Telegram-Init-Data": buildInitData(chatId), "content-type": "application/json" };
 }
+
+// The substitution memo is process-wide and keyed by uri alone, so it would
+// otherwise carry decisions from one case's in-memory DB into the next.
+beforeEach(() => {
+  __resetAlternatesMemoForTests();
+});
 
 function freshDb() {
   const db = openDb(":memory:");
@@ -311,6 +318,110 @@ describe("GET /api/stream/:uri", () => {
     expect(res.status).toBe(200);
     expect(await res.text()).toBe("fresh-audio");
     expect(calls()).toEqual({ extractCalls: 0, resolveCalls: 2, invalidateCalls: 1, upstreamRanges: [null, null] });
+  });
+
+  describe("cross-platform fallback", () => {
+    /**
+     * Resolver that only knows how to play the uris in `playable`; everything
+     * else fails the way a pulled video does.
+     */
+    function makeFallbackHarness(opts: { playable: string[]; alternate?: string | null; db?: ReturnType<typeof freshDb> }) {
+      const db = opts.db ?? freshDb();
+      const playable = new Set(opts.playable);
+      const resolved: string[] = [];
+      const searched: Array<{ uri: string; meta: { title: string; artist: string; durationMs?: number }; exclude?: string[] }> = [];
+      const audio = {
+        sender: fakeSender(),
+        extractor: fakeExtractor(),
+        scratchDir: mkdtempSync(join(tmpdir(), "audio-scratch-")),
+        streamResolver: {
+          async resolve(uri: string) {
+            resolved.push(uri);
+            if (!playable.has(uri)) throw new Error(`yt-dlp stream resolve failed for ${uri} (exit 1)`);
+            return { url: `https://media.example/${uri}`, headers: {} };
+          },
+          invalidate() {},
+        },
+        alternateFinder: {
+          async find(uri: string, meta: { title: string; artist: string; durationMs?: number }, options?: { exclude?: string[] }) {
+            searched.push({ uri, meta, exclude: options?.exclude });
+            return opts.alternate ?? null;
+          },
+        },
+        async streamFetch(url: string | URL | Request) {
+          return new Response(`audio:${String(url)}`, { headers: { "Content-Type": "audio/mp4" } });
+        },
+      } as unknown as AudioDeps;
+      return { db, app: createApiRoutes(db, { audio }), resolved, searched };
+    }
+
+    test("serves the same song from another platform instead of failing", async () => {
+      const { app, resolved, searched } = makeFallbackHarness({ playable: ["sc:alt"], alternate: "sc:alt" });
+      const res = await app.request("/stream/ytm:dead?title=Blinding%20Lights&artist=The%20Weeknd", {
+        headers: authHeaders(TEST_CHAT),
+      });
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe("audio:https://media.example/sc:alt");
+      expect(resolved).toEqual(["ytm:dead", "sc:alt"]);
+      expect(searched).toEqual([
+        { uri: "ytm:dead", meta: { title: "Blinding Lights", artist: "The Weeknd", durationMs: undefined }, exclude: ["ytm:dead"] },
+      ]);
+    });
+
+    test("remembers the substitution, so the next play skips the dead source", async () => {
+      const { db, app, resolved, searched } = makeFallbackHarness({ playable: ["sc:alt"], alternate: "sc:alt" });
+      const first = await app.request("/stream/ytm:dead?title=Song&artist=A", { headers: authHeaders(TEST_CHAT) });
+      await first.arrayBuffer();
+      const second = await app.request("/stream/ytm:dead?title=Song&artist=A", { headers: authHeaders(TEST_CHAT) });
+
+      expect(second.status).toBe(200);
+      expect(await second.text()).toBe("audio:https://media.example/sc:alt");
+      // Second play resolves the alternate directly and searches nothing.
+      expect(resolved).toEqual(["ytm:dead", "sc:alt", "sc:alt"]);
+      expect(searched).toHaveLength(1);
+      expect(getAlternate(db, "ytm:dead")).toBe("sc:alt");
+    });
+
+    test("falls back on metadata the client did not send", async () => {
+      const db = freshDb();
+      insertGeneration(db, TEST_CHAT, "вечер", "Вечер", 1, [
+        { uri: "ytm:dead", title: "Song", artist: "Artist", durationMs: 210_000 },
+      ]);
+      const { app, searched } = makeFallbackHarness({ playable: ["sc:alt"], alternate: "sc:alt", db });
+      const res = await app.request("/stream/ytm:dead", { headers: authHeaders(TEST_CHAT) });
+      expect(res.status).toBe(200);
+      expect(searched[0]?.meta).toEqual({ title: "Song", artist: "Artist", durationMs: 210_000 });
+    });
+
+    test("drops a substitution that stopped working and retries the original", async () => {
+      const db = freshDb();
+      setAlternate(db, "ytm:orig", "sc:stale", { title: "Song", artist: "A" });
+      const { app, resolved } = makeFallbackHarness({ playable: ["ytm:orig"], alternate: null, db });
+      const res = await app.request("/stream/ytm:orig?title=Song&artist=A", { headers: authHeaders(TEST_CHAT) });
+
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe("audio:https://media.example/ytm:orig");
+      expect(resolved).toEqual(["sc:stale", "ytm:orig"]);
+      expect(getAlternate(db, "ytm:orig")).toBeNull();
+    });
+
+    test("does not splice a substitute into a mid-file seek", async () => {
+      const { app, searched } = makeFallbackHarness({ playable: ["sc:alt"], alternate: "sc:alt" });
+      const res = await app.request("/stream/ytm:dead?title=Song&artist=A", {
+        headers: { ...authHeaders(TEST_CHAT), Range: "bytes=500000-" },
+      });
+      // The player restarts the track on this failure, and that request — from
+      // offset 0 — is the one that gets the other platform's copy.
+      expect(res.status).toBe(502);
+      expect(searched).toHaveLength(0);
+    });
+
+    test("still 502s, without leaking yt-dlp output, when no platform has the track", async () => {
+      const { app } = makeFallbackHarness({ playable: [], alternate: null });
+      const res = await app.request("/stream/ytm:dead?title=Song&artist=A", { headers: authHeaders(TEST_CHAT) });
+      expect(res.status).toBe(502);
+      expect(await res.text()).not.toContain("yt-dlp");
+    });
   });
 
   test("rejects invalid uri with 400 and unauthenticated with 401", async () => {

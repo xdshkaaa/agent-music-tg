@@ -14,6 +14,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { api, type MeResponse, type FinalizedPlaylist, type ShopConfig, type HistoryEntry } from "./lib/api";
 import { reduceEvents, type AgentEvent } from "./lib/reasoning";
 import { getTelegramWebApp, getColorScheme } from "./lib/telegram";
+import { useKeyboardInset } from "./lib/keyboard";
 import { PlayerProvider, usePlayer } from "./lib/player";
 import { PlayerBar } from "./components/PlayerBar";
 import { BottomNav } from "./components/BottomNav";
@@ -103,6 +104,11 @@ function AppInner() {
   const [lastCreateScreen, setLastCreateScreen] = useState<Screen>({ kind: "prompt" });
 
   const player = usePlayer();
+
+  // The dock and the player bar are fixed to the bottom; the WebView floats
+  // them over the keyboard when it opens. This publishes the keyboard's height
+  // so the CSS can get them out of the way (see keyboard.ts).
+  useKeyboardInset();
 
   function toggleScheme() {
     setScheme((prev) => {

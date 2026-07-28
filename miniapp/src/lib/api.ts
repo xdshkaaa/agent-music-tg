@@ -391,9 +391,19 @@ export interface SuggestionsResponse {
 /**
  * Streaming URL for <audio src>: audio elements cannot set headers, so the
  * signed initData rides in the query string (accepted by requireAuth).
+ *
+ * `meta` is what the server searches other platforms with when the track's own
+ * source has no playable audio — passing it turns a "не удалось воспроизвести"
+ * into a silent swap to the same song elsewhere.
  */
-export function streamUrl(uri: string): string {
-  return `/api/stream/${encodeURIComponent(uri)}?initData=${encodeURIComponent(getInitData())}`;
+export function streamUrl(uri: string, meta?: { title?: string; artist?: string; durationMs?: number }): string {
+  // Built by hand rather than with URLSearchParams: initData is itself a signed
+  // query string, and form-encoding it (spaces as "+") would break the hash.
+  let url = `/api/stream/${encodeURIComponent(uri)}?initData=${encodeURIComponent(getInitData())}`;
+  if (meta?.title) url += `&title=${encodeURIComponent(meta.title)}`;
+  if (meta?.artist) url += `&artist=${encodeURIComponent(meta.artist)}`;
+  if (meta?.durationMs) url += `&duration=${Math.round(meta.durationMs)}`;
+  return url;
 }
 
 export type TrackVerificationStatus = "pending" | "checking" | "verified" | "unavailable";

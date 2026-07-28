@@ -8,6 +8,9 @@ import { isValidTrackUri, type Extractor } from "../audio/extractor";
 import { processDownload, type AudioSender } from "../audio/deliver";
 import type { StreamResolver } from "../audio/stream-resolver";
 import { verificationStore } from "../audio/track-verification";
+import { alternateFinder, type AlternateFinder, type TrackMeta } from "../audio/alternate-source";
+import { clearAlternate, getAlternate, setAlternate } from "../audio/alternates-store";
+import { lookupTrackMeta } from "../audio/track-meta";
 import {
   deleteDownload,
   getDownload,
@@ -22,6 +25,8 @@ export interface AudioDeps {
   scratchDir: string;
   streamResolver: StreamResolver;
   streamFetch?: StreamFetch;
+  /** Cross-platform repair for unplayable tracks; defaults to the real search. */
+  alternateFinder?: AlternateFinder;
 }
 
 type StreamFetch = (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => ReturnType<typeof fetch>;
@@ -49,6 +54,24 @@ function parseTracks(
     });
   }
   return tracks;
+}
+
+const MAX_META_LEN = 200;
+
+/**
+ * Track metadata the player sends along with a stream request, used to find
+ * the song on another platform when its own source has no audio. Untrusted
+ * free text — it only ever becomes a search query.
+ */
+function metaFromQuery(title?: string, artist?: string, duration?: string): TrackMeta | null {
+  const cleanTitle = (title ?? "").trim().slice(0, MAX_META_LEN);
+  if (!cleanTitle) return null;
+  const durationMs = Number(duration);
+  return {
+    title: cleanTitle,
+    artist: (artist ?? "").trim().slice(0, MAX_META_LEN),
+    durationMs: Number.isFinite(durationMs) && durationMs > 0 ? durationMs : undefined,
+  };
 }
 
 /**
@@ -131,16 +154,77 @@ export function createAudioRoutes(db: AppDb, deps: AudioDeps): Hono<AppEnv> {
     // actually spawn one may cost budget. Charging cached tracks meant seeking
     // around inside a couple of songs could spend the whole per-minute budget
     // and 429 a user who never triggered a single subprocess.
-    const alreadyResolved = deps.streamResolver.isCached?.(uri) ?? false;
+    // A track whose own source went dead is served from the other platform
+    // (see the fallback below). That substitution is remembered, so from the
+    // second play on this route never touches the failing source again.
+    const knownAlternate = getAlternate(db, uri);
+    const primaryUri = knownAlternate ?? uri;
+
+    const alreadyResolved = deps.streamResolver.isCached?.(primaryUri) ?? false;
     if (!alreadyResolved && streamRateLimiter.check(chatId)) {
       return c.json({ error: "too many requests" }, 429);
     }
 
+    const range = c.req.header("Range");
+    const signal = c.req.raw.signal;
+
+    const primary = await attemptStream(primaryUri, range, signal);
+    if (primary.ok) return primary.response;
+    // The listener already left (skip, close, next track) — nothing to repair.
+    if (signal.aborted) return c.json({ error: "stream aborted" }, 502);
+    // Swapping sources only makes sense at the start of a file: answering a
+    // seek into the middle of track A with bytes from track B hands the audio
+    // element a spliced file. Failing here instead makes the player restart the
+    // track, and that request — offset 0 — gets the substitute cleanly.
+    if (range && !range.startsWith("bytes=0-")) {
+      return c.json({ error: "stream unavailable" }, 502);
+    }
+
+    const failed = [primaryUri];
+    if (knownAlternate) {
+      // The remembered substitute died too: forget it and give the track's own
+      // source another chance before searching again.
+      clearAlternate(db, uri);
+      const original = await attemptStream(uri, range, signal);
+      if (original.ok) return original.response;
+      failed.push(uri);
+    }
+
+    // The player sends what it is displaying; the DB fills in for older
+    // clients, and supplies a duration to sanity-check candidates against
+    // even when the client had none.
+    let meta = metaFromQuery(c.req.query("title"), c.req.query("artist"), c.req.query("duration"));
+    if (!meta || meta.durationMs == null) {
+      const stored = lookupTrackMeta(db, chatId, uri);
+      meta = meta ? { ...meta, durationMs: stored?.durationMs } : stored;
+    }
+    if (meta) {
+      const finder = deps.alternateFinder ?? alternateFinder;
+      const altUri = await finder.find(uri, meta, { exclude: failed });
+      if (altUri) {
+        const alternate = await attemptStream(altUri, range, signal);
+        if (alternate.ok) {
+          setAlternate(db, uri, altUri, meta);
+          console.info(`[stream] ${uri} unplayable, serving ${altUri} instead`);
+          return alternate.response;
+        }
+      }
+    }
+    return c.json({ error: "stream unavailable" }, 502);
+  });
+
+  type StreamAttempt = { ok: true; response: Response } | { ok: false };
+
+  /**
+   * One source's worth of proxying: resolve, fetch, hand the bytes back. Never
+   * throws and never reports its own failure to the client — the caller decides
+   * whether a failure becomes a fallback search or a 502.
+   */
+  async function attemptStream(uri: string, range: string | undefined, signal: AbortSignal): Promise<StreamAttempt> {
     try {
       for (let attempt = 0; attempt < 2; attempt++) {
         const resolved = await deps.streamResolver.resolve(uri);
         const requestHeaders = new Headers(resolved.headers);
-        const range = c.req.header("Range");
         if (range) requestHeaders.set("Range", range);
         // Forward the client's abort: when a listener skips a track or closes
         // the app mid-buffer, the upstream transfer should stop with them
@@ -148,7 +232,7 @@ export function createAudioRoutes(db: AppDb, deps: AudioDeps): Hono<AppEnv> {
         const upstream = await (deps.streamFetch ?? fetch)(resolved.url, {
           headers: requestHeaders,
           redirect: "follow",
-          signal: c.req.raw.signal,
+          signal,
         });
         if (attempt === 0 && (upstream.status === 403 || upstream.status === 410)) {
           await upstream.body?.cancel();
@@ -157,28 +241,35 @@ export function createAudioRoutes(db: AppDb, deps: AudioDeps): Hono<AppEnv> {
         }
         if (upstream.status === 416) {
           const contentRange = upstream.headers.get("Content-Range");
-          return new Response(null, {
-            status: 416,
-            headers: contentRange ? { "Content-Range": contentRange } : undefined,
-          });
+          return {
+            ok: true,
+            response: new Response(null, {
+              status: 416,
+              headers: contentRange ? { "Content-Range": contentRange } : undefined,
+            }),
+          };
         }
-        if (!upstream.ok) return c.json({ error: `upstream audio failed: ${upstream.status}` }, 502);
+        if (!upstream.ok) {
+          await upstream.body?.cancel();
+          console.error(`[stream] ${uri} upstream audio failed: ${upstream.status}`);
+          return { ok: false };
+        }
         const headers = new Headers();
         for (const name of ["Content-Type", "Content-Length", "Accept-Ranges", "Content-Range"]) {
           const value = upstream.headers.get(name);
           if (value !== null) headers.set(name, value);
         }
         headers.set("Cache-Control", "private, max-age=3600");
-        return new Response(upstream.body, { status: upstream.status, headers });
+        return { ok: true, response: new Response(upstream.body, { status: upstream.status, headers }) };
       }
-      return c.json({ error: "upstream audio failed" }, 502);
+      return { ok: false };
     } catch (e) {
       // yt-dlp stderr carries filesystem paths and upstream URLs — log it,
       // don't hand it to the client.
       console.error(`[stream] ${uri}`, e);
-      return c.json({ error: "stream unavailable" }, 502);
+      return { ok: false };
     }
-  });
+  }
 
   app.get("/tracks/verify", async (c) => {
     const urisParam = c.req.query("uris");
