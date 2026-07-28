@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
-import { CircleNotch, Eye, LinkBreak, MusicNotes, Sparkle, BookmarkSimple, CheckCircle } from "@phosphor-icons/react";
+import { CircleNotch, Eye, LinkBreak, MusicNotes, Sparkle, BookmarkSimple } from "@phosphor-icons/react";
 import { GlassPanel } from "../components/GlassPanel";
 import { TrackRow } from "../components/TrackRow";
 import { EmptyState } from "../components/EmptyState";
 import { TrackSkeleton } from "../components/TrackSkeleton";
 import { usePlayer } from "../lib/player";
 import { ARTWORK_ROW, artworkUrl } from "../lib/artwork";
-import { api, PlaylistLimitReachedError, type SharedPlaylist, type Track } from "../lib/api";
+import { api, type SharedPlaylist, type Track } from "../lib/api";
+import { requestAddTracksToPlaylist } from "../components/AddToPlaylistButton";
 
 type LoadState =
   | { kind: "loading" }
@@ -14,7 +15,6 @@ type LoadState =
   | { kind: "gone" }
   | { kind: "error"; message: string };
 
-type SaveState = { kind: "idle" } | { kind: "saving" } | { kind: "saved" } | { kind: "error"; message: string };
 
 /** "1 трек" / "2 трека" / "5 треков" — Russian counts read wrong without this. */
 function formatTrackCount(count: number): string {
@@ -71,7 +71,7 @@ export function SharedPlaylistScreen({
 }) {
   const player = usePlayer();
   const [state, setState] = useState<LoadState>({ kind: "loading" });
-  const [save, setSave] = useState<SaveState>({ kind: "idle" });
+  const [actionError, setActionError] = useState<string | null>(null);
   const [revoking, setRevoking] = useState(false);
 
   useEffect(() => {
@@ -132,27 +132,17 @@ export function SharedPlaylistScreen({
     );
   }
 
-  async function handleSaveToMine() {
-    setSave({ kind: "saving" });
-    try {
-      const { playlist } = await api.createPlaylist(share.name);
-      for (const track of share.tracks) {
-        await api.addTrackToPlaylist(playlist.id, {
-          uri: track.uri,
-          title: track.title,
-          artist: track.artist,
-          artwork: track.artwork ?? null,
-        });
-      }
-      setSave({ kind: "saved" });
-    } catch (e) {
-      setSave({
-        kind: "error",
-        message: e instanceof PlaylistLimitReachedError
-          ? "Закончились слоты под плейлисты — освободите один или докупите."
-          : e instanceof Error ? e.message : String(e),
-      });
-    }
+  /**
+   * Hands off to the shared add-to-playlist sheet rather than silently creating
+   * a playlist named after the share: the recipient picks the destination, and
+   * the sheet already handles creating a new one and the slot limit.
+   */
+  function handleSaveToMine() {
+    requestAddTracksToPlaylist(
+      share.tracks.map((t) => ({ uri: t.uri, title: t.title, artist: t.artist, artwork: t.artwork })),
+      `«${share.name}» · ${formatTrackCount(share.tracks.length)}`,
+      share.name,
+    );
   }
 
   async function handleRevoke() {
@@ -161,7 +151,7 @@ export function SharedPlaylistScreen({
       await api.revokeShare(share.token);
       setState({ kind: "gone" });
     } catch (e) {
-      setSave({ kind: "error", message: e instanceof Error ? e.message : String(e) });
+      setActionError(e instanceof Error ? e.message : String(e));
     } finally {
       setRevoking(false);
     }
@@ -206,20 +196,17 @@ export function SharedPlaylistScreen({
           <button
             type="button"
             className="glass-button icon-only"
-            disabled={save.kind === "saving" || save.kind === "saved"}
-            aria-label={save.kind === "saved" ? "Сохранено в вашу музыку" : "Сохранить себе"}
-            title={save.kind === "saved" ? "Сохранено в вашу музыку" : "Сохранить себе"}
-            onClick={() => void handleSaveToMine()}
+            aria-label="Сохранить в плейлист"
+            title="Сохранить в плейлист"
+            onClick={handleSaveToMine}
           >
-            {save.kind === "saving" ? <CircleNotch size={18} className="spin" />
-              : save.kind === "saved" ? <CheckCircle size={18} weight="fill" />
-              : <BookmarkSimple size={18} weight="bold" />}
+            <BookmarkSimple size={18} weight="bold" />
           </button>
         </div>
       )}
 
-      {save.kind === "error" && (
-        <p role="alert" className="error-row-message mt-12">{save.message}</p>
+      {actionError && (
+        <p role="alert" className="error-row-message mt-12">{actionError}</p>
       )}
 
       <div className="stack mt-16 reveal-stagger">
