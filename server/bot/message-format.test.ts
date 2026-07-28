@@ -3,7 +3,7 @@ import { describe, expect, test, beforeEach } from "bun:test";
 process.env.TELEGRAM_BOT_TOKEN ??= "test-token";
 
 const { __resetForTests, __setEmojiForTests } = await import("./emoji");
-const { detailBlock, detailRow, escapeHtml, messageHint, messageTitle, statusMessage } = await import("./message-format");
+const { detailBlock, detailRow, escapeHtml, formatTrackCount, messageHint, messageTitle, statusMessage } = await import("./message-format");
 
 beforeEach(() => {
   __resetForTests();
@@ -32,5 +32,14 @@ describe("bot message formatting", () => {
     expect(statusMessage("check", "Готово", "Пакет A & B активирован")).toBe(
       "<b>Готово</b>\nПакет A &amp; B активирован",
     );
+  });
+
+  test("declines трек for Russian counts", () => {
+    expect(formatTrackCount(1)).toBe("1 трек");
+    expect(formatTrackCount(3)).toBe("3 трека");
+    expect(formatTrackCount(5)).toBe("5 треков");
+    expect(formatTrackCount(11)).toBe("11 треков");
+    expect(formatTrackCount(21)).toBe("21 трек");
+    expect(formatTrackCount(112)).toBe("112 треков");
   });
 });

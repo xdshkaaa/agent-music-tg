@@ -30,6 +30,20 @@ export function detailRow(symbol: string, label: string, value: unknown): string
   return `${icon ? icon + " " : ""}<b>${escapeHtml(label)}</b>  ${escapeHtml(value)}`;
 }
 
+/** "1 трек" / "2 трека" / "5 треков" — Russian counts read wrong without this. */
+export function formatTrackCount(count: number): string {
+  const mod100 = count % 100;
+  const mod10 = count % 10;
+  const form = mod100 >= 11 && mod100 <= 14
+    ? "треков"
+    : mod10 === 1
+      ? "трек"
+      : mod10 >= 2 && mod10 <= 4
+        ? "трека"
+        : "треков";
+  return `${count} ${form}`;
+}
+
 /** Short status message with a strong outcome and optional explanation. */
 export function statusMessage(symbol: string, title: string, body?: string): string {
   return [messageTitle(symbol, title), body ? `\n${escapeHtml(body)}` : ""].join("");
