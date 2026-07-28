@@ -58,6 +58,20 @@ export function parseStartAttribution(raw: string | null | undefined): Attributi
     };
   }
 
+  // Shared playlist links are their own acquisition channel: a recipient
+  // arrives because someone sent them music, not because of a campaign.
+  const shared = /^pl_([A-Za-z0-9]{10})$/.exec(startParam);
+  if (shared) {
+    return {
+      source: "share",
+      medium: "telegram",
+      campaign: "shared-playlist",
+      content: `share-${shared[1]}`,
+      term: null,
+      startParam,
+    };
+  }
+
   if (startParam.startsWith("utm_")) {
     const [source, medium, campaign, content, term] = startParam.slice(4).split("__", 5).map(cleanTag);
     return {
