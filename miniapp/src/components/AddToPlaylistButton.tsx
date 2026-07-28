@@ -8,10 +8,36 @@ export interface AddToPlaylistTrack {
   artwork?: string;
 }
 
+/**
+ * What the sheet was asked to add. One track and a whole shared playlist are
+ * the same operation with a different count, so they go through one payload
+ * rather than two sheets that would drift apart.
+ */
+export interface AddToPlaylistRequest {
+  tracks: AddToPlaylistTrack[];
+  /** Line shown under the sheet title, describing what is being added. */
+  label: string;
+  /** Prefills the "create playlist" field — a shared playlist brings its name. */
+  suggestedName?: string;
+}
+
 export const OPEN_ADD_TO_PLAYLIST_EVENT = "open-add-to-playlist";
 
+function open(request: AddToPlaylistRequest): void {
+  window.dispatchEvent(new CustomEvent<AddToPlaylistRequest>(OPEN_ADD_TO_PLAYLIST_EVENT, { detail: request }));
+}
+
 export function requestAddToPlaylist(track: AddToPlaylistTrack): void {
-  window.dispatchEvent(new CustomEvent<AddToPlaylistTrack>(OPEN_ADD_TO_PLAYLIST_EVENT, { detail: track }));
+  open({ tracks: [track], label: `«${track.title}» — ${track.artist}` });
+}
+
+/** Bulk variant: saving a received playlist into one of the user's own. */
+export function requestAddTracksToPlaylist(
+  tracks: AddToPlaylistTrack[],
+  label: string,
+  suggestedName?: string,
+): void {
+  open({ tracks, label, suggestedName });
 }
 
 /** Icon button next to Play — opens the shared add-to-playlist bottom sheet. */
