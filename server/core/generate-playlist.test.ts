@@ -39,7 +39,7 @@ function fakeMusic(opts: { remotePlaylists: boolean; searchTrack?: (artist: stri
     },
     async searchTracks(query) {
       searchTracksCalls.push(query);
-      return [{ uri: `ytm:q-${query}`, title: query, artist: "Q" }];
+      return [{ uri: `ytm:q-${query}`, title: query, artist: "Q", artwork: `https://art/${query}.jpg` }];
     },
     async searchArtist(name) {
       return { id: `id-${name}`, name };
@@ -231,6 +231,23 @@ describe("generatePlaylist", () => {
     });
     expect(music.searchTrackCalls).toEqual([]);
     expect(playlist.tracks[0]?.uri).toBe("ytm:stored-1");
+  });
+
+  test("keeps the artwork of tracks the agent found through a search tool", async () => {
+    // The tool results the model sees are stripped of artwork on purpose, and a
+    // hit in the resolution index skips the searchTrack fallback — so the index
+    // has to be fed the backend's own tracks or every cover is lost.
+    const provider = fakeProvider([
+      searchTracksResult("s1", "рэп-рок"),
+      finalizeResult("Ураган", [{ artist: "Q", title: "рэп-рок" }]),
+    ]);
+    const music = fakeMusic({ remotePlaylists: false });
+    const { playlist } = await generatePlaylist({ provider, music, prompt: "рэп-рок ураган" });
+    expect(music.searchTrackCalls).toEqual([]);
+    expect(playlist.tracks[0]).toMatchObject({
+      uri: "ytm:q-рэп-рок",
+      artwork: "https://art/рэп-рок.jpg",
+    });
   });
 
   test("first clarify call surfaces as ClarifyNeededError with round 1", async () => {

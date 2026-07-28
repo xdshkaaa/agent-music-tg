@@ -13,6 +13,7 @@ interface TelegramWebApp {
   ready(): void;
   expand(): void;
   onEvent(event: string, handler: () => void): void;
+  offEvent?(event: string, handler: () => void): void;
   openLink(url: string): void;
   openTelegramLink(url: string): void;
   openInvoice?(url: string, callback?: (status: InvoiceStatus) => void): void;

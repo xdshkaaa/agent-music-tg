@@ -17,6 +17,7 @@ import { api, type Album, type ArtistCard, type SuggestionsResponse, type Track 
 import { humanizeError } from "../lib/errorText";
 import { usePlayer } from "../lib/player";
 import { buildSearchFeed, isSearchFeedEmpty, loadRecentSearches, pushRecentSearch } from "../lib/suggestions";
+import { ARTWORK_ROW, artworkUrl } from "../lib/artwork";
 
 type DownloadState = { kind: "idle" } | { kind: "sending" } | { kind: "sent" } | { kind: "error"; message: string };
 
@@ -378,7 +379,9 @@ export function SearchMode({
                   <TrackRow
                     className="album-head"
                     onClick={() => void toggleAlbum(album)}
-                    artwork={album.artwork}
+                    // SoundCloud albums carry no artwork_url of their own, so
+                    // borrow a cover from the tracks once they are loaded.
+                    artwork={album.artwork ?? open?.tracks.find((t) => t.artwork)?.artwork}
                     title={album.title}
                     meta={album.artist}
                     metaClassName="search-row-meta"
@@ -450,7 +453,13 @@ export function SearchMode({
                             }}
                           >
                             {track.artwork || album.artwork ? (
-                              <img className="track-artwork" src={track.artwork || album.artwork} alt="" />
+                              <img
+                                className="track-artwork"
+                                src={artworkUrl(track.artwork || album.artwork, ARTWORK_ROW)}
+                                alt=""
+                                loading="lazy"
+                                decoding="async"
+                              />
                             ) : (
                               <div className="track-artwork" />
                             )}

@@ -20,9 +20,19 @@
   --text-dark: #f2f3f5;
   --text-muted-light: rgba(13, 13, 16, 0.66);
   --text-muted-dark: rgba(242, 243, 245, 0.7);
-  --radius-card: 28px;
-  --radius-btn: 999px;
-  --radius-input: 20px;
+  /* Radius ladder. Concentric: each nested surface drops one step, so a
+     control inside a block inside a panel reads as 10 / 18 / 22. Pick the tier
+     by nesting depth, never by eyeballing a new number. */
+  --radius-panel: 22px;    /* glass panels, sheets, full-screen artwork */
+  --radius-input: 20px;    /* text fields */
+  --radius-block: 18px;    /* track rows, prompt pill, dock, tab bars */
+  --radius-surface: 16px;  /* popovers, avatars, cards nested in a panel */
+  --radius-row: 14px;      /* list rows, icon tiles, toasts */
+  --radius-control: 12px;  /* tabs, notices, medium focus rings */
+  --radius-chip: 10px;     /* small buttons, code blocks, focus rings */
+  --radius-micro: 8px;     /* thumbnails, counters, close buttons */
+  --radius-hair: 4px;      /* focus rings on thin or inline controls */
+  --radius-btn: 999px;     /* pill */
 
   --glass-bg-opacity: 0.55;
   --glass-blur-subtle: 8px;
@@ -66,7 +76,8 @@
   /* Type scale — fixed px (app UI, 16px = 1rem base). Cyrillic-native.
      Display tracks at -0.01em (not -0.02em): wide Cyrillic glyphs (Ч Щ Д Ж)
      crowd at the tighter value. */
-  --fs-display: 28px;     /* single hero heading per screen */
+  --fs-hero: 32px;        /* the screen-opening h1 (prompt hero, admin header) */
+  --fs-display: 28px;     /* hero-tier text inline in a screen (playlist name) */
   --fs-subdisplay: 22px;  /* full-screen player title (rare gap tier) */
   --fs-title: 19px;       /* Title tier 17–20px: section/panel titles */
   --fs-body: 16px;        /* body, track titles, prompts */
@@ -99,8 +110,10 @@
   --lg-v2-blur-panel: 22px;
   --lg-v2-blur-topbar: 20px;
   --lg-v2-saturation: 130%;
-  --lg-v2-radius-panel: 22px;
-  --lg-v2-radius-pill: 999px;
+  /* Aliases into the radius ladder above — the v2 family keeps its own names
+     for blur/shadow/fill, but radius has one source of truth. */
+  --lg-v2-radius-panel: var(--radius-panel);
+  --lg-v2-radius-pill: var(--radius-btn);
   --lg-v2-specular: inset 0 -1px 0 rgba(0, 0, 0, 0.18);
   --lg-v2-shadow-md: inset 0 -1px 0 rgba(0, 0, 0, 0.12), 0 4px 14px rgba(0, 0, 0, 0.28), 0 1px 2px rgba(0, 0, 0, 0.15);
   --lg-v2-shadow-float: inset 0 -1px 0 rgba(0, 0, 0, 0.14), 0 8px 24px rgba(0, 0, 0, 0.35), 0 2px 4px rgba(0, 0, 0, 0.18);
@@ -115,8 +128,11 @@
   --glass-border-light: rgba(255, 255, 255, 0.7);
   --glass-border-dark: rgba(255, 255, 255, 0.7);
   --accent-bg: color-mix(in srgb, var(--accent) 10%, transparent);
-  --danger: #d32f2f;
-  --danger-bg: rgba(211, 47, 47, 0.1);
+  /* #b91c1c, not the lighter #d32f2f: --danger also colors 12px error detail
+     text on a near-white surface, and the lighter red lands at 3.8:1 — under
+     the 4.5:1 AA floor PRODUCT.md commits to. */
+  --danger: #b91c1c;
+  --danger-bg: rgba(185, 28, 28, 0.1);
   --success: #059669;
   --success-bg: rgba(5, 150, 105, 0.12);
   --warning: #b45309;
@@ -386,7 +402,7 @@ body {
 .app-top-logo {
   width: 22px;
   height: 22px;
-  border-radius: 7px;
+  border-radius: var(--radius-micro);
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid var(--lg-v2-chip-border);
   display: inline-flex;
@@ -781,7 +797,7 @@ textarea.glass-input {
   top: 4px;
   left: 0;
   bottom: 4px;
-  border-radius: calc(var(--radius-btn) - 2px);
+  border-radius: var(--radius-btn);
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid var(--lg-v2-chip-border);
   box-shadow: var(--glass-shadow-indicator);
@@ -821,7 +837,7 @@ textarea.glass-input {
   white-space: nowrap;
   flex: 0 0 auto;
   padding: 9px 16px;
-  border-radius: calc(var(--radius-btn) - 2px);
+  border-radius: var(--radius-btn);
   font-family: var(--font-body);
   font-size: var(--fs-label);
   font-weight: 600;
@@ -929,7 +945,7 @@ textarea.glass-input {
   border-bottom: 1px solid var(--glass-border-dark);
   cursor: pointer;
   transition: background 0.15s ease;
-  border-radius: 18px;
+  border-radius: var(--radius-block);
   margin: 0 -8px;
 }
 
@@ -960,7 +976,7 @@ textarea.glass-input {
 .track-artwork {
   width: 44px;
   height: 44px;
-  border-radius: 14px;
+  border-radius: var(--radius-row);
   object-fit: cover;
   background: rgba(255, 255, 255, 0.1);
   flex-shrink: 0;
@@ -1026,7 +1042,7 @@ h1 {
   align-items: baseline;
   gap: 8px;
   cursor: pointer;
-  border-radius: 8px;
+  border-radius: var(--radius-micro);
   transition: color 0.18s ease;
 }
 
@@ -1089,7 +1105,7 @@ h1 {
 
 .prompt-hero h1 {
   font-family: var(--font-display);
-  font-size: clamp(26px, 8vw, 32px);
+  font-size: var(--fs-hero);
   font-weight: 800;
   line-height: 1.12;
   letter-spacing: var(--ls-display);
@@ -1210,7 +1226,7 @@ h1 {
   margin: -7px -2px -7px 0;
   padding: 6px 8px;
   border: none;
-  border-radius: 10px;
+  border-radius: var(--radius-chip);
   background: transparent;
   color: var(--text-muted-dark);
   font-family: var(--font-body);
@@ -1296,7 +1312,7 @@ h1 {
   gap: 8px;
   min-height: 56px;
   padding: 6px 8px 6px 16px;
-  border-radius: 18px;
+  border-radius: var(--radius-block);
   overflow: hidden;
   border: 1px solid var(--lg-v2-chip-border);
   background: var(--lg-v2-input-bg);
@@ -1358,46 +1374,6 @@ h1 {
   color: rgba(13, 13, 16, 0.58);
 }
 
-.prompt-mode-toggle {
-  flex-shrink: 0;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: 1px solid var(--lg-v2-chip-border);
-  background: transparent;
-  color: var(--accent);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  position: relative;
-  transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease;
-}
-
-.prompt-mode-toggle.inactive {
-  color: var(--text-muted);
-}
-
-.prompt-mode-toggle .icon-strike {
-  position: absolute;
-  width: 20px;
-  height: 2px;
-  border-radius: 1px;
-  background: currentColor;
-  transform: rotate(-45deg);
-}
-
-@media (hover: hover) {
-  .prompt-mode-toggle:hover {
-    border-color: var(--accent);
-  }
-}
-
-.prompt-mode-toggle:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
 /* AI | Search segmented control — thin track, no heavy borders. */
 .prompt-modes {
   display: inline-flex;
@@ -1405,7 +1381,7 @@ h1 {
   gap: 0;
   margin: 0;
   padding: 3px;
-  border-radius: 12px;
+  border-radius: var(--radius-control);
   border: none;
   background: rgba(255, 255, 255, 0.05);
 }
@@ -1419,7 +1395,7 @@ h1 {
   min-height: 44px;
   padding: 8px 12px;
   border: none;
-  border-radius: 10px;
+  border-radius: var(--radius-chip);
   background: transparent;
   color: var(--text-muted);
   font-size: var(--fs-label);
@@ -1528,7 +1504,7 @@ h1 {
   min-height: 44px;
   max-width: 100%;
   padding: 7px 12px;
-  border-radius: 999px;
+  border-radius: var(--radius-btn);
   border: 1px solid var(--lg-v2-chip-border);
   background: var(--lg-v2-chip);
   color: var(--text-dark);
@@ -1784,7 +1760,7 @@ h1 {
   height: 52px;
   flex: 0 0 52px;
   overflow: hidden;
-  border-radius: 15px;
+  border-radius: var(--radius-surface);
   background:
     radial-gradient(95% 85% at 18% 8%, color-mix(in srgb, var(--cover-a) 94%, white) 0%, transparent 58%),
     radial-gradient(95% 95% at 92% 86%, var(--cover-b) 0%, transparent 62%),
@@ -1833,7 +1809,7 @@ h1 {
   padding: 10px;
   gap: 12px;
   border-bottom: none;
-  border-radius: 16px;
+  border-radius: var(--radius-surface);
   background: rgba(255, 255, 255, 0.045);
   transition: background 0.18s ease, transform 0.18s ease;
 }
@@ -1919,7 +1895,7 @@ h1 {
 
 /* Expandable album blocks in search/albums mode. */
 .album-block {
-  border-radius: 18px;
+  border-radius: var(--radius-block);
   overflow: hidden;
   background: rgba(255, 255, 255, 0.03);
 }
@@ -1928,7 +1904,7 @@ h1 {
   cursor: pointer;
   border-bottom: none;
   margin: 0;
-  border-radius: 18px;
+  border-radius: var(--radius-block);
 }
 
 .album-block:has(.album-tracks) .album-head {
@@ -2034,7 +2010,7 @@ h1 {
 .reasoning-equalizer > span {
   width: 3px;
   height: 12px;
-  border-radius: 999px;
+  border-radius: var(--radius-btn);
   background: var(--accent-text);
   transform-origin: center;
   animation: reasoning-equalizer 1.1s ease-in-out infinite;
@@ -2058,7 +2034,7 @@ h1 {
   font-variant-numeric: tabular-nums;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
-  border-radius: 16px;
+  border-radius: var(--radius-surface);
   background: rgba(0, 0, 0, 0.18);
   box-shadow: var(--glass-shadow-sm);
   mask-image: linear-gradient(
@@ -2088,7 +2064,7 @@ h1 {
 
 .reasoning-transcript::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.16);
-  border-radius: 999px;
+  border-radius: var(--radius-btn);
 }
 
 :root[data-scheme="light"] .reasoning-transcript::-webkit-scrollbar-thumb {
@@ -2410,7 +2386,7 @@ p {
   width: max-content;
   max-width: min(280px, calc(100vw - 24px));
   padding: 6px;
-  border-radius: 16px;
+  border-radius: var(--radius-surface);
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -2440,7 +2416,7 @@ p {
   padding: 10px 12px;
   border: none;
   background: none;
-  border-radius: 11px;
+  border-radius: var(--radius-control);
   color: var(--text-dark);
   font-size: var(--fs-body);
   cursor: pointer;
@@ -2564,15 +2540,15 @@ a.icon-btn {
 
 @media (hover: hover) {
   .action-btn--destructive:hover {
-    color: #ef4444;
-    background: rgba(239, 68, 68, 0.15);
+    color: var(--danger);
+    background: var(--danger-bg);
     border-color: transparent;
   }
 }
 
 .action-btn--destructive:active {
-  color: #ef4444;
-  background: rgba(239, 68, 68, 0.15);
+  color: var(--danger);
+  background: var(--danger-bg);
 }
 
 .action-btn--neutral {
@@ -2831,7 +2807,7 @@ a.icon-btn {
   align-items: center;
   gap: 5px;
   padding: 5px 10px;
-  border-radius: 999px;
+  border-radius: var(--radius-btn);
   border: 1px solid var(--lg-v2-chip-border);
   background: rgba(255, 255, 255, 0.05);
   color: var(--text-muted-dark);
@@ -2898,6 +2874,7 @@ a.icon-btn {
   justify-content: center;
   padding: 0 20px;
   pointer-events: none;
+  transition: transform 0.18s ease, opacity 0.18s ease;
 }
 
 .dock > * {
@@ -2909,6 +2886,29 @@ a.icon-btn {
   border-top-color: transparent;
 }
 
+/* While the keyboard is up, the WebView anchors fixed elements to the visual
+   viewport — the dock and the player bar slide up and land on top of the field
+   being typed into. Get them out of the way instead (see lib/keyboard.ts). */
+:root[data-keyboard="open"] .dock,
+:root[data-keyboard="open"] .player-bar {
+  transform: translateY(calc(100% + 32px));
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* .dock itself is pointer-events:none with its children re-enabled, so the
+   children need muting too — otherwise they stay tappable mid-transition. */
+:root[data-keyboard="open"] .dock > * {
+  pointer-events: none;
+}
+
+/* The layout viewport does not shrink for the keyboard, so the bottom of the
+   page sits behind it. Swap the dock's 220px reserve for the keyboard's own
+   height and the last result can still be scrolled into view while typing. */
+:root[data-keyboard="open"] .app-shell {
+  padding-bottom: calc(var(--keyboard-inset, 0px) + 24px);
+}
+
 .dock-inner {
   position: relative;
   display: flex;
@@ -2916,7 +2916,7 @@ a.icon-btn {
   padding: 4px 6px;
   width: 100%;
   max-width: 420px;
-  border-radius: 18px;
+  border-radius: var(--radius-block);
   background: rgba(28, 28, 31, 0.92);
   border: 1px solid var(--lg-v2-panel-border);
   overflow: visible;
@@ -2946,7 +2946,7 @@ a.icon-btn {
   align-items: center;
   gap: 2px;
   padding: 6px 4px;
-  border-radius: 12px;
+  border-radius: var(--radius-control);
   font-size: var(--fs-micro);
   font-weight: 600;
   cursor: pointer;
@@ -3152,7 +3152,7 @@ a.icon-btn {
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 5px;
   padding: 5px;
-  border-radius: 18px;
+  border-radius: var(--radius-block);
   background: color-mix(in srgb, var(--lg-v2-input-bg) 82%, transparent);
   border: 1px solid var(--lg-v2-chip-border);
 }
@@ -3186,9 +3186,9 @@ a.icon-btn {
   gap: 4px;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 13px;
+  border-radius: var(--radius-row);
   padding: 7px 3px;
-  font-size: 11px;
+  font-size: var(--fs-micro);
   font-weight: 600;
   color: var(--text-muted-dark);
   cursor: pointer;
@@ -3227,7 +3227,7 @@ a.icon-btn {
 
 .admin-header h1 {
   margin: 3px 0 4px;
-  font-size: clamp(28px, 8vw, 38px);
+  font-size: var(--fs-hero);
   line-height: 1;
   letter-spacing: -0.045em;
   text-wrap: balance;
@@ -3248,7 +3248,7 @@ a.icon-btn {
 
 .admin-eyebrow {
   color: var(--accent);
-  font-size: 11px;
+  font-size: var(--fs-micro);
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -3279,10 +3279,10 @@ a.icon-btn {
 .admin-count-badge {
   flex-shrink: 0;
   padding: 4px 7px;
-  border-radius: 7px;
+  border-radius: var(--radius-micro);
   background: var(--accent-bg);
   color: var(--accent);
-  font-size: 11px;
+  font-size: var(--fs-micro);
   font-variant-numeric: tabular-nums;
 }
 
@@ -3298,7 +3298,7 @@ a.icon-btn {
   gap: 5px;
   min-width: 0;
   color: var(--text-muted-dark);
-  font-size: 11px;
+  font-size: var(--fs-micro);
   font-weight: 600;
 }
 
@@ -3318,7 +3318,7 @@ a.icon-btn {
 }
 
 .admin-source-value strong {
-  font-size: 20px;
+  font-size: var(--fs-subdisplay);
   line-height: 1;
   font-variant-numeric: tabular-nums;
 }
@@ -3326,7 +3326,7 @@ a.icon-btn {
 .admin-source-value small {
   max-width: 14ch;
   color: var(--text-muted-dark);
-  font-size: 10px;
+  font-size: var(--fs-micro);
   text-align: right;
 }
 
@@ -3340,7 +3340,7 @@ a.icon-btn {
   gap: 12px;
   margin: 12px 0 16px;
   padding: 14px;
-  border-radius: 16px;
+  border-radius: var(--radius-surface);
   background: color-mix(in srgb, var(--accent) 7%, var(--lg-v2-input-bg));
   border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--lg-v2-chip-border));
 }
@@ -3356,9 +3356,9 @@ a.icon-btn {
   min-width: 0;
   padding: 9px 10px;
   overflow: hidden;
-  border-radius: 10px;
+  border-radius: var(--radius-chip);
   background: rgba(0, 0, 0, 0.18);
-  font-size: 10px;
+  font-size: var(--fs-micro);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -3386,7 +3386,7 @@ a.icon-btn {
   grid-template-columns: minmax(0, 1fr) minmax(110px, 0.55fr);
   gap: 9px;
   padding: 12px;
-  border-radius: 14px;
+  border-radius: var(--radius-row);
   background: color-mix(in srgb, var(--lg-v2-input-bg) 86%, transparent);
   border: 1px solid var(--lg-v2-chip-border);
 }
@@ -3397,7 +3397,7 @@ a.icon-btn {
   align-items: center;
   justify-content: space-between;
   color: var(--text-muted-dark);
-  font-size: 11px;
+  font-size: var(--fs-micro);
   font-weight: 600;
 }
 
@@ -3421,7 +3421,7 @@ a.icon-btn {
   height: 38px;
   padding: 0;
   justify-content: center;
-  font-size: 18px;
+  font-size: var(--fs-title);
   line-height: 1;
 }
 
@@ -3458,13 +3458,14 @@ a.icon-btn {
   min-height: 56px;
   padding: 5px 8px 5px 5px;
   max-width: 420px;
-  border-radius: 14px;
+  border-radius: var(--radius-row);
   background: #1c1c1f;
   border: 1px solid var(--lg-v2-panel-border);
   backdrop-filter: blur(var(--lg-v2-blur-panel)) saturate(var(--lg-v2-saturation));
   -webkit-backdrop-filter: blur(var(--lg-v2-blur-panel)) saturate(var(--lg-v2-saturation));
   box-shadow: var(--lg-v2-shadow-md);
   width: calc(100% - 40px);
+  transition: transform 0.18s ease, opacity 0.18s ease;
 }
 
 :root[data-scheme="light"] .player-bar {
@@ -3475,7 +3476,7 @@ a.icon-btn {
 .player-bar-thumbnail {
   width: 40px;
   height: 40px;
-  border-radius: 8px;
+  border-radius: var(--radius-micro);
   object-fit: cover;
   background: var(--lg-v2-chip);
   flex-shrink: 0;
@@ -3510,7 +3511,7 @@ div.player-bar-thumbnail::after {
 .player-bar-open:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-radius: 12px;
+  border-radius: var(--radius-control);
 }
 
 .player-info {
@@ -3547,17 +3548,25 @@ div.player-bar-thumbnail::after {
   color: var(--text-muted-light);
 }
 
+/* 44px is the tap target PRODUCT.md promises for player controls. The icon
+   still reads as ~32px because the extra 12px is transparent padding; the
+   negative margin between adjacent buttons cancels the bar's 8px flex gap, so
+   the cluster grows by only 4px and the title keeps its width. */
 .player-bar-btn {
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   border: none;
   background: transparent;
   color: var(--text-dark);
   cursor: pointer;
   flex-shrink: 0;
+}
+
+.player-bar-btn + .player-bar-btn {
+  margin-left: -8px;
 }
 
 :root[data-scheme="light"] .player-bar-btn {
@@ -3572,7 +3581,7 @@ div.player-bar-thumbnail::after {
 .player-bar-btn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-radius: 10px;
+  border-radius: var(--radius-chip);
 }
 
 .player-bar-like-btn.active {
@@ -3631,7 +3640,7 @@ div.player-bar-thumbnail::after {
 
 .volume-slider::-webkit-slider-runnable-track {
   height: 4px;
-  border-radius: 999px;
+  border-radius: var(--radius-btn);
   background: rgba(255, 255, 255, 0.15);
   backdrop-filter: blur(var(--glass-blur-subtle));
   -webkit-backdrop-filter: blur(var(--glass-blur-subtle));
@@ -3660,12 +3669,12 @@ div.player-bar-thumbnail::after {
 .volume-slider:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: var(--radius-hair);
 }
 
 .volume-slider::-moz-range-track {
   height: 4px;
-  border-radius: 999px;
+  border-radius: var(--radius-btn);
   background: rgba(255, 255, 255, 0.15);
   border: none;
 }
@@ -3684,7 +3693,7 @@ div.player-bar-thumbnail::after {
 
 .volume-slider::-moz-range-progress {
   height: 4px;
-  border-radius: 999px;
+  border-radius: var(--radius-btn);
   background: var(--accent);
 }
 
@@ -3764,7 +3773,7 @@ div.player-bar-thumbnail::after {
   width: min(100%, 380px, calc(100dvh - 470px));
   aspect-ratio: 1;
   flex-shrink: 0;
-  border-radius: 24px;
+  border-radius: var(--radius-panel);
   overflow: hidden;
   background: var(--lg-v2-chip);
   box-shadow: 0 20px 40px -20px rgba(0, 0, 0, 0.6);
@@ -3863,7 +3872,7 @@ div.player-bar-thumbnail::after {
 
 .player-progress,
 .player-screen-progress {
-  border-radius: 999px;
+  border-radius: var(--radius-btn);
   background: rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(var(--glass-blur-subtle));
   -webkit-backdrop-filter: blur(var(--glass-blur-subtle));
@@ -3887,7 +3896,7 @@ div.player-bar-thumbnail::after {
   display: block;
   width: 100%;
   height: 100%;
-  border-radius: 999px;
+  border-radius: var(--radius-btn);
   background: var(--accent);
   transform-origin: left center;
   transform: scaleX(0);
@@ -4136,7 +4145,7 @@ div.player-bar-thumbnail::after {
 .offer-price:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-radius: 6px;
+  border-radius: var(--radius-micro);
 }
 
 .offer-stars-btn {
@@ -4170,7 +4179,7 @@ div.player-bar-thumbnail::after {
 .profile-avatar {
   width: 58px;
   height: 58px;
-  border-radius: 16px;
+  border-radius: var(--radius-surface);
   object-fit: cover;
   flex-shrink: 0;
 }
@@ -4178,7 +4187,7 @@ div.player-bar-thumbnail::after {
 .profile-avatar-placeholder {
   width: 58px;
   height: 58px;
-  border-radius: 16px;
+  border-radius: var(--radius-surface);
   background: var(--lg-v2-chip);
   border: 1px solid rgba(255, 255, 255, 0.12);
   display: inline-flex;
@@ -4467,7 +4476,7 @@ div.player-bar-thumbnail::after {
 .onboarding-skip:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 4px;
-  border-radius: 4px;
+  border-radius: var(--radius-hair);
 }
 
 .onboarding-dots {
@@ -4516,7 +4525,7 @@ div.player-bar-thumbnail::after {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 14px;
+  border-radius: var(--radius-row);
   color: var(--accent);
   background: var(--accent-bg);
 }
@@ -4627,7 +4636,7 @@ div.player-bar-thumbnail::after {
   justify-content: space-between;
   gap: 12px;
   border: 1px solid var(--lg-v2-chip-border);
-  border-radius: 14px;
+  border-radius: var(--radius-row);
   background: transparent;
   color: inherit;
   font-family: var(--font-body);
@@ -4681,7 +4690,7 @@ div.player-bar-thumbnail::after {
   width: 44px;
   height: 44px;
   flex: 0 0 auto;
-  border-radius: 12px;
+  border-radius: var(--radius-control);
 }
 
 .help-title {
@@ -4785,7 +4794,7 @@ div.player-bar-thumbnail::after {
 .faq-item summary:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: var(--radius-hair);
 }
 
 .faq-item p {
@@ -4824,7 +4833,7 @@ div.player-bar-thumbnail::after {
   gap: 12px;
   padding: 8px;
   border: 0;
-  border-radius: 16px;
+  border-radius: var(--radius-surface);
   background: transparent;
   color: inherit;
   font-family: var(--font-body);
@@ -5091,7 +5100,7 @@ div.player-bar-thumbnail::after {
 
 .trial-card {
   padding: 12px 16px;
-  border-radius: 18px;
+  border-radius: var(--radius-block);
 }
 
 .trial-card-row {
@@ -5173,18 +5182,17 @@ div.player-bar-thumbnail::after {
   flex-direction: column;
   gap: 8px;
   padding: 10px 12px;
-  border-radius: 14px;
+  border-radius: var(--radius-row);
   background: rgba(31, 33, 38, 0.96);
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
   backdrop-filter: blur(16px) saturate(160%);
-  color: #e7e9ee;
+  color: var(--text-dark);
   animation: error-toast-in 180ms ease-out;
 }
 
 :root[data-scheme="light"] .error-toast {
   background: rgba(250, 250, 252, 0.98);
-  color: #2b2f36;
   border-color: rgba(0, 0, 0, 0.1);
 }
 
@@ -5219,7 +5227,7 @@ div.player-bar-thumbnail::after {
   justify-content: center;
   width: 24px;
   height: 24px;
-  border-radius: 7px;
+  border-radius: var(--radius-micro);
   border: none;
   cursor: pointer;
   background: transparent;
@@ -5252,7 +5260,7 @@ div.player-bar-thumbnail::after {
   align-items: center;
   gap: 5px;
   padding: 6px 11px;
-  border-radius: 9px;
+  border-radius: var(--radius-chip);
   border: 1px solid rgba(255, 255, 255, 0.16);
   background: transparent;
   color: inherit;
@@ -5272,7 +5280,7 @@ div.player-bar-thumbnail::after {
 .error-toast-detail {
   margin: 0;
   padding: 10px;
-  border-radius: 10px;
+  border-radius: var(--radius-chip);
   max-height: 140px;
   overflow: auto;
   background: rgba(0, 0, 0, 0.35);
@@ -5280,12 +5288,11 @@ div.player-bar-thumbnail::after {
   line-height: 1.45;
   white-space: pre-wrap;
   word-break: break-word;
-  color: #fca5a5;
+  color: var(--danger);
 }
 
 :root[data-scheme="light"] .error-toast-detail {
   background: rgba(0, 0, 0, 0.06);
-  color: #b91c1c;
 }
 
 /* --- Inline notice (embedded in a card, never overlays content) ------- */
@@ -5296,15 +5303,14 @@ div.player-bar-thumbnail::after {
   gap: 8px;
   margin-top: 10px;
   padding: 12px 14px;
-  border-radius: 12px;
+  border-radius: var(--radius-control);
   background: var(--warning-bg);
   border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent);
-  color: #e7e9ee;
+  color: var(--text-dark);
 }
 
 :root[data-scheme="light"] .inline-notice {
   background: var(--warning-bg);
-  color: #2b2f36;
   border-color: color-mix(in srgb, var(--warning) 38%, transparent);
 }
 
@@ -5317,7 +5323,7 @@ div.player-bar-thumbnail::after {
   justify-content: center;
   width: 22px;
   height: 22px;
-  border-radius: 6px;
+  border-radius: var(--radius-micro);
   border: none;
   cursor: pointer;
   background: transparent;
@@ -5371,11 +5377,7 @@ div.player-bar-thumbnail::after {
   margin: 0;
   font-size: var(--fs-label);
   line-height: 1.4;
-  color: rgba(231, 233, 238, 0.82);
-}
-
-:root[data-scheme="light"] .inline-notice-text {
-  color: rgba(43, 47, 54, 0.78);
+  color: var(--text-dark);
 }
 
 .inline-notice-actions {
@@ -5390,7 +5392,7 @@ div.player-bar-thumbnail::after {
   align-items: center;
   gap: 5px;
   padding: 7px 12px;
-  border-radius: 9px;
+  border-radius: var(--radius-chip);
   border: 1px solid rgba(255, 255, 255, 0.16);
   background: transparent;
   color: inherit;
@@ -5418,7 +5420,7 @@ div.player-bar-thumbnail::after {
   padding: 0;
   border: none;
   background: none;
-  color: rgba(231, 233, 238, 0.6);
+  color: var(--text-muted-dark);
   font-size: var(--fs-micro);
   text-decoration: underline;
   text-underline-offset: 2px;
@@ -5426,20 +5428,13 @@ div.player-bar-thumbnail::after {
 }
 
 .inline-notice-more:hover {
-  color: rgba(231, 233, 238, 0.9);
-}
-
-:root[data-scheme="light"] .inline-notice-more {
-  color: rgba(43, 47, 54, 0.6);
-}
-:root[data-scheme="light"] .inline-notice-more:hover {
-  color: rgba(43, 47, 54, 0.9);
+  color: var(--text-dark);
 }
 
 .inline-notice-detail {
   margin: 0;
   padding: 10px;
-  border-radius: 10px;
+  border-radius: var(--radius-chip);
   max-height: 140px;
   overflow: auto;
   background: rgba(0, 0, 0, 0.3);
@@ -5447,12 +5442,11 @@ div.player-bar-thumbnail::after {
   line-height: 1.45;
   white-space: pre-wrap;
   word-break: break-word;
-  color: #fca5a5;
+  color: var(--danger);
 }
 
 :root[data-scheme="light"] .inline-notice-detail {
   background: rgba(0, 0, 0, 0.06);
-  color: #b91c1c;
 }
 
 @keyframes error-toast-in {
@@ -5516,7 +5510,7 @@ div.player-bar-thumbnail::after {
 .player-screen-progress-hit:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-radius: 999px;
+  border-radius: var(--radius-btn);
 }
 
 .player-screen-progress.dragging .player-screen-progress-fill,
@@ -5784,7 +5778,7 @@ div.player-bar-thumbnail::after {
 
 .artist-screen-line-skeleton {
   height: 18px;
-  border-radius: 999px;
+  border-radius: var(--radius-btn);
 }
 
 .artist-screen-row-skeleton {

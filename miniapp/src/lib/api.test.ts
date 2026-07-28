@@ -111,6 +111,12 @@ describe("URL building", () => {
       `/api/stream/yt%3Atrack%2Fx%20y?initData=${encodeURIComponent(INIT_DATA)}`,
     );
   });
+
+  test("streamUrl carries track metadata for the server's cross-platform fallback", () => {
+    expect(streamUrl("ytm:abc", { title: "Song & Co", artist: "A/B", durationMs: 201_600 })).toBe(
+      `/api/stream/ytm%3Aabc?initData=${encodeURIComponent(INIT_DATA)}&title=Song%20%26%20Co&artist=A%2FB&duration=201600`,
+    );
+  });
 });
 
 describe("download payload", () => {

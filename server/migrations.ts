@@ -490,6 +490,25 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // Cross-platform playback fallback: when a track's own source has no
+    // playable audio (pulled video, region block, dead SoundCloud id), the
+    // server silently streams the same song found on the other backend. The
+    // substitution is remembered here so the next play skips both the failing
+    // resolve and the search — the user only ever sees the original uri.
+    version: 19,
+    run(db) {
+      db.run(`
+        CREATE TABLE IF NOT EXISTS track_alternates (
+          uri TEXT PRIMARY KEY,
+          alt_uri TEXT NOT NULL,
+          title TEXT NOT NULL,
+          artist TEXT NOT NULL,
+          created_at INTEGER NOT NULL DEFAULT (unixepoch())
+        );
+      `);
+    },
+  },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;

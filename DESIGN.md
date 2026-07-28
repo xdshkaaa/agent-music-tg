@@ -22,8 +22,15 @@ typography:
     fontWeight: 400
     lineHeight: 1.45
 rounded:
-  panel: "28px"
+  panel: "22px"
   input: "20px"
+  block: "18px"
+  surface: "16px"
+  row: "14px"
+  control: "12px"
+  chip: "10px"
+  micro: "8px"
+  hair: "4px"
   pill: "999px"
 spacing:
   sm: "8px"
@@ -77,9 +84,22 @@ Restrained strategy: two neutral schemes plus a single rose voice.
 - **Panel** (rgba(26,28,36,.4) dark / rgba(255,255,255,.5) light): glass surface fill.
 - **Hairline** (rgba(255,255,255,.1) dark / rgba(13,13,16,.08) light): dividers, panel borders.
 
+### Semantic
+
+A small status layer that exists **only** to carry meaning the accent cannot: a destructive action must not look like a primary one, and an error must not look like a suggestion. Each is a token pair (`--x` + `--x-bg`) defined in both schemes, so a rule states the meaning once and the scheme resolves the value.
+
+| Token | Dark | Light | Used by |
+|---|---|---|---|
+| `--danger` / `--danger-bg` | #f87171 | #d32f2f | destructive buttons, error toast detail |
+| `--warning` / `--warning-bg` | #fbbf24 | #b45309 | inline notices |
+| `--success` / `--success-bg` | #34d399 | #059669 | confirmations |
+| `--info` / `--info-bg` | #60a5fa | #1d4ed8 | neutral status |
+
+Never hard-code a status color. A literal red in a rule is drift from `--danger`, not a new shade — the two diverged once already (#ef4444 vs the token's #f87171) and nobody could see why.
+
 ### Named Rules
 **The Signal Rule.** Accent Rose appears only on interactive or active elements — never as ambient decoration, background wash, or gradient text.
-**The One Room Rule.** All surfaces derive from the scheme's base plus white/black alpha. No third hue family enters the neutral stack.
+**The One Room Rule.** All *surfaces* derive from the scheme's base plus white/black alpha. No third hue family enters the neutral stack. The semantic layer above is the sole exception, and it colors icons, text, and thin fills — never a surface.
 
 ## 3. Typography
 
@@ -91,7 +111,8 @@ Restrained strategy: two neutral schemes plus a single rose voice.
 ### Hierarchy
 All sizes are fixed px (this is an app UI, not a fluid web page) and are exposed as `--fs-*` tokens in `glass.css`. Never hard-code `font-size` in TSX — use the tokens or `.fs-*` utility classes.
 
-- **Display** (800, 28px, line-height 1.1, tracking `-0.01em`): one screen hero heading per screen (prompt input, playlist name). Cyrillic glyphs (Ч Щ Д Ж) need the relaxed `-0.01em`, not the `-0.02em` typical of Latin display type.
+- **Hero** (800, 32px, line-height 1.1, tracking `-0.01em`): the single screen-opening `h1` — the prompt hero and the admin header. Fixed px, never a fluid `clamp()`: this is an app UI, and the viewport range inside Telegram is too narrow for fluid type to buy anything.
+- **Display** (800, 28px, line-height 1.1, tracking `-0.01em`): hero-tier text sitting inline in a screen rather than opening it (playlist name). Cyrillic glyphs (Ч Щ Д Ж) need the relaxed `-0.01em`, not the `-0.02em` typical of Latin display type.
 - **Subdisplay** (700, 22px, tracking `-0.01em`): the full-screen player title — a rare gap filler between Display and Title.
 - **Title** (700, 19px, 1.15): panel and section titles (`.screen-title`, `h2`).
 - **Body** (400, 16px, 1.45): prompts, track titles, descriptions.
@@ -129,15 +150,39 @@ Refined and restrained: controls are pills and soft panels that respond by sinki
 - **Style:** `liquid-glass-v2-chip` — white 7% fill, 9% border, pill shape; hover 12% fill (hover-capable devices only).
 
 ### Cards / Containers
-- **Corner Style:** softly rounded (28px).
+- **Corner Style:** `--radius-panel` (22px).
 - **Background:** glass panel fill + backdrop blur (22px) + saturation 130%.
 - **Shadow Strategy:** md tier; lg only for floating chrome.
 - **Border:** 1px hairline.
 - **Internal Padding:** 16px.
 
 ### Inputs
-- **Style:** white 5% fill (60% light), 20px radius, hairline border.
+- **Style:** white 5% fill (60% light), `--radius-input` (20px), hairline border.
 - **Focus:** border/box-shadow shift on `:focus-visible`; no color flood.
+- **Size:** at least 16px on touch (`--fs-input`). Below that, iOS and the Telegram WebView zoom the viewport toward the focused field, which reads as the screen moving on its own.
+
+### Radius Ladder
+
+Radius encodes nesting depth, not taste. A control inside a block inside a panel reads 10 / 18 / 22 — each nested surface drops one step. Every value is a token in `glass.css`; a new literal `border-radius` means a tier is missing, not that a new number is needed.
+
+| Token | px | Used by |
+|---|---|---|
+| `--radius-panel` | 22 | glass panels, sheets, full-screen artwork |
+| `--radius-input` | 20 | text fields |
+| `--radius-block` | 18 | track rows, prompt pill, dock, tab bars |
+| `--radius-surface` | 16 | popovers, avatars, cards nested in a panel |
+| `--radius-row` | 14 | list rows, icon tiles, toasts |
+| `--radius-control` | 12 | tabs, notices, medium focus rings |
+| `--radius-chip` | 10 | small buttons, code blocks, focus rings |
+| `--radius-micro` | 8 | thumbnails, counters, close buttons |
+| `--radius-hair` | 4 | focus rings on thin or inline controls |
+| `--radius-btn` | 999 | pills |
+
+Focus rings are the one place where the radius follows the element it wraps rather than the nesting rule — a ring must trace its own control's shape.
+
+### Touch Targets
+
+Every control in the dock, the player bar, and the full player is at least 44×44, per PRODUCT.md. Where the icon should read smaller, the button keeps the 44px box and the icon is centered inside it; adjacent buttons cancel the container's flex gap with a negative margin rather than shrinking.
 
 ### Navigation (bottom dock)
 - **Style:** floating glass dock (58px), pill indicator morphs between tabs (0.35s spring-ish cubic-bezier), active tab in Accent Rose, labels 13px.

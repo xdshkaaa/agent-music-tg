@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { CircleNotch, Heart, Pause, Play, SkipForward, WarningCircle } from "@phosphor-icons/react";
 import { usePlayer } from "../lib/player";
 import { api } from "../lib/api";
+import { ARTWORK_ROW, artworkUrl } from "../lib/artwork";
 
 /** Global mini-player above the dock; rendered only while a track is loaded. */
 export function PlayerBar({ onOpen }: { onOpen?: () => void }) {
@@ -60,7 +61,7 @@ export function PlayerBar({ onOpen }: { onOpen?: () => void }) {
         onClick={() => onOpen?.()}
       >
         {track.artwork ? (
-          <img className="player-bar-thumbnail" src={track.artwork} alt="" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
+          <img className="player-bar-thumbnail" src={artworkUrl(track.artwork, ARTWORK_ROW)} alt="" decoding="async" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
         ) : (
           <div className="player-bar-thumbnail" aria-hidden="true" />
         )}

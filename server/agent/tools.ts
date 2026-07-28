@@ -191,6 +191,13 @@ export interface ToolDispatcherDeps {
   rankTracks?: (tracks: Track[]) => Track[];
   /** Delegates to the single-clarify-question flow (see core/generate-playlist.ts). */
   onClarify: (question: string, options: string[]) => Promise<string>;
+  /**
+   * Receives every track the backend returned, *before* trackToResult strips it
+   * down for the model. The caller indexes these to resolve finalize_playlist
+   * without a second round of searches — and that index is the only place the
+   * artwork survives, since the model never sees it.
+   */
+  onTracks?: (tracks: Track[]) => void;
 }
 
 /**
@@ -198,8 +205,8 @@ export interface ToolDispatcherDeps {
  * long and opaque, they carry no signal the model can reason about, and every
  * tool result is replayed in the message history on each of the loop's up-to-12
  * turns — so including them would inflate prompt tokens (and latency) for
- * nothing. The final playlist re-resolves each track via searchTrack, which
- * restores the artwork for the response.
+ * nothing. The full track (artwork included) reaches the caller through
+ * `deps.onTracks`, which is what the finalized playlist is resolved from.
  */
 function trackToResult(t: Track | null): Record<string, unknown> | null {
   if (!t) return null;
@@ -222,17 +229,23 @@ export async function dispatchTool(
   deps: ToolDispatcherDeps,
 ): Promise<unknown> {
   name = repairToolName(name, MUSIC_AGENT_TOOLS);
+  /** Hands the full tracks to the caller's index, then shapes them for the model. */
+  const forModel = (tracks: Track[]) => {
+    deps.onTracks?.(tracks);
+    return tracks.map(trackToResult);
+  };
   switch (name) {
     case "searchTrack": {
       const artist = String(args.artist ?? "");
       const title = String(args.title ?? "");
-      return trackToResult(await deps.music.searchTrack(artist, title));
+      const track = await deps.music.searchTrack(artist, title);
+      return forModel(track ? [track] : [])[0] ?? null;
     }
     case "searchTracks": {
       const query = String(args.query ?? "");
       const limit = typeof args.limit === "number" ? args.limit : 10;
       const tracks = await deps.music.searchTracks(query, limit);
-      return (deps.rankTracks ? deps.rankTracks(tracks) : tracks).map(trackToResult);
+      return forModel(deps.rankTracks ? deps.rankTracks(tracks) : tracks);
     }
     case "searchArtist": {
       return deps.music.searchArtist(String(args.name ?? ""));
@@ -241,7 +254,7 @@ export async function dispatchTool(
       const id = String(args.artistId ?? "");
       const limit = typeof args.limit === "number" ? args.limit : 5;
       const tracks = await deps.music.getArtistTopTracks(id, limit);
-      return (deps.rankTracks ? deps.rankTracks(tracks) : tracks).map(trackToResult);
+      return forModel(deps.rankTracks ? deps.rankTracks(tracks) : tracks);
     }
     case "searchAlbums": {
       const query = String(args.query ?? "");
@@ -257,7 +270,7 @@ export async function dispatchTool(
       const uri = String(args.uri ?? "");
       const id = uri.includes(":") ? uri.split(":").slice(1).join(":") : uri;
       const limit = typeof args.limit === "number" ? args.limit : 30;
-      return (await deps.music.getAlbumTracks(id, limit)).map(trackToResult);
+      return forModel(await deps.music.getAlbumTracks(id, limit));
     }
     case "clarify": {
       const question = String(args.question ?? "");

@@ -8,6 +8,9 @@ export interface PlayerTrackInfo {
   title: string;
   artist: string;
   artwork?: string;
+  /** Sent with the stream request so a cross-platform substitute can be
+   * length-checked against the real song. Optional — not every screen has it. */
+  durationMs?: number;
 }
 
 interface PlayerState {
@@ -301,7 +304,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       currentTime: 0,
       duration: 0,
     }));
-    audio.src = streamUrl(track.uri) + (attempt > 0 ? `&_=${attempt}` : "");
+    // Title/artist ride along so the server can silently substitute the same
+    // song from another platform if this source turns out to be unplayable.
+    audio.src = streamUrl(track.uri, track) + (attempt > 0 ? `&_=${attempt}` : "");
     onAudioErrorRef.current = () => handlePlayFailure(track, queue);
     void audio.play().catch(() => handlePlayFailure(track, queue));
   }

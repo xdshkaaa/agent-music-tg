@@ -15,20 +15,16 @@ import { usePlayer, usePlayerTime } from "../lib/player";
 import { VolumeControl } from "../components/VolumeControl";
 import { LyricsScreen } from "./LyricsScreen";
 import { api } from "../lib/api";
+import { ARTWORK_FULL, artworkUrl } from "../lib/artwork";
 
 const SWIPE_THRESHOLD = 80;
 
 /**
  * Upgrade known low-res artwork URLs to a size that fills the fullscreen
- * artwork slot. YouTube Music thumbnails are googleusercontent URLs with an
- * inline `=wN-hN` size directive; SoundCloud serves `-large.jpg` (100x100)
- * with a `-t500x500.jpg` variant available.
+ * artwork slot — the inverse of what the list rows ask for (see lib/artwork.ts).
  */
 export function hiResArtwork(url: string): string {
-  if (/googleusercontent\.com/.test(url)) {
-    return url.replace(/=w\d+-h\d+/, "=w544-h544");
-  }
-  return url.replace(/-large\.(jpg|png)$/, "-t500x500.$1");
+  return artworkUrl(url, ARTWORK_FULL) ?? url;
 }
 
 function formatTime(seconds: number): string {
@@ -70,6 +66,9 @@ export function PlayerScreen({
   useEffect(() => {
     setLiked(false);
     setDisliked(false);
+    // Per-track, not sticky: without this one dead cover URL kept the
+    // placeholder up for every track played afterwards.
+    setArtworkError(false);
     if (!track) return;
     api
       .reactionStatus(track.uri)
