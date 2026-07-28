@@ -34,6 +34,12 @@ export const env = {
   allowlistChatIds: splitChatIds(process.env.ALLOWLIST_CHAT_IDS),
   adminChatIds: splitChatIds(process.env.ADMIN_CHAT_IDS),
   publicOrigin: (process.env.PUBLIC_ORIGIN ?? "https://miniapp.xdshka.party").replace(/\/+$/, ""),
+  /**
+   * Mini App short name from BotFather, when one is registered. With it a share
+   * link can open the app directly (?startapp=); without it the link goes
+   * through the bot (?start=), which always works.
+   */
+  miniappName: (process.env.TELEGRAM_MINIAPP_NAME ?? "").trim() || null,
   anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
   openaiApiKey: process.env.OPENAI_API_KEY ?? "",
   cheapvibecodeApiKey: process.env.CHEAPVIBECODE_API_KEY ?? "",
