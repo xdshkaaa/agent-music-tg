@@ -347,6 +347,20 @@ export interface PlaylistDetail extends Playlist {
   tracks: PlaylistTrack[];
 }
 
+export type ShareSourceKind = "generation" | "playlist";
+
+/** A published snapshot as the recipient sees it. */
+export interface SharedPlaylist {
+  token: string;
+  name: string;
+  prompt: string | null;
+  tracks: Track[];
+  author: { name: string | null };
+  isOwner: boolean;
+  viewCount: number;
+  createdAt: number;
+}
+
 export class PlaylistLimitReachedError extends Error {
   constructor(
     public readonly limit: number,
@@ -547,6 +561,16 @@ export const api = {
     request<{ ok: boolean }>(`/api/playlists/${id}/tracks/${encodeURIComponent(uri)}`, { method: "DELETE" }),
   buyPlaylistSlots: (slots = 1) =>
     request<{ payUrl: string }>("/api/playlists/slots/invoice", { method: "POST", body: JSON.stringify({ slots }) }),
+
+  // --- Sharing ---
+  createShare: (kind: ShareSourceKind, id: number) =>
+    request<{ token: string; url: string; viewCount: number }>("/api/shares", {
+      method: "POST",
+      body: JSON.stringify({ kind, id }),
+    }),
+  getShare: (token: string) => request<SharedPlaylist>(`/api/shares/${encodeURIComponent(token)}`),
+  revokeShare: (token: string) =>
+    request<{ ok: true }>(`/api/shares/${encodeURIComponent(token)}`, { method: "DELETE" }),
 
   verifyTracks: (uris: string[]) =>
     request<Record<string, TrackVerificationStatus>>(`/api/tracks/verify?uris=${encodeURIComponent(uris.join(","))}`),
