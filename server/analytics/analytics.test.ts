@@ -28,6 +28,14 @@ describe("first-touch attribution", () => {
     expect(parseStartAttribution(null)).toMatchObject({ source: "direct", medium: "telegram", campaign: null });
   });
 
+  test("attributes a shared-playlist start payload to the share channel", () => {
+    const attribution = parseStartAttribution("pl_abc123XYZ0");
+    expect(attribution.source).toBe("share");
+    expect(attribution.medium).toBe("telegram");
+    expect(attribution.campaign).toBe("shared-playlist");
+    expect(attribution.content).toBe("share-abc123XYZ0");
+  });
+
   test("reads Telegram's signed start_param for Mini App deep links", () => {
     const token = "123:test-token";
     const params = new URLSearchParams({
