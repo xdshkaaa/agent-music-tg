@@ -1113,11 +1113,51 @@ h1 {
   color: var(--text-muted-light);
 }
 
+/* Never wraps: at 375-393pt the panel leaves ~330px inside, and a wrapped
+   row drops one action onto a line of its own, which reads as breakage. The
+   label button absorbs the slack instead. */
 .share-actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 10px;
+}
+
+.share-cta {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Four actions in one row: a label button plus three icon buttons. At the
+   default 48px/10px they need more than the ~330px a panel leaves on a 393pt
+   phone, and wrapping orphans the primary «Скачать» on a line of its own.
+   Tightening to the 44px touch-target floor and an 8px gap fits every width
+   from 360pt up; the label absorbs whatever slack is left. */
+.results-actions {
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.results-actions .glass-button.icon-only {
+  width: 44px;
+  height: 44px;
+}
+
+.results-actions-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+/* Below 360pt the label still runs out of room — ellipsis so it degrades to a
+   readable truncation instead of a glyph cut in half. */
+.results-actions-label span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .share-views {

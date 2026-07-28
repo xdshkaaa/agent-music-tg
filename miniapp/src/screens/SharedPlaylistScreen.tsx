@@ -196,20 +196,24 @@ export function SharedPlaylistScreen({
           </button>
         </div>
       ) : (
+        // «Сделать свой» carries the row: a recipient generating their own is
+        // the whole point of the link, and two full-width labels here would
+        // push the tracklist off the first screen.
         <div className="share-actions mt-16">
+          <button type="button" className="glass-button primary share-cta" onClick={() => onGenerateOwn(share.prompt)}>
+            <Sparkle size={18} weight="bold" /> Сделать свой
+          </button>
           <button
             type="button"
-            className="glass-button"
+            className="glass-button icon-only"
             disabled={save.kind === "saving" || save.kind === "saved"}
+            aria-label={save.kind === "saved" ? "Сохранено в вашу музыку" : "Сохранить себе"}
+            title={save.kind === "saved" ? "Сохранено в вашу музыку" : "Сохранить себе"}
             onClick={() => void handleSaveToMine()}
           >
-            {save.kind === "saving" ? <CircleNotch size={16} className="spin" />
-              : save.kind === "saved" ? <CheckCircle size={16} weight="fill" />
-              : <BookmarkSimple size={16} weight="bold" />}
-            {save.kind === "saved" ? "Сохранено" : "Сохранить себе"}
-          </button>
-          <button type="button" className="glass-button" onClick={() => onGenerateOwn(share.prompt)}>
-            <Sparkle size={16} weight="bold" /> Сделать свой
+            {save.kind === "saving" ? <CircleNotch size={18} className="spin" />
+              : save.kind === "saved" ? <CheckCircle size={18} weight="fill" />
+              : <BookmarkSimple size={18} weight="bold" />}
           </button>
         </div>
       )}
