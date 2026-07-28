@@ -4,6 +4,7 @@ import {
   Play, Pause, WarningCircle, ListPlus,
   ArrowsClockwise, CaretDown, CaretUp, DownloadSimple,
   Check, X, BookmarkSimple, ArrowLeft, Plus, PencilSimple, Playlist as PlaylistIcon, Sparkle,
+  ShareNetwork,
 } from "@phosphor-icons/react";
 import { GlassPanel } from "../components/GlassPanel";
 import { EmptyState } from "../components/EmptyState";
@@ -12,6 +13,7 @@ import { TrackOverflowMenu } from "../components/TrackOverflowMenu";
 import { requestAddToPlaylist } from "../components/AddToPlaylistButton";
 import { usePlayer } from "../lib/player";
 import { openStarsInvoice } from "../lib/telegram";
+import { shareUrlToChat } from "../lib/share";
 import {
   api,
   PlaylistLimitReachedError,
@@ -445,6 +447,7 @@ function PlaylistDetailView({ id, onBack }: { id: number; onBack: () => void }) 
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [trackDownloads, setTrackDownloads] = useState<Record<string, "sending" | "sent">>({});
   const [downloadingAll, setDownloadingAll] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
   useEffect(() => {
     api.playlist(id).then((r) => setPlaylist(r.playlist)).catch(() => setPlaylist(null));
@@ -495,6 +498,18 @@ function PlaylistDetailView({ id, onBack }: { id: number; onBack: () => void }) 
     }
   }
 
+  /** Publishing is idempotent server-side, so re-sharing reuses the same link. */
+  async function handleShare() {
+    if (!playlist || playlist.tracks.length === 0 || sharing) return;
+    setSharing(true);
+    try {
+      const { url } = await api.createShare("playlist", id);
+      shareUrlToChat(url, playlist.name);
+    } finally {
+      setSharing(false);
+    }
+  }
+
   async function handleTrackDownload(track: PlaylistDetail["tracks"][number]) {
     if (trackDownloads[track.uri] === "sending") return;
     setTrackDownloads((m) => ({ ...m, [track.uri]: "sending" }));
@@ -521,6 +536,18 @@ function PlaylistDetailView({ id, onBack }: { id: number; onBack: () => void }) 
         </button>
         {playlist && !confirmDelete && (
           <div className="row" style={{ gap: 6 }}>
+            {playlist.tracks.length > 0 && (
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Поделиться плейлистом"
+                title="Поделиться плейлистом"
+                disabled={sharing}
+                onClick={() => void handleShare()}
+              >
+                {sharing ? <CircleNotch size={18} className="spin" /> : <ShareNetwork size={18} />}
+              </button>
+            )}
             {playlist.tracks.length > 0 && (
               <button
                 type="button"
