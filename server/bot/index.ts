@@ -25,7 +25,9 @@ import { grantPlaylistSlotsForPayment } from "../access/stars-payments-store";
 import { classifyStarsPayload } from "../payments/stars";
 import { createTelegramBroadcastSender } from "../admin/telegram-broadcast";
 import { parseStartAttribution, recordAttributionTouch, recordEvent, recordFirstTouch } from "../analytics/store";
-import { detailBlock, escapeHtml, messageHint, messageTitle, statusMessage } from "./message-format";
+import { parseShareToken } from "../access/share-link";
+import { getShare } from "../access/shares-store";
+import { detailBlock, escapeHtml, formatTrackCount, messageHint, messageTitle, statusMessage } from "./message-format";
 
 export function createBot(db: AppDb): Bot<BotContext> {
   const bot = new Bot<BotContext>(env.telegramBotToken);
@@ -147,6 +149,21 @@ export function createBot(db: AppDb): Bot<BotContext> {
         ).catch(() => {});
       }
     }
+    // A shared playlist link is also a referral: the author brought this person
+    // in, so it credits through the same path ref_ links use. applyReferral is
+    // idempotent per invitee, so re-tapping the link changes nothing.
+    const shareToken = parseShareToken(startParam);
+    const share = shareToken ? getShare(db, shareToken) : null;
+    const liveShare = share && share.revokedAt === null ? share : null;
+    if (liveShare && applyReferral(db, liveShare.ownerChatId, ctx.chat.id)) {
+      const reward = formatGenerationCount(getReferralSettings(db).rewardCredits);
+      bot.api.sendMessage(
+        liveShare.ownerChatId,
+        `${messageTitle("gift", "По вашей ссылке пришли")}\nВам начислено <b>${escapeHtml(reward)}</b>.`,
+        { parse_mode: "HTML" },
+      ).catch(() => {});
+    }
+
     // Fire-and-forget: the file_id is only read later by the profile view, so a
     // full Telegram round-trip must not sit in front of the menu reply — /start
     // is the first thing a user from an ad deep link ever sees.
@@ -170,6 +187,21 @@ export function createBot(db: AppDb): Bot<BotContext> {
       .reply("⁣", { reply_markup: { remove_keyboard: true } })
       .then((cleared) => ctx.api.deleteMessage(ctx.chat.id, cleared.message_id))
       .catch(() => { /* best-effort; non-critical if it fails */ });
+
+    // Someone who followed a share link came for that playlist, not for the
+    // menu — open on it, and let the app do the rest.
+    if (liveShare) {
+      const keyboard = new InlineKeyboard()
+        .webApp(btnText("Слушать", "app"), `${env.publicOrigin}/?share=${liveShare.token}`);
+      await ctx.reply(
+        [
+          messageTitle("music", escapeHtml(liveShare.name)),
+          messageHint(`${formatTrackCount(liveShare.tracks.length)} — подборка от друга`),
+        ].join("\n"),
+        { reply_markup: keyboard, parse_mode: "HTML" },
+      );
+      return;
+    }
 
     const view = buildMenuView(ctx);
     await ctx.reply(view.text, { reply_markup: view.keyboard, parse_mode: "HTML" });
