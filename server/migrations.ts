@@ -509,6 +509,44 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // Playlist sharing. tracks_json is a snapshot taken at publish time, not a
+    // reference: editing or deleting the source must never change or break a
+    // link that is already circulating. The partial unique index makes
+    // publishing idempotent per source — users tap "share" repeatedly, and that
+    // must not produce a pile of live tokens for the same playlist. Revocation
+    // sets revoked_at rather than deleting, so a taken-down link can answer 410
+    // instead of being indistinguishable from a typo.
+    version: 20,
+    run(db) {
+      db.run(`
+        CREATE TABLE IF NOT EXISTS playlist_shares (
+          token TEXT PRIMARY KEY,
+          owner_chat_id INTEGER NOT NULL,
+          source_kind TEXT NOT NULL,
+          source_id INTEGER NOT NULL,
+          name TEXT NOT NULL,
+          prompt TEXT,
+          tracks_json TEXT NOT NULL,
+          view_count INTEGER NOT NULL DEFAULT 0,
+          revoked_at INTEGER,
+          created_at INTEGER NOT NULL DEFAULT (unixepoch())
+        );
+        CREATE INDEX IF NOT EXISTS idx_playlist_shares_owner
+          ON playlist_shares(owner_chat_id, created_at DESC);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_playlist_shares_source
+          ON playlist_shares(owner_chat_id, source_kind, source_id)
+          WHERE revoked_at IS NULL;
+
+        CREATE TABLE IF NOT EXISTS playlist_share_views (
+          token TEXT NOT NULL REFERENCES playlist_shares(token) ON DELETE CASCADE,
+          viewer_chat_id INTEGER NOT NULL,
+          created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+          PRIMARY KEY (token, viewer_chat_id)
+        );
+      `);
+    },
+  },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;
