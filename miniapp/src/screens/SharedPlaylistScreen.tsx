@@ -1,0 +1,235 @@
+import { useEffect, useState } from "react";
+import { CircleNotch, Eye, LinkBreak, MusicNotes, Sparkle, BookmarkSimple, CheckCircle } from "@phosphor-icons/react";
+import { GlassPanel } from "../components/GlassPanel";
+import { TrackRow } from "../components/TrackRow";
+import { EmptyState } from "../components/EmptyState";
+import { TrackSkeleton } from "../components/TrackSkeleton";
+import { usePlayer } from "../lib/player";
+import { ARTWORK_ROW, artworkUrl } from "../lib/artwork";
+import { api, PlaylistLimitReachedError, type SharedPlaylist, type Track } from "../lib/api";
+
+type LoadState =
+  | { kind: "loading" }
+  | { kind: "ready"; share: SharedPlaylist }
+  | { kind: "gone" }
+  | { kind: "error"; message: string };
+
+type SaveState = { kind: "idle" } | { kind: "saving" } | { kind: "saved" } | { kind: "error"; message: string };
+
+/** "1 трек" / "2 трека" / "5 треков" — Russian counts read wrong without this. */
+function formatTrackCount(count: number): string {
+  const mod100 = count % 100;
+  const mod10 = count % 10;
+  const form = mod100 >= 11 && mod100 <= 14 ? "треков"
+    : mod10 === 1 ? "трек"
+    : mod10 >= 2 && mod10 <= 4 ? "трека"
+    : "треков";
+  return `${count} ${form}`;
+}
+
+function formatViewCount(count: number): string {
+  const mod100 = count % 100;
+  const mod10 = count % 10;
+  const form = mod100 >= 11 && mod100 <= 14 ? "просмотров"
+    : mod10 === 1 ? "просмотр"
+    : mod10 >= 2 && mod10 <= 4 ? "просмотра"
+    : "просмотров";
+  return `${count} ${form}`;
+}
+
+/**
+ * 2×2 grid of the first four covers. A shared playlist arrives with no artwork
+ * of its own, and four covers read as "a collection" the way a single cover
+ * cannot. Falls back to a flat panel when the tracks carry no artwork at all.
+ */
+function Collage({ tracks }: { tracks: Track[] }) {
+  const covers = tracks.map((t) => t.artwork).filter((a): a is string => Boolean(a)).slice(0, 4);
+  if (covers.length === 0) {
+    return (
+      <div className="share-collage share-collage--empty" aria-hidden="true">
+        <MusicNotes size={32} weight="duotone" />
+      </div>
+    );
+  }
+  return (
+    <div className="share-collage" aria-hidden="true">
+      {/* One cover fills the square; two or three tile and repeat rather than
+          leaving holes in the grid. */}
+      {Array.from({ length: 4 }, (_, i) => covers[i % covers.length]!).map((cover, i) => (
+        <img key={`${cover}-${i}`} src={artworkUrl(cover, ARTWORK_ROW)} alt="" loading="lazy" decoding="async" />
+      ))}
+    </div>
+  );
+}
+
+export function SharedPlaylistScreen({
+  token,
+  onGenerateOwn,
+}: {
+  token: string;
+  onGenerateOwn: (prompt: string | null) => void;
+}) {
+  const player = usePlayer();
+  const [state, setState] = useState<LoadState>({ kind: "loading" });
+  const [save, setSave] = useState<SaveState>({ kind: "idle" });
+  const [revoking, setRevoking] = useState(false);
+
+  useEffect(() => {
+    let stopped = false;
+    api
+      .getShare(token)
+      .then((share) => {
+        if (!stopped) setState({ kind: "ready", share });
+      })
+      .catch((e: unknown) => {
+        if (stopped) return;
+        const message = e instanceof Error ? e.message : String(e);
+        // The server answers 404 for an unknown token and 410 for a revoked
+        // one; both mean the same thing to whoever tapped the link.
+        setState(/not found|revoked/i.test(message) ? { kind: "gone" } : { kind: "error", message });
+      });
+    return () => { stopped = true; };
+  }, [token]);
+
+  if (state.kind === "loading") {
+    return (
+      <GlassPanel className="reveal">
+        <TrackSkeleton />
+      </GlassPanel>
+    );
+  }
+
+  if (state.kind === "gone") {
+    return (
+      <GlassPanel className="reveal">
+        <EmptyState
+          icon={<LinkBreak size={28} weight="duotone" />}
+          label="Ссылка больше не действует"
+          action={{ label: "Собрать свой плейлист", onClick: () => onGenerateOwn(null) }}
+        />
+      </GlassPanel>
+    );
+  }
+
+  if (state.kind === "error") {
+    return (
+      <GlassPanel className="reveal">
+        <EmptyState
+          icon={<LinkBreak size={28} weight="duotone" />}
+          label={state.message}
+          action={{ label: "Собрать свой плейлист", onClick: () => onGenerateOwn(null) }}
+        />
+      </GlassPanel>
+    );
+  }
+
+  const { share } = state;
+
+  function playFrom(track: Track) {
+    player.toggle(
+      { uri: track.uri, title: track.title, artist: track.artist, artwork: track.artwork },
+      share.tracks.map((t) => ({ uri: t.uri, title: t.title, artist: t.artist, artwork: t.artwork })),
+    );
+  }
+
+  async function handleSaveToMine() {
+    setSave({ kind: "saving" });
+    try {
+      const { playlist } = await api.createPlaylist(share.name);
+      for (const track of share.tracks) {
+        await api.addTrackToPlaylist(playlist.id, {
+          uri: track.uri,
+          title: track.title,
+          artist: track.artist,
+          artwork: track.artwork ?? null,
+        });
+      }
+      setSave({ kind: "saved" });
+    } catch (e) {
+      setSave({
+        kind: "error",
+        message: e instanceof PlaylistLimitReachedError
+          ? "Закончились слоты под плейлисты — освободите один или докупите."
+          : e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
+  async function handleRevoke() {
+    setRevoking(true);
+    try {
+      await api.revokeShare(share.token);
+      setState({ kind: "gone" });
+    } catch (e) {
+      setSave({ kind: "error", message: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setRevoking(false);
+    }
+  }
+
+  const byline = share.prompt
+    ? share.author.name
+      ? `${share.author.name} собрал по запросу «${share.prompt}»`
+      : `Собрано по запросу «${share.prompt}»`
+    : share.author.name
+      ? `Подборка от ${share.author.name}`
+      : "Подборка";
+
+  return (
+    <GlassPanel className="reveal">
+      <div className="share-header">
+        <Collage tracks={share.tracks} />
+        <div className="share-header-text">
+          <h1>{share.name}</h1>
+          <p className="text-muted fs-label">{byline}</p>
+          <p className="text-muted fs-label">{formatTrackCount(share.tracks.length)}</p>
+        </div>
+      </div>
+
+      {share.isOwner ? (
+        <div className="share-actions mt-16">
+          <span className="text-muted fs-label share-views">
+            <Eye size={16} weight="bold" /> {formatViewCount(share.viewCount)}
+          </span>
+          <button type="button" className="glass-button" disabled={revoking} onClick={() => void handleRevoke()}>
+            {revoking ? <CircleNotch size={16} className="spin" /> : null} Отозвать ссылку
+          </button>
+        </div>
+      ) : (
+        <div className="share-actions mt-16">
+          <button
+            type="button"
+            className="glass-button"
+            disabled={save.kind === "saving" || save.kind === "saved"}
+            onClick={() => void handleSaveToMine()}
+          >
+            {save.kind === "saving" ? <CircleNotch size={16} className="spin" />
+              : save.kind === "saved" ? <CheckCircle size={16} weight="fill" />
+              : <BookmarkSimple size={16} weight="bold" />}
+            {save.kind === "saved" ? "Сохранено" : "Сохранить себе"}
+          </button>
+          <button type="button" className="glass-button" onClick={() => onGenerateOwn(share.prompt)}>
+            <Sparkle size={16} weight="bold" /> Сделать свой
+          </button>
+        </div>
+      )}
+
+      {save.kind === "error" && (
+        <p role="alert" className="error-row-message mt-12">{save.message}</p>
+      )}
+
+      <div className="stack mt-16 reveal-stagger">
+        {share.tracks.map((track, i) => (
+          <TrackRow
+            key={track.uri}
+            style={{ ["--i" as string]: i }}
+            onClick={() => playFrom(track)}
+            artwork={track.artwork}
+            title={track.title}
+            meta={track.artist}
+          />
+        ))}
+      </div>
+    </GlassPanel>
+  );
+}

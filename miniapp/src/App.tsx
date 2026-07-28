@@ -13,12 +13,14 @@ import { ErrorBanner } from "./components/ErrorBanner";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { api, type MeResponse, type FinalizedPlaylist, type ShopConfig, type HistoryEntry } from "./lib/api";
 import { reduceEvents, type AgentEvent } from "./lib/reasoning";
-import { getTelegramWebApp, getColorScheme } from "./lib/telegram";
+import { getTelegramWebApp, getColorScheme, getInitData } from "./lib/telegram";
+import { parseShareToken } from "./lib/share";
 import { useKeyboardInset } from "./lib/keyboard";
 import { PlayerProvider, usePlayer } from "./lib/player";
 import { PlayerBar } from "./components/PlayerBar";
 import { BottomNav } from "./components/BottomNav";
 import { PlayerScreen } from "./screens/PlayerScreen";
+import { SharedPlaylistScreen } from "./screens/SharedPlaylistScreen";
 import { ArtistScreen } from "./screens/ArtistScreen";
 import { AddToPlaylistSheet } from "./components/AddToPlaylistSheet";
 import { applyAccent, initialAccent } from "./lib/accent";
@@ -34,6 +36,7 @@ type Screen =
   | { kind: "prompt"; initialMode?: "ai" | "search"; initialQuery?: string }
   | { kind: "clarify"; question: string; options: string[] }
   | { kind: "results"; playlist: FinalizedPlaylist; generationId: number; saved?: boolean }
+  | { kind: "shared"; token: string }
   | { kind: "buy"; reason?: string }
   | { kind: "playlists" }
   | { kind: "profile" }
@@ -45,6 +48,9 @@ function activeTab(screen: Screen): "create" | "shop" | "playlists" | "profile" 
     case "prompt":
     case "clarify":
     case "results":
+    // A received playlist belongs to the create flow: the next thing this
+    // person does is make one of their own.
+    case "shared":
       return "create";
     case "buy":
       return "shop";
@@ -136,7 +142,13 @@ function AppInner() {
     // mode=search (read by PromptScreen itself) additionally pre-selects the
     // search tab within "Создать".
     const tabParam = new URLSearchParams(window.location.search).get("tab");
-    if (tabParam === "playlists") navigate({ kind: "playlists" });
+    // A share link opened through the bot lands here with ?share=<token>;
+    // opened through startapp it arrives as Telegram's signed start_param.
+    const shareToken =
+      parseShareToken(new URLSearchParams(window.location.search).get("share"))
+      ?? parseShareToken(new URLSearchParams(getInitData()).get("start_param"));
+    if (shareToken) navigate({ kind: "shared", token: shareToken });
+    else if (tabParam === "playlists") navigate({ kind: "playlists" });
     else if (tabParam === "profile") navigate({ kind: "profile" });
     else if (tabParam === "help") navigate({ kind: "help" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -333,6 +345,13 @@ function AppInner() {
             generationId={screen.generationId}
             initialSaved={screen.saved}
             onNewPrompt={() => navigate({ kind: "prompt" }, "back")}
+          />
+        );
+      case "shared":
+        return (
+          <SharedPlaylistScreen
+            token={screen.token}
+            onGenerateOwn={(prompt) => navigate({ kind: "prompt", initialQuery: prompt ?? undefined })}
           />
         );
       case "buy":
