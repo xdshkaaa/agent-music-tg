@@ -60,6 +60,8 @@ curl -fsS http://127.0.0.1:8787/healthz
 
 Playlist results can be downloaded as audio: the Mini App's «Скачать» button queues a server-side job that extracts each track via **yt-dlp** (+ **ffmpeg**) and delivers it to the user's bot chat as audio messages (`deploy.sh` installs/updates both tools on the VPS). Uploaded tracks are cached by Telegram `file_id` (`audio_cache` table), so repeats never re-extract or re-upload. Download history lives in the profile's «Загрузки» tab with re-send and delete. Tracks also play inline in the Mini App via `GET /api/stream/:uri` (Range-supporting, initData-authenticated via query param): the server resolves a short-lived upstream audio URL with `yt-dlp` and proxies bytes immediately without downloading or transcoding a full MP3 first.
 
+The duration on an audio message is measured from the extracted file with **ffprobe**, not taken from the search result's metadata — the two diverge (padded uploads, a different master reached through the alternate source, a track that has since become a preview), and Telegram draws its player from whatever duration the bot sends. The measured value is cached with the `file_id`, so re-sends carry it too. SoundCloud results that are preview-only (`policy: SNIP`) or have no playable transcoding (`policy: BLOCK`) are dropped at search time rather than surfaced as songs.
+
 Endpoints (all under initData auth): `POST /api/download`, `GET /api/downloads`, `POST /api/downloads/:id/resend`, `DELETE /api/downloads/:id`, `GET /api/stream/:uri`.
 
 Config (`.env`): `AUDIO_SCRATCH_DIR` (temporary files for chat downloads, deleted after upload).
@@ -73,6 +75,14 @@ Links take the form `https://t.me/<bot>?start=pl_<token>`. Set the optional `TEL
 Arrivals are attributed to `share / telegram / shared-playlist` in admin statistics and credit the author through the existing referral reward, with the same per-invitee dedupe and cap. `GET /api/shares/:token` is the one route that serves callers who are not on the allowlist — that is what lets a link work for someone who is not a user yet; publishing, listing, and revoking stay behind the normal gate. Authors can revoke a link at any time (it then answers 410) and see its view count.
 
 Endpoints: `POST /api/shares`, `GET /api/shares`, `GET /api/shares/:token`, `DELETE /api/shares/:token`.
+
+## Group-chat keyword search
+
+Added to any group chat (no allowlist entry needed — a group is not a user), the bot answers `найти <название трека>` — or `@bot <название трека>` / a reply to one of its own messages, for when [privacy mode](https://core.telegram.org/bots/features#privacy-mode) is still enabled and it never sees plain text — by sending the first matching result straight into the chat. **Turn privacy mode off** (`@BotFather` → `/setprivacy` → **Disable**) for the keyword to work without a mention; existing group memberships need the bot removed and re-added for the change to take effect.
+
+The first request for a track pays the same extract-and-upload cost as any other download (a few seconds); every later request for that track, in any chat, is a `file_id` re-send from `audio_cache` and lands almost instantly — the same cache the Mini App and `/search` already share. Concurrent requests for the same not-yet-cached track are coalesced so only one extraction runs. A separate `groupExtractRateLimiter` (5/min per group) caps cache-miss extractions so one busy group can't starve the shared yt-dlp pool used by paying users elsewhere.
+
+Groups never touch the `users` table — no signup credits, no "new user" admin alert, no seat in per-user analytics or broadcast — they get their own counters in `group_chats` instead, surfaced in admin statistics as active groups / searches / tracks sent.
 
 ## Payments (CryptoBot)
 

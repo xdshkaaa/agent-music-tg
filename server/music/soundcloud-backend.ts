@@ -27,6 +27,25 @@ function pickByArtist(items: any[], artist: string): any | undefined {
   });
 }
 
+/**
+ * Whether SoundCloud will actually serve the whole song.
+ *
+ * Search happily returns rights-restricted uploads: `policy: "SNIP"` streams a
+ * 30-second preview (while `duration` may still describe the full song), and
+ * `policy: "BLOCK"` carries no transcodings at all. Both reach a listener as a
+ * track that ends nowhere near where it says it does, so they are dropped at
+ * the source rather than surfaced as songs. Items from endpoints that don't
+ * report `media`/`policy` are left alone — absence of the fields is not
+ * evidence of a restriction.
+ */
+function isPlayable(item: any): boolean {
+  if (item?.policy === "SNIP" || item?.policy === "BLOCK") return false;
+  const transcodings = item?.media?.transcodings;
+  if (!Array.isArray(transcodings)) return true;
+  if (transcodings.length === 0) return false;
+  return !transcodings.every((t: any) => t?.snipped === true);
+}
+
 function toTrack(item: any): Track {
   return {
     uri: `sc:${item.id}`,
@@ -125,7 +144,7 @@ export class SoundCloudBackend implements MusicProvider {
     return withTrackCache("soundcloud", artist, title, async () => {
       const q = encodeURIComponent(`${artist} ${title}`);
       const data = await this.request(`/search/tracks?q=${q}&limit=10`);
-      const items = (data.collection ?? []) as any[];
+      const items = ((data.collection ?? []) as any[]).filter(isPlayable);
       const item = pickByArtist(items, artist) ?? items[0];
       return item ? toTrack(item) : null;
     });
@@ -136,7 +155,7 @@ export class SoundCloudBackend implements MusicProvider {
     return withQueryCache("soundcloud", "tracks", query, limit, async () => {
       const q = encodeURIComponent(query);
       const data = await this.request(`/search/tracks?q=${q}&limit=${limit}`);
-      return ((data.collection ?? []) as any[]).slice(0, limit).map(toTrack);
+      return ((data.collection ?? []) as any[]).filter(isPlayable).slice(0, limit).map(toTrack);
     });
   }
 
@@ -176,7 +195,7 @@ export class SoundCloudBackend implements MusicProvider {
     const limit = clampLimit(rawLimit, 20);
     return withQueryCache("soundcloud", "artist-top", artistId, limit, async () => {
       const data = await this.request(`/users/${artistId}/toptracks?limit=${limit}`);
-      return ((data.collection ?? []) as any[]).slice(0, limit).map(toTrack);
+      return ((data.collection ?? []) as any[]).filter(isPlayable).slice(0, limit).map(toTrack);
     });
   }
 
@@ -219,7 +238,7 @@ export class SoundCloudBackend implements MusicProvider {
     const limit = clampLimit(rawLimit, 50);
     return withQueryCache("soundcloud", "album-tracks", albumId, limit, async () => {
       const data = await this.request(`/playlists/${albumId}/tracks?limit=${limit}`);
-      return ((data.collection ?? []) as any[]).slice(0, limit).map(toTrack);
+      return ((data.collection ?? []) as any[]).filter(isPlayable).slice(0, limit).map(toTrack);
     });
   }
 }

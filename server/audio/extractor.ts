@@ -24,6 +24,8 @@ export function fileNameForUri(uri: string): string {
 export interface ExtractedAudio {
   filePath: string;
   sizeBytes: number;
+  /** Measured from the produced file; undefined when ffprobe couldn't read it. */
+  durationSeconds?: number;
 }
 
 export interface ProbeResult {
@@ -38,6 +40,7 @@ export interface Extractor {
 
 const PROBE_TIMEOUT_MS = 15_000;
 const EXTRACT_TIMEOUT_MS = 45_000;
+const FFPROBE_TIMEOUT_MS = 10_000;
 
 interface SpawnedProc {
   stdout?: ReadableStream<Uint8Array> | number;
@@ -115,6 +118,33 @@ async function runProbe(uri: string): Promise<ProbeResult> {
 }
 
 /**
+ * How long the extracted file actually plays, per ffprobe.
+ *
+ * A track's `durationMs` is a claim copied from a search result — it describes
+ * the song, not the file yt-dlp ended up with. Those diverge often enough to
+ * matter: a padded upload, a different master reached through the alternate
+ * source, or a SoundCloud track that has since become a 30-second preview.
+ * Telegram draws its player from the duration we send, so the number has to
+ * come from the bytes we are about to upload. Best-effort: never throws, and a
+ * missing ffprobe just means the caller keeps using the metadata it had.
+ */
+async function probeFileDuration(filePath: string): Promise<number | undefined> {
+  try {
+    const proc = Bun.spawn(
+      ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+       "-of", "default=noprint_wrappers=1:nokey=1", filePath],
+      { stdout: "pipe", stderr: "pipe" },
+    );
+    const { stdout, code } = await runWithTimeout(proc, FFPROBE_TIMEOUT_MS);
+    if (code !== 0) return undefined;
+    const seconds = Number(stdout.trim());
+    return Number.isFinite(seconds) && seconds > 0 ? seconds : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Extracts a track's audio as mp3 into targetDir via a yt-dlp subprocess.
  * 192k keeps typical songs a few MB — far under the Bot API 50 MB limit.
  */
@@ -151,7 +181,7 @@ export class YtDlpExtractor implements Extractor {
 
     const file = Bun.file(filePath);
     if (!(await file.exists())) throw new Error(`yt-dlp produced no file for ${uri}`);
-    return { filePath, sizeBytes: file.size };
+    return { filePath, sizeBytes: file.size, durationSeconds: await probeFileDuration(filePath) };
   }
 
   async probe(uri: string): Promise<ProbeResult> {

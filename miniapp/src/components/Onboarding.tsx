@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -24,6 +24,49 @@ export function Onboarding({
   const [step, setStep] = useState(0);
   const [example, setExample] = useState(EXAMPLES[0]);
   const lastStep = step === 2;
+  const exampleRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+
+  // Each step swaps in a new <h1> rather than updating text in place, so a
+  // step change moves focus to it — that announces the new step to a screen
+  // reader on its own, without wrapping the whole section in aria-live (which
+  // re-announced the heading, lead paragraph and every option as one blob).
+  useEffect(() => {
+    headingRef.current?.focus();
+  }, [step]);
+
+  /** APG "selection follows focus" for the radiogroup: moving focus also selects. */
+  function selectExample(i: number) {
+    const item = EXAMPLES[i];
+    if (!item) return;
+    setExample(item);
+    exampleRefs.current[i]?.focus();
+  }
+
+  function onExamplesKeyDown(e: KeyboardEvent<HTMLDivElement>) {
+    const count = EXAMPLES.length;
+    const currentIndex = EXAMPLES.indexOf(example);
+    switch (e.key) {
+      case "ArrowRight":
+      case "ArrowDown":
+        e.preventDefault();
+        selectExample((currentIndex + 1) % count);
+        break;
+      case "ArrowLeft":
+      case "ArrowUp":
+        e.preventDefault();
+        selectExample((currentIndex - 1 + count) % count);
+        break;
+      case "Home":
+        e.preventDefault();
+        selectExample(0);
+        break;
+      case "End":
+        e.preventDefault();
+        selectExample(count - 1);
+        break;
+    }
+  }
 
   return (
     <main className="onboarding-screen">
@@ -43,14 +86,14 @@ export function Onboarding({
           ))}
         </div>
 
-        <section className="onboarding-content" aria-live="polite">
+        <section className="onboarding-content">
           {step === 0 && (
             <div className="onboarding-step" key="welcome">
               <span className="onboarding-icon" aria-hidden="true">
                 <MusicNotes size={30} weight="fill" />
               </span>
               <div>
-                <h1>Музыка под твой момент</h1>
+                <h1 ref={headingRef} tabIndex={-1}>Музыка под твой момент</h1>
                 <p className="onboarding-lead">
                   Опиши настроение или занятие одной фразой — агент соберёт плейлист, который можно сразу слушать.
                 </p>
@@ -70,7 +113,7 @@ export function Onboarding({
                 <Sparkle size={30} weight="fill" />
               </span>
               <div>
-                <h1>Два способа найти музыку</h1>
+                <h1 ref={headingRef} tabIndex={-1}>Два способа найти музыку</h1>
                 <p className="onboarding-lead">Начни с того, что уже знаешь. Переключиться можно в любой момент.</p>
               </div>
               <div className="onboarding-mode-list">
@@ -92,16 +135,25 @@ export function Onboarding({
                 <Check size={30} weight="bold" />
               </span>
               <div>
-                <h1>Начнём с готового запроса</h1>
+                <h1 ref={headingRef} tabIndex={-1}>Начнём с готового запроса</h1>
                 <p className="onboarding-lead">Выбери вариант — он появится в поле ввода, и его можно будет изменить.</p>
               </div>
-              <div className="onboarding-examples" role="radiogroup" aria-label="Пример первого запроса">
-                {EXAMPLES.map((item) => (
+              <div
+                className="onboarding-examples"
+                role="radiogroup"
+                aria-label="Пример первого запроса"
+                onKeyDown={onExamplesKeyDown}
+              >
+                {EXAMPLES.map((item, i) => (
                   <button
                     key={item}
+                    ref={(el) => {
+                      exampleRefs.current[i] = el;
+                    }}
                     type="button"
                     role="radio"
                     aria-checked={example === item}
+                    tabIndex={example === item ? 0 : -1}
                     className={`onboarding-example${example === item ? " is-selected" : ""}`}
                     onClick={() => setExample(item)}
                   >

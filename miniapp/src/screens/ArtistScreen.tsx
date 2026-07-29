@@ -5,6 +5,7 @@ import { TrackOverflowMenu } from "../components/TrackOverflowMenu";
 import { requestAddToPlaylist } from "../components/AddToPlaylistButton";
 import { api, type Album, type ArtistDetail, type Track } from "../lib/api";
 import { usePlayer } from "../lib/player";
+import { useDialog } from "../lib/useDialog";
 
 type LoadState = { kind: "loading" } | { kind: "error" } | { kind: "ok"; data: ArtistDetail };
 type AlbumState = { tracks: Track[]; status: "idle" | "loading" | "error" };
@@ -50,6 +51,7 @@ export function ArtistScreen({
   const [savedTracks, setSavedTracks] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [bioOpen, setBioOpen] = useState(false);
+  const dialogRef = useDialog<HTMLDivElement>(true, onClose);
 
   useEffect(() => {
     api.myMusic().then(({ tracks }) => setSavedTracks(Object.fromEntries(tracks.map((t) => [t.uri, true])))).catch(() => {});
@@ -109,7 +111,7 @@ export function ArtistScreen({
 
   return (
     <div className={`player-screen-overlay artist-screen-overlay${nested ? " artist-screen-overlay--nested" : ""}`}>
-      <div className="player-screen glass artist-screen">
+      <div className="player-screen glass artist-screen" ref={dialogRef} role="dialog" aria-modal="true" aria-label="Исполнитель">
         <div className="player-screen-header">
           <button type="button" className="action-btn action-btn--neutral" aria-label="Назад" onClick={onClose}>
             <ArrowLeft size={24} />

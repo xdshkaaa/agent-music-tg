@@ -16,6 +16,7 @@ import { VolumeControl } from "../components/VolumeControl";
 import { LyricsScreen } from "./LyricsScreen";
 import { api } from "../lib/api";
 import { ARTWORK_FULL, artworkUrl } from "../lib/artwork";
+import { useDialog } from "../lib/useDialog";
 
 const SWIPE_THRESHOLD = 80;
 
@@ -51,7 +52,7 @@ export function PlayerScreen({
   const [disliked, setDisliked] = useState(false);
   const [reacting, setReacting] = useState(false);
 
-  const overlayRef = useRef<HTMLDivElement>(null);
+  const overlayRef = useDialog<HTMLDivElement>(true, onClose);
   const startY = useRef(0);
   const currentY = useRef(0);
   const swiping = useRef(false);
@@ -193,6 +194,9 @@ export function PlayerScreen({
       <div
         ref={overlayRef}
         className="player-screen glass"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Плеер"
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
@@ -253,14 +257,37 @@ export function PlayerScreen({
               aria-valuemin={0}
               aria-valuemax={100}
               aria-valuenow={Math.round((dragRatio ?? progress) * 100)}
+              aria-valuetext={
+                showTime
+                  ? `${formatTime(dragRatio != null ? dragRatio * duration : currentTime)} из ${formatTime(duration)}`
+                  : undefined
+              }
               tabIndex={0}
               onPointerDown={handleProgressPointerDown}
               onPointerMove={handleProgressPointerMove}
               onPointerUp={handleProgressPointerUp}
               onPointerCancel={handleProgressPointerUp}
               onKeyDown={(e) => {
-                if (e.key === "ArrowRight") player.seek(progress + 0.05);
-                if (e.key === "ArrowLeft") player.seek(progress - 0.05);
+                switch (e.key) {
+                  case "ArrowRight":
+                  case "ArrowUp":
+                    e.preventDefault();
+                    player.seek(progress + 0.05);
+                    break;
+                  case "ArrowLeft":
+                  case "ArrowDown":
+                    e.preventDefault();
+                    player.seek(progress - 0.05);
+                    break;
+                  case "Home":
+                    e.preventDefault();
+                    player.seek(0);
+                    break;
+                  case "End":
+                    e.preventDefault();
+                    player.seek(1);
+                    break;
+                }
               }}
             >
               <div className={`player-screen-progress${dragRatio != null ? " dragging" : ""}`}>

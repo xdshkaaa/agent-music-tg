@@ -108,6 +108,7 @@ export interface AdminStats {
   }[];
   trafficSources: AttributionBreakdown[];
   utmCampaigns: AttributionBreakdown[];
+  groups: { total: number; active: number; searches: number; tracks: number };
 }
 
 export interface AttributionBreakdown {

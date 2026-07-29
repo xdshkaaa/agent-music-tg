@@ -23,6 +23,8 @@ export interface AudioMeta {
   performer: string;
   durationSeconds?: number;
   artworkUrl?: string;
+  /** Replies to a specific message instead of posting standalone (group keyword search). */
+  replyToMessageId?: number;
 }
 
 /** Thin seam over grammY so delivery is testable without a live bot. */
@@ -41,12 +43,22 @@ export interface DeliverDeps {
   alternateFinder?: AlternateFinder;
 }
 
-function metaFor(track: DownloadTrack): AudioMeta {
+/**
+ * `durationMs` on a track is what a search result claimed about the song, not
+ * a fact about the audio being sent — the file can be a padded upload, a
+ * different master picked up by the alternate source, or a preview that
+ * replaced the full track after the playlist was generated. Telegram renders
+ * its player from the duration we pass, so a measured length always wins and
+ * the metadata is only the fallback.
+ */
+function metaFor(track: DownloadTrack, measuredSeconds?: number, extra?: Partial<AudioMeta>): AudioMeta {
+  const metadataSeconds = track.durationMs != null ? Math.round(track.durationMs / 1000) : undefined;
   return {
     title: track.title,
     performer: track.artist,
-    durationSeconds: track.durationMs != null ? Math.round(track.durationMs / 1000) : undefined,
+    durationSeconds: measuredSeconds != null ? Math.round(measuredSeconds) : metadataSeconds,
     artworkUrl: track.artwork,
+    ...extra,
   };
 }
 
@@ -80,19 +92,22 @@ async function extractUploadCache(
   chatId: number,
   track: DownloadTrack,
   deps: DeliverDeps,
+  extraMeta?: Partial<AudioMeta>,
 ): Promise<void> {
-  const { filePath, sizeBytes } = await extractWithFallback(db, track, deps);
+  const { filePath, sizeBytes, durationSeconds } = await extractWithFallback(db, track, deps);
   try {
     if (sizeBytes > MAX_UPLOAD_BYTES) {
       throw new Error(`file too large for Telegram (${Math.round(sizeBytes / 1024 / 1024)} MB > 50 MB)`);
     }
-    const fileId = await deps.sender.sendAudioFile(chatId, filePath, metaFor(track));
+    const fileId = await deps.sender.sendAudioFile(chatId, filePath, metaFor(track, durationSeconds, extraMeta));
+    // The measured length is cached alongside the file_id so every later
+    // re-send — which never touches the file again — is labelled with it too.
     setCachedAudio(db, {
       uri: track.uri,
       tgFileId: fileId,
       title: track.title,
       artist: track.artist,
-      durationMs: track.durationMs ?? null,
+      durationMs: durationSeconds != null ? Math.round(durationSeconds * 1000) : track.durationMs ?? null,
       sizeBytes,
     });
   } finally {
@@ -100,18 +115,32 @@ async function extractUploadCache(
   }
 }
 
-export async function deliverTrack(db: AppDb, chatId: number, track: DownloadTrack, deps: DeliverDeps): Promise<void> {
+/**
+ * `extraMeta` overrides (e.g. `replyToMessageId`) apply to both the cache-hit
+ * and extract+upload paths, but never persist — they describe this delivery,
+ * not the track.
+ */
+export async function deliverTrack(
+  db: AppDb,
+  chatId: number,
+  track: DownloadTrack,
+  deps: DeliverDeps,
+  extraMeta?: Partial<AudioMeta>,
+): Promise<void> {
   const cached = getCachedAudio(db, track.uri);
   if (cached) {
     try {
-      await deps.sender.sendAudioByFileId(chatId, cached.tgFileId, metaFor(track));
+      // cached.durationMs was measured off the very file this file_id points at
+      // (older rows still hold the metadata value — no worse than before).
+      const cachedSeconds = cached.durationMs != null ? cached.durationMs / 1000 : undefined;
+      await deps.sender.sendAudioByFileId(chatId, cached.tgFileId, metaFor(track, cachedSeconds, extraMeta));
       return;
     } catch {
       // Telegram can expire file_ids — fall through to a fresh extract+upload,
       // which refreshes the cache row.
     }
   }
-  await extractUploadCache(db, chatId, track, deps);
+  await extractUploadCache(db, chatId, track, deps, extraMeta);
 }
 
 function summaryText(playlistName: string, tracks: DownloadTrack[]): string {

@@ -45,7 +45,7 @@ export function AddToPlaylistButton({ track, stopPropagation }: { track: Track; 
   return (
     <button
       type="button"
-      className="icon-btn add-to-playlist-btn"
+      className="icon-btn"
       aria-label="Добавить в плейлист"
       title="Добавить в плейлист"
       onClick={(e) => {

@@ -67,7 +67,10 @@ export function useKeyboardInset(): void {
       // it above the keyboard. A frame of delay lets the layout settle first.
       const active = document.activeElement;
       if (isTextField(active)) {
-        requestAnimationFrame(() => active.scrollIntoView({ block: "center", behavior: "smooth" }));
+        const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        requestAnimationFrame(() =>
+          active.scrollIntoView({ block: "center", behavior: reduceMotion ? "auto" : "smooth" }),
+        );
       }
     }
 

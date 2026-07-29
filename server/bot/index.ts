@@ -4,6 +4,7 @@ import type { AppDb } from "../db";
 import { env } from "../env";
 import { ackCallback, type BotContext } from "./context";
 import { allowlistGate } from "./middleware";
+import { groupGate } from "./group-search";
 import { channelSubscriptionGate } from "./channel-subscription-gate";
 import { AVAILABLE_PROVIDERS, isProviderId } from "../agent/registry";
 import { AVAILABLE_BACKENDS, isMusicBackend } from "../music/registry";
@@ -40,6 +41,10 @@ export function createBot(db: AppDb): Bot<BotContext> {
   // "armed the next message as a search query" session flow and the
   // active-download guard both read state a previous update just wrote.
   bot.use(sequentialize((ctx) => String(ctx.chat?.id ?? ctx.from?.id ?? "")));
+  // Group/supergroup updates are fully handled here (keyword search) and never
+  // reach the gates below — a group is not a person, so it must not need an
+  // allowlist entry, a channel subscription, or any private-chat state.
+  bot.use(groupGate(db));
   bot.use(allowlistGate(db));
   bot.use(channelSubscriptionGate(db));
 

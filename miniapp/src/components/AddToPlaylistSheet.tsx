@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { X, MusicNotesPlus, Plus, Check, CircleNotch, Sparkle } from "@phosphor-icons/react";
 import { api, PlaylistLimitReachedError, type Playlist } from "../lib/api";
 import { openStarsInvoice } from "../lib/telegram";
+import { useDialog } from "../lib/useDialog";
 import { OPEN_ADD_TO_PLAYLIST_EVENT, type AddToPlaylistRequest } from "./AddToPlaylistButton";
 
 type RowState =
@@ -43,11 +44,16 @@ export function AddToPlaylistSheet() {
     return () => window.removeEventListener(OPEN_ADD_TO_PLAYLIST_EVENT, onOpen);
   }, []);
 
-  if (!request) return null;
-
   function close() {
     setRequest(null);
   }
+
+  // This component stays mounted for the app's whole lifetime and toggles its
+  // own visibility, so `active` (not just mount/unmount) is what re-arms the
+  // focus trap on each open — see useDialog's doc comment.
+  const dialogRef = useDialog<HTMLDivElement>(!!request, close);
+
+  if (!request) return null;
 
   /**
    * Sequential rather than parallel: the whole set can be a shared playlist,
@@ -111,8 +117,8 @@ export function AddToPlaylistSheet() {
   }
 
   return (
-    <div className="sbp-overlay" role="dialog" aria-modal="true" aria-label="Добавить в плейлист" onClick={(e) => { if (e.target === e.currentTarget) close(); }}>
-      <div className="sbp-sheet">
+    <div className="sbp-overlay" onClick={(e) => { if (e.target === e.currentTarget) close(); }}>
+      <div className="sbp-sheet" ref={dialogRef} role="dialog" aria-modal="true" aria-label="Добавить в плейлист">
         <div className="sbp-sheet-head">
           <span className="sbp-sheet-title">
             <MusicNotesPlus size={18} weight="bold" aria-hidden="true" /> Добавить в плейлист
@@ -186,6 +192,7 @@ export function AddToPlaylistSheet() {
                     <input
                       className="add-to-playlist-input"
                       placeholder="Название плейлиста"
+                      aria-label="Название плейлиста"
                       value={newName}
                       autoFocus
                       onChange={(e) => setNewName(e.target.value)}

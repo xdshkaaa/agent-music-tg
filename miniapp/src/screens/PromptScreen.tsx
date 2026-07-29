@@ -148,20 +148,21 @@ export function PromptScreen({
     <GlassPanel className="reveal prompt-card">
       <div className="prompt-hero">
         <p className="prompt-hero-kicker">{mode === "ai" ? "AI собирает плейлист" : "Поиск по каталогу"}</p>
-        <h1>
-          <button
-            type="button"
-            className="prompt-hero-action"
-            aria-label={`Сменить фразу. Сейчас: ${heroFull}`}
-            onClick={handleHeroClick}
-          >
-            {heroDisplay.slice(0, heroPhrase.before.length)}
-            <span className="prompt-hero-accent">
-              {heroDisplay.slice(heroPhrase.before.length, heroPhrase.before.length + heroPhrase.accent.length)}
-            </span>
-            {heroDisplay.slice(heroPhrase.before.length + heroPhrase.accent.length)}
-          </button>
-        </h1>
+        {/* Not a heading: the phrase is playful copy that reshuffles on tap, not
+            page structure — wrapping it in <h1> made the page's one heading
+            announce a control instruction instead of readable text. */}
+        <button
+          type="button"
+          className="prompt-hero-action"
+          aria-label={`Сменить фразу. Сейчас: ${heroFull}`}
+          onClick={handleHeroClick}
+        >
+          {heroDisplay.slice(0, heroPhrase.before.length)}
+          <span className="prompt-hero-accent">
+            {heroDisplay.slice(heroPhrase.before.length, heroPhrase.before.length + heroPhrase.accent.length)}
+          </span>
+          {heroDisplay.slice(heroPhrase.before.length + heroPhrase.accent.length)}
+        </button>
         <p className="prompt-hero-copy">
           {mode === "ai"
             ? "Опишите настроение или занятие. Получите готовую подборку реальных треков, которую можно сразу слушать и сохранять."
@@ -201,6 +202,7 @@ export function PromptScreen({
           className="prompt-pill-input"
           rows={1}
           placeholder={mode === "ai" ? "Настроение, жанр или занятие" : "Трек, исполнитель или альбом"}
+          aria-label={mode === "ai" ? "Настроение, жанр или занятие" : "Трек, исполнитель или альбом"}
           value={prompt}
           onChange={(e) => {
             setPrompt(e.target.value);

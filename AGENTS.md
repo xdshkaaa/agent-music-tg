@@ -31,6 +31,7 @@ cp .env.example .env
 - Kill switch for paywall: set `PAYMENTS_ENABLED=false` and restart the systemd unit
 - Admin panel via `/admin` bot command or «Админ» tab in Mini App
 - Default music backend is `youtube-music`; `soundcloud` also available — neither needs credentials
+- Group-chat keyword search («найти ...») needs bot **privacy mode disabled** in @BotFather (`/setprivacy` → Disable) to see plain text; groups already added must be removed and re-added after the change
 
 ## Conventions
 

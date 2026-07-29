@@ -24,7 +24,7 @@ const { processDownload } = await import("./deliver");
 const { verificationStore } = await import("./track-verification");
 
 import type { Extractor } from "./extractor";
-import type { AudioSender } from "./deliver";
+import type { AudioMeta, AudioSender } from "./deliver";
 import type { DownloadTrack } from "./downloads-store";
 
 const CHAT = 111;
@@ -34,7 +34,9 @@ function scratch(): string {
 }
 
 /** Extractor that writes a small fake mp3 (or fails for chosen uris). */
-function fakeExtractor(opts: { failUris?: string[]; sizeBytes?: number } = {}): Extractor & { calls: string[] } {
+function fakeExtractor(
+  opts: { failUris?: string[]; sizeBytes?: number; durationSeconds?: number } = {},
+): Extractor & { calls: string[] } {
   const calls: string[] = [];
   return {
     calls,
@@ -43,7 +45,7 @@ function fakeExtractor(opts: { failUris?: string[]; sizeBytes?: number } = {}): 
       if (opts.failUris?.includes(uri)) throw new Error(`extract failed: ${uri}`);
       const filePath = join(targetDir, fileNameForUri(uri));
       await writeFile(filePath, Buffer.alloc(opts.sizeBytes ?? 16, 1));
-      return { filePath, sizeBytes: opts.sizeBytes ?? 16 };
+      return { filePath, sizeBytes: opts.sizeBytes ?? 16, durationSeconds: opts.durationSeconds };
     },
     async probe() {
       return { available: true };
@@ -52,15 +54,15 @@ function fakeExtractor(opts: { failUris?: string[]; sizeBytes?: number } = {}): 
 }
 
 function fakeSender(opts: { failFileIds?: string[] } = {}) {
-  const sent: { kind: "file_id" | "upload" | "text"; value: string }[] = [];
+  const sent: { kind: "file_id" | "upload" | "text"; value: string; meta?: AudioMeta }[] = [];
   let uploadCount = 0;
   const sender: AudioSender = {
-    async sendAudioByFileId(_chatId, fileId) {
+    async sendAudioByFileId(_chatId, fileId, meta) {
       if (opts.failFileIds?.includes(fileId)) throw new Error("stale file_id");
-      sent.push({ kind: "file_id", value: fileId });
+      sent.push({ kind: "file_id", value: fileId, meta });
     },
-    async sendAudioFile(_chatId, filePath) {
-      sent.push({ kind: "upload", value: filePath });
+    async sendAudioFile(_chatId, filePath, meta) {
+      sent.push({ kind: "upload", value: filePath, meta });
       return `file-id-${++uploadCount}`;
     },
     async sendText(_chatId, text) {
@@ -196,7 +198,7 @@ describe("processDownload", () => {
     await processDownload(db, record, { sender, extractor, scratchDir: scratch() });
 
     expect(extractor.calls).toHaveLength(0);
-    expect(sent[0]).toEqual({ kind: "file_id", value: "cached-1" });
+    expect(sent[0]).toMatchObject({ kind: "file_id", value: "cached-1" });
     expect(getDownload(db, CHAT, record.id)!.status).toBe("done");
   });
 
@@ -261,6 +263,47 @@ describe("processDownload", () => {
     const done = getDownload(db, CHAT, record.id)!;
     expect(done.status).toBe("done");
     expect(done.tracks[0]?.status).toBe("sent");
+  });
+
+  // The duration on a track comes from a search result and is only a claim
+  // about the song — the file yt-dlp actually produces can be a different
+  // master, a padded upload or a 30-second preview. Telegram draws its player
+  // from whatever `duration` we send, so it has to be the file's own.
+  test("labels the upload with the file's real duration, not the search metadata", async () => {
+    const db = openDb(":memory:");
+    const extractor = fakeExtractor({ durationSeconds: 244 });
+    const { sender, sent } = fakeSender();
+    const record = insertDownload(db, CHAT, "P", [{ ...track("ytm:a"), durationMs: 192_000 }]);
+
+    await processDownload(db, record, { sender, extractor, scratchDir: scratch() });
+
+    expect(sent.find((s) => s.kind === "upload")?.meta?.durationSeconds).toBe(244);
+  });
+
+  test("caches the measured duration so a re-send is labeled correctly too", async () => {
+    const db = openDb(":memory:");
+    const extractor = fakeExtractor({ durationSeconds: 30 });
+    const { sender, sent } = fakeSender();
+    const first = insertDownload(db, CHAT, "P", [{ ...track("sc:1"), durationMs: 194_000 }]);
+
+    await processDownload(db, first, { sender, extractor, scratchDir: scratch() });
+    expect(getCachedAudio(db, "sc:1")?.durationMs).toBe(30_000);
+
+    const again = insertDownload(db, CHAT, "P", [{ ...track("sc:1"), durationMs: 194_000 }]);
+    await processDownload(db, again, { sender, extractor, scratchDir: scratch() });
+
+    expect(sent.find((s) => s.kind === "file_id")?.meta?.durationSeconds).toBe(30);
+  });
+
+  test("falls back to the track metadata when the file duration is unknown", async () => {
+    const db = openDb(":memory:");
+    const extractor = fakeExtractor();
+    const { sender, sent } = fakeSender();
+    const record = insertDownload(db, CHAT, "P", [{ ...track("ytm:a"), durationMs: 192_000 }]);
+
+    await processDownload(db, record, { sender, extractor, scratchDir: scratch() });
+
+    expect(sent.find((s) => s.kind === "upload")?.meta?.durationSeconds).toBe(192);
   });
 
   test("oversized file is failed, not uploaded", async () => {

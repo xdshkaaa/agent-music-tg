@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useScrollFade } from "../lib/useScrollFade";
 
 /**
@@ -44,12 +44,55 @@ export function Segmented<T extends string>({
 
   useScrollFade(trackRef);
 
+  /** APG "selection follows focus": moving focus with arrow keys also selects. */
+  function selectByIndex(i: number) {
+    const opt = options[i];
+    if (opt === undefined) return;
+    onChange(opt);
+    btnRefs.current[i]?.focus();
+  }
+
+  function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
+    const count = options.length;
+    if (count === 0) return;
+    const vertical = role === "radiogroup";
+    switch (e.key) {
+      case "ArrowRight":
+        e.preventDefault();
+        selectByIndex((activeIndex + 1) % count);
+        break;
+      case "ArrowLeft":
+        e.preventDefault();
+        selectByIndex((activeIndex - 1 + count) % count);
+        break;
+      case "ArrowDown":
+        if (!vertical) break;
+        e.preventDefault();
+        selectByIndex((activeIndex + 1) % count);
+        break;
+      case "ArrowUp":
+        if (!vertical) break;
+        e.preventDefault();
+        selectByIndex((activeIndex - 1 + count) % count);
+        break;
+      case "Home":
+        e.preventDefault();
+        selectByIndex(0);
+        break;
+      case "End":
+        e.preventDefault();
+        selectByIndex(count - 1);
+        break;
+    }
+  }
+
   return (
     <div
       className={`segmented glass${fill ? " segmented--fill" : ""}`}
       role={role}
       aria-label={ariaLabel}
       ref={trackRef}
+      onKeyDown={onKeyDown}
     >
       <span
         className={`segmented-indicator${tinted ? " segmented-indicator-tinted" : ""} glass-indicator`}
@@ -64,6 +107,9 @@ export function Segmented<T extends string>({
           }}
           type="button"
           role={role === "radiogroup" ? "radio" : "tab"}
+          // Roving tabindex (APG composite widget pattern): only the active
+          // option sits in the page's tab order; arrow keys move within it.
+          tabIndex={id === value ? 0 : -1}
           {...(role === "radiogroup"
             ? { "aria-checked": id === value }
             : { "aria-selected": id === value })}

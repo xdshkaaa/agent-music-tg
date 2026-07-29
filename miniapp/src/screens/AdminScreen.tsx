@@ -144,6 +144,12 @@ function StatsPanel() {
                   : stats.topOffers.map((o) => `${o.title} (${o.count})`).join(", ")}
               </span>
             </div>
+            <div className="stat-row">
+              <span className="stat-row-label">Группы (активны · поисков · треков)</span>
+              <span className="stat-row-value">
+                {stats.groups.active} · {stats.groups.searches} · {stats.groups.tracks}
+              </span>
+            </div>
           </>
         )}
       </GlassPanel>

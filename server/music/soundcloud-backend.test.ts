@@ -58,6 +58,57 @@ describe("SoundCloudBackend.getArtistDetails", () => {
   });
 });
 
+describe("SoundCloudBackend playability filtering", () => {
+  // SoundCloud keeps preview-only and geo/rights-blocked tracks in its search
+  // results, so a playlist could be handed a "song" that is really a 30-second
+  // snippet or has no audio at all.
+  const playable = {
+    id: 10,
+    title: "Playable",
+    user: { username: "Someone" },
+    duration: 200_000,
+    policy: "ALLOW",
+    media: { transcodings: [{ snipped: false }] },
+  };
+  const snipped = {
+    id: 11,
+    title: "Preview Only",
+    user: { username: "Someone" },
+    duration: 30_000,
+    full_duration: 193_959,
+    policy: "SNIP",
+    media: { transcodings: [{ snipped: true }, { snipped: true }] },
+  };
+  const blocked = {
+    id: 12,
+    title: "Blocked",
+    user: { username: "Someone" },
+    duration: 210_000,
+    policy: "BLOCK",
+    media: { transcodings: [] },
+  };
+
+  test("drops preview-only and blocked tracks from search results", async () => {
+    stubApi({ "/search/tracks": { collection: [snipped, blocked, playable] } });
+    const tracks = await new SoundCloudBackend("test-client-id").searchTracks("snip-filter-query", 10);
+    expect(tracks.map((t) => t.uri)).toEqual(["sc:10"]);
+  });
+
+  test("resolving one track skips a preview-only match for a playable one", async () => {
+    stubApi({ "/search/tracks": { collection: [snipped, playable] } });
+    const track = await new SoundCloudBackend("test-client-id").searchTrack("Someone", "Preview Only");
+    expect(track?.uri).toBe("sc:10");
+  });
+
+  test("keeps tracks SoundCloud reports no media block for", async () => {
+    stubApi({
+      "/search/tracks": { collection: [{ id: 13, title: "Legacy", user: { username: "Someone" }, duration: 1000 }] },
+    });
+    const tracks = await new SoundCloudBackend("test-client-id").searchTracks("legacy-shape-query", 10);
+    expect(tracks.map((t) => t.uri)).toEqual(["sc:13"]);
+  });
+});
+
 describe("SoundCloudBackend.getArtistTopTracks", () => {
   test("carries per-track play and like counts through", async () => {
     stubApi({
