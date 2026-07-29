@@ -234,6 +234,7 @@ export function ResultsScreen({
       {editingName ? (
         <input
           className="playlist-name-input"
+          aria-label="Название плейлиста"
           autoFocus
           value={nameDraft}
           disabled={renameBusy}
@@ -251,22 +252,16 @@ export function ResultsScreen({
           }}
         />
       ) : (
-        <h1
-          className="playlist-name-title"
-          role="button"
-          tabIndex={0}
-          aria-label="Переименовать плейлист"
-          onClick={() => { setNameDraft(current.name); setEditingName(true); }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              setNameDraft(current.name);
-              setEditingName(true);
-            }
-          }}
-        >
+        <h1 className="playlist-name-title">
           {current.name}
-          <PencilSimple size={16} weight="bold" className="playlist-name-edit-icon" />
+          <button
+            type="button"
+            className="playlist-name-edit-btn"
+            aria-label={`Переименовать плейлист «${current.name}»`}
+            onClick={() => { setNameDraft(current.name); setEditingName(true); }}
+          >
+            <PencilSimple size={16} weight="bold" className="playlist-name-edit-icon" />
+          </button>
         </h1>
       )}
       {done.current && visibleTracks.length === 0 ? (
@@ -371,6 +366,7 @@ export function ResultsScreen({
             value={extendPrompt}
             onChange={(e) => setExtendPrompt(e.target.value)}
             placeholder="Что добавить в плейлист?"
+            aria-label="Что добавить в плейлист?"
             disabled={extendBusy}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {

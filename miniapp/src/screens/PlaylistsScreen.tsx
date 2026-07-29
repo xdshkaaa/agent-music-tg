@@ -119,31 +119,26 @@ function DownloadEntry({
             const isActive = player.track?.uri === t.uri;
             const status = isActive ? player.status : "idle";
             return (
-              <li
-                key={t.uri}
-                className="download-track"
-                role="button"
-                tabIndex={0}
-                onClick={() => {
-                  player.toggle({ uri: t.uri, title: t.title, artist: t.artist }, queue);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key !== "Enter" && e.key !== " ") return;
-                  e.preventDefault();
-                  player.toggle({ uri: t.uri, title: t.title, artist: t.artist }, queue);
-                }}
-              >
-                {status === "playing" ? (
-                  <Pause size={14} weight="fill" style={{ flexShrink: 0, color: "var(--accent)" }} />
-                ) : (
-                  <Play size={14} weight="fill" style={{ flexShrink: 0 }} />
-                )}
-                <span className="fs-label" style={{ flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {t.artist} — {t.title}
-                </span>
+              <li key={t.uri}>
+                <button
+                  type="button"
+                  className="download-track"
+                  onClick={() => {
+                    player.toggle({ uri: t.uri, title: t.title, artist: t.artist }, queue);
+                  }}
+                >
+                  {status === "playing" ? (
+                    <Pause size={14} weight="fill" style={{ flexShrink: 0, color: "var(--accent)" }} />
+                  ) : (
+                    <Play size={14} weight="fill" style={{ flexShrink: 0 }} />
+                  )}
+                  <span className="fs-label" style={{ flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {t.artist} — {t.title}
+                  </span>
                   {t.status === "failed" && (
                     <WarningCircle size={12} weight="bold" className="text-danger" aria-label={`Ошибка: ${t.error}`} />
                   )}
+                </button>
               </li>
             );
           })}
@@ -396,6 +391,7 @@ function PlaylistsSection({ onOpen }: { onOpen: (id: number) => void }) {
           <input
             className="add-to-playlist-input"
             placeholder="Название плейлиста"
+            aria-label="Название плейлиста"
             value={newName}
             autoFocus
             onChange={(e) => setNewName(e.target.value)}
@@ -448,6 +444,7 @@ function PlaylistDetailView({ id, onBack }: { id: number; onBack: () => void }) 
   const [trackDownloads, setTrackDownloads] = useState<Record<string, "sending" | "sent">>({});
   const [downloadingAll, setDownloadingAll] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [shareError, setShareError] = useState<string | null>(null);
 
   useEffect(() => {
     api.playlist(id).then((r) => setPlaylist(r.playlist)).catch(() => setPlaylist(null));
@@ -502,9 +499,12 @@ function PlaylistDetailView({ id, onBack }: { id: number; onBack: () => void }) 
   async function handleShare() {
     if (!playlist || playlist.tracks.length === 0 || sharing) return;
     setSharing(true);
+    setShareError(null);
     try {
       const { url } = await api.createShare("playlist", id);
       shareUrlToChat(url, playlist.name);
+    } catch (e) {
+      setShareError(e instanceof Error ? e.message : String(e));
     } finally {
       setSharing(false);
     }
@@ -577,6 +577,20 @@ function PlaylistDetailView({ id, onBack }: { id: number; onBack: () => void }) 
         )}
       </div>
 
+      {shareError && (
+        <div className="error-row mt-12">
+          <span className="error-row-icon">
+            <WarningCircle size={16} weight="bold" />
+          </span>
+          <p role="alert" className="error-row-message">
+            {shareError}
+          </p>
+          <button className="glass-button" onClick={() => void handleShare()} style={{ padding: "6px 12px" }}>
+            Повторить
+          </button>
+        </div>
+      )}
+
       {playlist === null && (
         <p className="text-muted search-status mt-12">
           <CircleNotch size={16} className="spin" /> Загружаю…
@@ -588,6 +602,7 @@ function PlaylistDetailView({ id, onBack }: { id: number; onBack: () => void }) 
           {renaming ? (
             <input
               className="playlist-name-input mt-12"
+              aria-label="Название плейлиста"
               autoFocus
               value={nameDraft}
               maxLength={200}
@@ -599,22 +614,16 @@ function PlaylistDetailView({ id, onBack }: { id: number; onBack: () => void }) 
               }}
             />
           ) : (
-            <h1
-              className="playlist-name-title mt-12"
-              role="button"
-              tabIndex={0}
-              aria-label="Переименовать плейлист"
-              onClick={() => { setNameDraft(playlist.name); setRenaming(true); }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  setNameDraft(playlist.name);
-                  setRenaming(true);
-                }
-              }}
-            >
+            <h1 className="playlist-name-title mt-12">
               {playlist.name}
-              <PencilSimple size={16} weight="bold" className="playlist-name-edit-icon" />
+              <button
+                type="button"
+                className="playlist-name-edit-btn"
+                aria-label={`Переименовать плейлист «${playlist.name}»`}
+                onClick={() => { setNameDraft(playlist.name); setRenaming(true); }}
+              >
+                <PencilSimple size={16} weight="bold" className="playlist-name-edit-icon" />
+              </button>
             </h1>
           )}
 

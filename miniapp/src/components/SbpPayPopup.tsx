@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { X, Bank, ArrowSquareOut } from "@phosphor-icons/react";
 import { openPayUrl, openSupport } from "../lib/telegram";
+import { useDialog } from "../lib/useDialog";
 
 interface SbpPayPopupProps {
   payUrl: string;
@@ -17,15 +18,7 @@ interface SbpPayPopupProps {
  */
 export function SbpPayPopup({ payUrl, offerTitle, onClose }: SbpPayPopupProps) {
   const [, setOpened] = useState(false);
-  const cardRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose(true);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  const cardRef = useDialog<HTMLDivElement>(true, () => onClose(true));
 
   function handlePay() {
     setOpened(true);
@@ -35,14 +28,11 @@ export function SbpPayPopup({ payUrl, offerTitle, onClose }: SbpPayPopupProps) {
   return (
     <div
       className="sbp-overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Оплата через СБП"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose(true);
       }}
     >
-      <div className="sbp-sheet" ref={cardRef}>
+      <div className="sbp-sheet" ref={cardRef} role="dialog" aria-modal="true" aria-label="Оплата через СБП">
         <div className="sbp-sheet-head">
           <span className="sbp-sheet-title">
             <Bank size={18} weight="bold" aria-hidden="true" /> Оплата через СБП

@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, CircleNotch, MusicNotesSimple, WarningCircle } from "@phosphor-icons/react";
 import { api, type LyricsResult } from "../lib/api";
+import { useDialog } from "../lib/useDialog";
 
 /** Index of the last line whose timestamp has passed; -1 before the first line. */
 function activeLineIndex(lines: { t: number }[], currentTime: number): number {
@@ -88,6 +89,7 @@ export function LyricsScreen({
   const [result, setResult] = useState<LyricsResult | "loading" | "error">("loading");
   const [accent, setAccent] = useState<string | null>(null);
   const lineRefs = useRef<(HTMLLIElement | null)[]>([]);
+  const dialogRef = useDialog<HTMLDivElement>(true, onClose);
 
   useEffect(() => {
     setAccent(null);
@@ -115,13 +117,18 @@ export function LyricsScreen({
 
   useEffect(() => {
     if (activeIndex < 0) return;
-    lineRefs.current[activeIndex]?.scrollIntoView({ block: "center", behavior: "smooth" });
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    lineRefs.current[activeIndex]?.scrollIntoView({ block: "center", behavior: reduceMotion ? "auto" : "smooth" });
   }, [activeIndex]);
 
   return (
     <div className="player-screen-overlay lyrics-screen-overlay">
       <div
         className="player-screen glass lyrics-screen"
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Текст песни"
         style={accent ? ({ "--accent": accent } as CSSProperties) : undefined}
       >
         <div className="player-screen-header">
@@ -155,10 +162,15 @@ export function LyricsScreen({
                   ref={(el) => {
                     lineRefs.current[i] = el;
                   }}
-                  className={`lyrics-screen-line${i === activeIndex ? " active" : ""}`}
-                  onClick={() => onSeek(duration > 0 ? l.t / duration : 0)}
                 >
-                  {l.line || <MusicNotesSimple size={14} weight="bold" aria-hidden />}
+                  <button
+                    type="button"
+                    className={`lyrics-screen-line${i === activeIndex ? " active" : ""}`}
+                    aria-label={l.line ? `Перейти к строке: ${l.line}` : "Перейти к музыкальной паузе"}
+                    onClick={() => onSeek(duration > 0 ? l.t / duration : 0)}
+                  >
+                    {l.line || <MusicNotesSimple size={14} weight="bold" aria-hidden />}
+                  </button>
                 </li>
               ))}
             </ul>

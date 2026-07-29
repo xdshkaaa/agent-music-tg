@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { DotsThreeVertical } from "@phosphor-icons/react";
 
 export interface TrackMenuAction {
@@ -15,6 +15,9 @@ export function TrackOverflowMenu({ actions, ariaLabel = "Действия с т
   const [open, setOpen] = useState(false);
   const [openUpward, setOpenUpward] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  itemRefs.current.length = actions.length;
 
   useEffect(() => {
     if (!open) return;
@@ -34,11 +37,71 @@ export function TrackOverflowMenu({ actions, ariaLabel = "Действия с т
     setOpenUpward(spaceBelow < estimatedHeight + 16);
   }, [open, actions.length]);
 
+  // APG menu-button pattern: opening moves focus to the first enabled item.
+  useEffect(() => {
+    if (!open) return;
+    const firstEnabled = actions.findIndex((a) => !a.disabled);
+    itemRefs.current[firstEnabled < 0 ? 0 : firstEnabled]?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  function close(restoreFocus: boolean) {
+    setOpen(false);
+    if (restoreFocus) triggerRef.current?.focus();
+  }
+
+  /** Moves focus from `from` in `delta` steps, skipping disabled items, with wraparound. */
+  function moveFocus(from: number, delta: 1 | -1) {
+    const count = actions.length;
+    if (count === 0) return;
+    let i = from;
+    for (let step = 0; step < count; step++) {
+      i = (i + delta + count) % count;
+      if (!actions[i]!.disabled) {
+        itemRefs.current[i]?.focus();
+        return;
+      }
+    }
+  }
+
+  function onItemKeyDown(e: KeyboardEvent<HTMLButtonElement>, index: number) {
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        moveFocus(index, 1);
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        moveFocus(index, -1);
+        break;
+      case "Home":
+        e.preventDefault();
+        moveFocus(-1, 1);
+        break;
+      case "End":
+        e.preventDefault();
+        moveFocus(0, -1);
+        break;
+      case "Escape":
+        // No natural focus target opens here (unlike a dialog), so — unlike
+        // the outside-pointer dismissal below — Escape restores focus itself.
+        e.preventDefault();
+        e.stopPropagation();
+        close(true);
+        break;
+      case "Tab":
+        // Let Tab continue to whatever's next in the page's own order.
+        setOpen(false);
+        break;
+    }
+  }
+
   return (
     <div className="track-menu" ref={ref}>
       <button
         type="button"
-        className="icon-btn track-menu-btn"
+        ref={triggerRef}
+        className="icon-btn"
         aria-label={ariaLabel}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -53,17 +116,22 @@ export function TrackOverflowMenu({ actions, ariaLabel = "Действия с т
         <div
           className={`track-menu-popover glass-surface glass-regular${openUpward ? " track-menu-popover--up" : ""}`}
           role="menu"
+          aria-label={ariaLabel}
         >
-          {actions.map((a) => (
+          {actions.map((a, i) => (
             <button
               key={a.key}
+              ref={(el) => {
+                itemRefs.current[i] = el;
+              }}
               type="button"
               role="menuitem"
               className={`track-menu-item${a.destructive ? " destructive" : ""}`}
               disabled={a.disabled}
+              onKeyDown={(e) => onItemKeyDown(e, i)}
               onClick={(e) => {
                 e.stopPropagation();
-                setOpen(false);
+                close(true);
                 a.onClick();
               }}
             >

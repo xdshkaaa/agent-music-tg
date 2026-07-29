@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { X, WarningCircle, ArrowsClockwise, CaretDown } from "@phosphor-icons/react";
 import { humanizeError } from "../lib/errorText";
 
@@ -17,38 +17,14 @@ export function ErrorBanner({
   const friendly = humanizeError(message);
   const [visible, setVisible] = useState(true);
   const [showDetail, setShowDetail] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  function clearTimer() {
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = null;
-  }
-  function armTimer() {
-    clearTimer();
-    // Errors with a retry action need a decision from the user — don't let
-    // the action silently vanish while they're still reading it.
-    if (onRetry) return;
-    timer.current = setTimeout(() => {
-      setVisible(false);
-      onClose();
-    }, 10000);
-  }
-
-  // New error: reset state and (re)arm auto-dismiss.
+  // New error: reset state. Error toasts stay up until the user dismisses
+  // them or retries — they can carry a decision (Повторить) or admin-only
+  // detail, and auto-dismissing risks losing either mid-read.
   useEffect(() => {
     setVisible(true);
     setShowDetail(false);
-    armTimer();
-    return clearTimer;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [message, onClose, onRetry]);
-
-  // While details are open, don't auto-dismiss; re-arm when collapsed.
-  useEffect(() => {
-    if (showDetail) clearTimer();
-    else armTimer();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showDetail]);
+  }, [message]);
 
   if (!visible) return null;
 
@@ -62,7 +38,6 @@ export function ErrorBanner({
           className="error-toast-close"
           aria-label="Закрыть"
           onClick={() => {
-            clearTimer();
             setVisible(false);
             onClose();
           }}

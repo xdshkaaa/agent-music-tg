@@ -52,6 +52,7 @@ export function ClarifyScreen({
           className="prompt-pill-input"
           rows={1}
           placeholder="Или напишите свой вариант…"
+          aria-label="Свой вариант ответа"
           value={custom}
           onChange={(e) => setCustom(e.target.value)}
           onKeyDown={(e) => {

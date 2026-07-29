@@ -17,7 +17,6 @@ import { api, type Album, type ArtistCard, type SuggestionsResponse, type Track 
 import { humanizeError } from "../lib/errorText";
 import { usePlayer } from "../lib/player";
 import { buildSearchFeed, isSearchFeedEmpty, loadRecentSearches, pushRecentSearch } from "../lib/suggestions";
-import { ARTWORK_ROW, artworkUrl } from "../lib/artwork";
 
 type DownloadState = { kind: "idle" } | { kind: "sending" } | { kind: "sent" } | { kind: "error"; message: string };
 
@@ -440,61 +439,46 @@ export function SearchMode({
                             queue,
                           );
                         return (
-                          <div
-                            className="track-row track-sub"
+                          <TrackRow
                             key={track.uri}
-                            role="button"
-                            tabIndex={0}
+                            className="track-sub"
                             onClick={play}
-                            onKeyDown={(e) => {
-                              if (e.key !== "Enter" && e.key !== " ") return;
-                              e.preventDefault();
-                              play();
-                            }}
-                          >
-                            {track.artwork || album.artwork ? (
-                              <img
-                                className="track-artwork"
-                                src={artworkUrl(track.artwork || album.artwork, ARTWORK_ROW)}
-                                alt=""
-                                loading="lazy"
-                                decoding="async"
-                              />
-                            ) : (
-                              <div className="track-artwork" />
-                            )}
-                            <div className="track-sub-copy">
-                              <p className="search-row-title">{track.title}</p>
-                              <p className="text-muted search-row-meta">{track.artist}</p>
-                            </div>
-                            <button
-                              type="button"
-                              className="icon-btn"
-                              aria-label={savedTracks[track.uri] ? "Убрать из моей музыки" : "Добавить в мою музыку"}
-                              title={savedTracks[track.uri] ? "Убрать из моей музыки" : "Добавить в мою музыку"}
-                              disabled={!!savingTracks[track.uri]}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void toggleMyMusic(track);
-                              }}
-                            >
-                              <HeartStraight
-                                size={18}
-                                weight={savedTracks[track.uri] ? "fill" : "bold"}
-                                style={savedTracks[track.uri] ? { color: "var(--accent)" } : undefined}
-                              />
-                            </button>
-                            <TrackOverflowMenu
-                              actions={[
-                                {
-                                  key: "add-to-playlist",
-                                  label: "Добавить в плейлист",
-                                  icon: <ListPlus size={18} weight="bold" />,
-                                  onClick: () => requestAddToPlaylist(track),
-                                },
-                              ]}
-                            />
-                          </div>
+                            artwork={track.artwork || album.artwork}
+                            title={track.title}
+                            meta={track.artist}
+                            metaClassName="search-row-meta"
+                            trailing={
+                              <>
+                                <button
+                                  type="button"
+                                  className="icon-btn"
+                                  aria-label={savedTracks[track.uri] ? "Убрать из моей музыки" : "Добавить в мою музыку"}
+                                  title={savedTracks[track.uri] ? "Убрать из моей музыки" : "Добавить в мою музыку"}
+                                  disabled={!!savingTracks[track.uri]}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void toggleMyMusic(track);
+                                  }}
+                                >
+                                  <HeartStraight
+                                    size={18}
+                                    weight={savedTracks[track.uri] ? "fill" : "bold"}
+                                    style={savedTracks[track.uri] ? { color: "var(--accent)" } : undefined}
+                                  />
+                                </button>
+                                <TrackOverflowMenu
+                                  actions={[
+                                    {
+                                      key: "add-to-playlist",
+                                      label: "Добавить в плейлист",
+                                      icon: <ListPlus size={18} weight="bold" />,
+                                      onClick: () => requestAddToPlaylist(track),
+                                    },
+                                  ]}
+                                />
+                              </>
+                            }
+                          />
                         );
                       })}
                     </div>

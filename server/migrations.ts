@@ -547,6 +547,29 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // Group-chat keyword search ("найти <query>" / @mention / reply-to-bot).
+    // Groups never touch the `users` table — they get no signup credits, no
+    // new-user admin alert, and are excluded from every user-facing metric —
+    // so they get their own tiny counters table instead. left_at marks a group
+    // the bot was removed from without deleting the row, so lifetime search /
+    // track counts survive a re-add.
+    version: 21,
+    run(db) {
+      db.run(`
+        CREATE TABLE IF NOT EXISTS group_chats (
+          chat_id INTEGER PRIMARY KEY,
+          title TEXT,
+          added_by_chat_id INTEGER,
+          search_count INTEGER NOT NULL DEFAULT 0,
+          track_count INTEGER NOT NULL DEFAULT 0,
+          left_at INTEGER,
+          first_seen INTEGER NOT NULL DEFAULT (unixepoch()),
+          last_seen INTEGER NOT NULL DEFAULT (unixepoch())
+        );
+      `);
+    },
+  },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;

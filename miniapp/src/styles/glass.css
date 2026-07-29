@@ -20,6 +20,11 @@
   --text-dark: #f2f3f5;
   --text-muted-light: rgba(13, 13, 16, 0.66);
   --text-muted-dark: rgba(242, 243, 245, 0.7);
+  /* Alias resolved per scheme below — mirrors how .text-muted itself picks
+     between -light/-dark, so anything reaching for var(--text-muted)
+     directly (icon spinners, mostly) tracks the theme instead of silently
+     inheriting currentColor. */
+  --text-muted: var(--text-muted-dark);
   /* Radius ladder. Concentric: each nested surface drops one step, so a
      control inside a block inside a panel reads as 10 / 18 / 22. Pick the tier
      by nesting depth, never by eyeballing a new number. */
@@ -141,6 +146,7 @@
   --info-bg: rgba(29, 78, 216, 0.1);
   --text-dark: #0d0d10;
   --text-muted-dark: rgba(13, 13, 16, 0.72);
+  --text-muted: var(--text-muted-light);
 
   --lg-v2-bg: #EEEEF3;
   --lg-v2-text: #0d0d10;
@@ -943,7 +949,6 @@ textarea.glass-input {
   gap: 12px;
   padding: 10px 8px;
   border-bottom: 1px solid var(--glass-border-dark);
-  cursor: pointer;
   transition: background 0.15s ease;
   border-radius: var(--radius-block);
   margin: 0 -8px;
@@ -973,6 +978,31 @@ textarea.glass-input {
   border-bottom: none;
 }
 
+/* The row's clickable artwork+title+meta block. A real <button> rather than
+   folding the whole row (including `trailing`'s own buttons) into one
+   role="button" — a button can't validly nest other buttons. */
+.track-row-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.track-row-main:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-micro);
+}
+
 .track-artwork {
   width: 44px;
   height: 44px;
@@ -980,10 +1010,15 @@ textarea.glass-input {
   object-fit: cover;
   background: rgba(255, 255, 255, 0.1);
   flex-shrink: 0;
+  /* Pure black/white only — a tinted neutral would pick up the row
+     background underneath and read as dirt on the artwork's edge. */
+  outline: 1px solid oklch(1 0 0 / 0.1);
+  outline-offset: -1px;
 }
 
 :root[data-scheme="light"] .track-artwork {
   background: rgba(0, 0, 0, 0.06);
+  outline-color: oklch(0 0 0 / 0.1);
 }
 
 .track-artwork--icon {
@@ -1040,20 +1075,35 @@ h1 {
 .playlist-name-title {
   display: inline-flex;
   align-items: baseline;
-  gap: 8px;
+  gap: 4px;
+}
+
+/* The pencil's hit target: 32px keeps the visual weight of a 16px icon next
+   to display-size text while still clearing the 24px WCAG 2.5.8 floor. */
+.playlist-name-edit-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: none;
+  padding: 0;
+  color: inherit;
   cursor: pointer;
   border-radius: var(--radius-micro);
   transition: color 0.18s ease;
 }
 
-.playlist-name-title:hover,
-.playlist-name-title:focus-visible {
+.playlist-name-edit-btn:hover {
   color: var(--accent);
 }
 
-.playlist-name-title:focus-visible {
+.playlist-name-edit-btn:focus-visible {
+  color: var(--accent);
   outline: 2px solid var(--accent);
-  outline-offset: 4px;
+  outline-offset: 2px;
 }
 
 .playlist-name-edit-icon {
@@ -1100,6 +1150,20 @@ h1 {
   height: 100%;
   object-fit: cover;
   display: block;
+  /* Pure black/white only — a tinted neutral would pick up the surface color
+     underneath and read as dirt on the cover's edge. */
+  outline: 1px solid oklch(1 0 0 / 0.1);
+  outline-offset: -1px;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.share-collage img.loaded {
+  opacity: 1;
+}
+
+:root[data-scheme="light"] .share-collage img {
+  outline-color: oklch(0 0 0 / 0.1);
 }
 
 .share-collage--empty {
@@ -1128,6 +1192,16 @@ h1 {
   min-width: 0;
 }
 
+/* Scoped to the button: .share-cta is also reused on the plain-text confirm
+   label in the revoke row, which has no internal flex centering of its own
+   and would have its text pushed to the top of a fixed-height box. */
+.glass-button.share-cta {
+  /* Matches the 48px .icon-only it sits beside — the button's own
+     padding-driven height lands a pixel short and reads as uneven. */
+  height: 48px;
+  padding-block: 0;
+}
+
 /* Four actions in one row: a label button plus three icon buttons. At the
    default 48px/10px they need more than the ~330px a panel leaves on a 393pt
    phone, and wrapping orphans the primary «Скачать» on a line of its own.
@@ -1147,6 +1221,8 @@ h1 {
 .results-actions-label {
   flex: 1 1 auto;
   min-width: 0;
+  height: 44px;
+  padding-block: 0;
   padding-left: 16px;
   padding-right: 16px;
 }
@@ -1167,7 +1243,7 @@ h1 {
 }
 
 .playlist-name-title:hover .playlist-name-edit-icon,
-.playlist-name-title:focus-visible .playlist-name-edit-icon {
+.playlist-name-edit-btn:focus-visible .playlist-name-edit-icon {
   opacity: 1;
 }
 
@@ -1191,8 +1267,9 @@ h1 {
   color: var(--text-light);
 }
 
-.playlist-name-input:focus {
-  outline: none;
+.playlist-name-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
 
 .prompt-hero {
@@ -1207,22 +1284,15 @@ h1 {
   letter-spacing: var(--ls-label);
 }
 
-.prompt-hero h1 {
+.prompt-hero-action {
+  appearance: none;
+  display: inline-block;
   font-family: var(--font-display);
   font-size: var(--fs-hero);
   font-weight: 800;
   line-height: 1.12;
   letter-spacing: var(--ls-display);
   text-align: left;
-  margin: 0;
-  min-height: 1.2em;
-  white-space: normal;
-  overflow-wrap: break-word;
-}
-
-.prompt-hero-action {
-  appearance: none;
-  display: inline-block;
   white-space: nowrap;
   min-height: 44px;
   margin: -4px 0;
@@ -1230,9 +1300,6 @@ h1 {
   border: none;
   background: transparent;
   color: inherit;
-  font: inherit;
-  letter-spacing: inherit;
-  text-align: inherit;
   cursor: pointer;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
@@ -2569,7 +2636,8 @@ p {
   background: none;
   cursor: pointer;
   color: var(--text-dark);
-  transition: color 0.18s ease, background 0.18s ease;
+  border-radius: var(--radius-chip);
+  transition: color 0.18s ease, background 0.18s ease, transform 0.18s ease;
 }
 
 :root[data-scheme="light"] .icon-btn {
@@ -2578,6 +2646,27 @@ p {
 
 a.icon-btn {
   color: var(--accent);
+}
+
+@media (hover: hover) {
+  .icon-btn:hover {
+    color: var(--accent);
+  }
+}
+
+.icon-btn:active {
+  transform: scale(0.97);
+}
+
+.icon-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.icon-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .action-btn {
@@ -2734,7 +2823,8 @@ a.icon-btn {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 0;
+  padding: 10px 8px;
+  margin: 0 -8px;
 }
 
 .skeleton-box {
@@ -2746,6 +2836,14 @@ a.icon-btn {
     color-mix(in srgb, var(--glass-bg-dark) 10%, transparent) 70%
   );
   background-size: 200% 100%;
+}
+
+/* Matches .track-artwork's radius, not the pill default above: the text-line
+   bars read fine as pills, but the artwork placeholder must be the same
+   shape as the image it becomes, or loading -> ready visibly morphs the
+   thumbnail from a circle to a rounded square. */
+.skeleton-box--artwork {
+  border-radius: var(--radius-row);
 }
 
 :root[data-scheme="light"] .skeleton-box {
@@ -3089,6 +3187,7 @@ a.icon-btn {
   -webkit-backdrop-filter: blur(2px);
   backdrop-filter: blur(2px);
   animation: sbp-overlay-in 0.2s ease both;
+  overscroll-behavior: contain;
 }
 
 @keyframes sbp-overlay-in {
@@ -3816,6 +3915,7 @@ div.player-bar-thumbnail::after {
   justify-content: center;
   background: #0a0a0b;
   animation: player-overlay-in 0.25s ease both;
+  overscroll-behavior: contain;
 }
 
 @keyframes player-overlay-in {
@@ -4639,6 +4739,13 @@ div.player-bar-thumbnail::after {
   margin-bottom: 10px;
 }
 
+/* tabIndex={-1}: script-focused only, to move a screen reader's cursor to the
+   new step, never reachable via Tab — so there is no keyboard user to show a
+   ring to. */
+.onboarding-step h1:focus-visible {
+  outline: none;
+}
+
 .onboarding-lead {
   max-width: 34ch;
   color: var(--text-muted-dark);
@@ -5047,10 +5154,16 @@ div.player-bar-thumbnail::after {
   display: flex;
   align-items: center;
   gap: 8px;
+  width: 100%;
   min-height: 32px;
   cursor: pointer;
   padding: 4px 6px;
   border-radius: var(--radius-btn);
+  background: none;
+  border: none;
+  text-align: left;
+  font: inherit;
+  color: inherit;
 }
 
 .purchase-item {
@@ -5425,8 +5538,8 @@ div.player-bar-thumbnail::after {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   border-radius: var(--radius-micro);
   border: none;
   cursor: pointer;
@@ -5731,6 +5844,14 @@ div.player-bar-thumbnail::after {
 }
 
 .lyrics-screen-line {
+  display: block;
+  width: 100%;
+  border: none;
+  background: none;
+  padding: 0;
+  margin: 0;
+  font-family: inherit;
+  text-align: left;
   font-size: var(--fs-subdisplay);
   font-weight: 700;
   line-height: 1.35;
@@ -5751,6 +5872,12 @@ div.player-bar-thumbnail::after {
 
 :root[data-scheme="light"] .lyrics-screen-line.active {
   color: var(--text-light);
+}
+
+.lyrics-screen-line:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: var(--radius-micro);
 }
 
 /* --- Artist screen --- */

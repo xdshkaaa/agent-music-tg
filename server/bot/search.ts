@@ -143,7 +143,7 @@ export function searchPromptView(): SearchView {
   };
 }
 
-async function runSearch(db: AppDb, query: string): Promise<Track[]> {
+export async function runSearch(db: AppDb, query: string): Promise<Track[]> {
   const backendId = getActiveBackendId(db, DEFAULT_BACKEND);
   const music = createMusicProvider(isMusicBackend(backendId) ? backendId : DEFAULT_BACKEND);
   return music.searchTracks(query, MAX_RESULTS);

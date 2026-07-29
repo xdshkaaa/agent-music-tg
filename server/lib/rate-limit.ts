@@ -74,3 +74,12 @@ export const searchRateLimiter = createRateLimiter({ limit: 20, windowMs: 60_000
  * through many tracks, and cache hits never reach the limiter.
  */
 export const streamRateLimiter = createRateLimiter({ limit: 60, windowMs: 60_000 });
+
+/**
+ * Group-chat keyword search, checked only on an `audio_cache` miss (a cache
+ * hit is a free file_id re-send, same as streamRateLimiter's cache hits). The
+ * process-wide yt-dlp extraction pool (`extractionSemaphore`, cap 2) is
+ * shared with every paying user's downloads, so one noisy group must not be
+ * able to keep both slots busy.
+ */
+export const groupExtractRateLimiter = createRateLimiter({ limit: 5, windowMs: 60_000 });
