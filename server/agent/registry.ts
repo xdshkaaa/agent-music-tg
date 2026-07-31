@@ -31,7 +31,7 @@ export function getProviderDefaults(id: ProviderId): ProviderDefaults {
     case "anthropic":
       return { model: "claude-sonnet-5", baseUrl: null, apiKeyConfigured: !!env.anthropicApiKey };
     case "openai":
-      return { model: "gpt-5", baseUrl: null, apiKeyConfigured: !!env.openaiApiKey };
+      return { model: "gpt-5-mini", baseUrl: null, apiKeyConfigured: !!env.openaiApiKey };
     case "cheapvibecode":
       return { model: "gpt-5", baseUrl: "https://cheapvibecode.ru/v1", apiKeyConfigured: !!env.cheapvibecodeApiKey };
     case "opencode":

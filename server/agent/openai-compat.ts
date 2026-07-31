@@ -34,6 +34,8 @@ export interface OpenAICompatConfig {
   baseUrl: string;
   apiKey: string;
   model: string;
+  /** OpenAI reasoning budget. Omitted for third-party compatible APIs. */
+  reasoningEffort?: "minimal" | "low" | "medium" | "high";
 }
 
 /** Shared OpenAI Chat Completions-compatible transport (OpenAI, CheapVibeCode, Ollama). */
@@ -53,6 +55,7 @@ export async function openaiCompatChat(
       model: config.model,
       messages: toOpenAIMessages(system, messages),
       tools: tools.length > 0 ? toolsForOpenAIChat(tools) : undefined,
+      reasoning_effort: config.reasoningEffort,
     }),
     signal: AbortSignal.timeout(120_000),
   });
