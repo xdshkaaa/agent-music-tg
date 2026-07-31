@@ -1,6 +1,7 @@
 import type { AppDb } from "../db";
 import { countUsers } from "../access/users-store";
 import { getGroupStats, type GroupStats } from "../access/group-chats-store";
+import { getInlineStats, type InlineStats } from "../access/inline-usage-store";
 import {
   getFunnel,
   getTrafficSources,
@@ -51,6 +52,8 @@ export interface AdminStats {
   utmCampaigns: AttributionBreakdown[];
   /** Group chats using keyword search — tracked separately from `users`, see group-chats-store.ts. */
   groups: GroupStats;
+  /** Inline search ("@bot <query>") — open to anyone, tracked separately from `users`, see inline-usage-store.ts. */
+  inline: InlineStats;
 }
 
 const PERIOD_SECONDS: Record<Exclude<StatsPeriod, "all">, number> = {
@@ -189,5 +192,6 @@ export function getAdminStats(db: AppDb, period: StatsPeriod = "all"): AdminStat
     trafficSources: getTrafficSources(db, period),
     utmCampaigns: getUtmCampaigns(db, period),
     groups: getGroupStats(db),
+    inline: getInlineStats(db),
   };
 }

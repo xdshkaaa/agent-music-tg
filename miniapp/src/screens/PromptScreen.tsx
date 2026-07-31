@@ -229,26 +229,32 @@ export function PromptScreen({
         )}
       </div>
 
-      {mode === "ai" ? (
-        <AiMode
-          busy={busy}
-          events={events}
-          isAdmin={isAdmin}
-          hasDraft={prompt.trim().length > 0}
-          suggestions={suggestions}
-          examples={promptExamples}
-          onRefreshExamples={refreshPromptExamples}
-          onPickPrompt={fillInput}
-          onOpenGeneration={onOpenGeneration}
-        />
-      ) : (
-        <SearchMode
-          query={prompt}
-          suggestions={suggestions}
-          onOpenArtist={onOpenArtist}
-          onPickQuery={fillInput}
-        />
-      )}
+      {/* Wraps the mode body (both return fragments) so the desktop 2-column
+          grid has one spanning element for the right column instead of N
+          siblings interleaved with the composer's own rows — see glass.css. */}
+      <div className="prompt-body">
+        {mode === "ai" ? (
+          <AiMode
+            busy={busy}
+            events={events}
+            isAdmin={isAdmin}
+            hasDraft={prompt.trim().length > 0}
+            suggestions={suggestions}
+            examples={promptExamples}
+            onRefreshExamples={refreshPromptExamples}
+            onPickPrompt={fillInput}
+            onOpenGeneration={onOpenGeneration}
+            onOpenArtist={onOpenArtist}
+          />
+        ) : (
+          <SearchMode
+            query={prompt}
+            suggestions={suggestions}
+            onOpenArtist={onOpenArtist}
+            onPickQuery={fillInput}
+          />
+        )}
+      </div>
     </GlassPanel>
   );
 }

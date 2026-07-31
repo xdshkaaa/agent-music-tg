@@ -25,6 +25,8 @@ export interface AudioMeta {
   artworkUrl?: string;
   /** Replies to a specific message instead of posting standalone (group keyword search). */
   replyToMessageId?: number;
+  /** HTML caption shown under the audio (group keyword search only). */
+  caption?: string;
 }
 
 /** Thin seam over grammY so delivery is testable without a live bot. */

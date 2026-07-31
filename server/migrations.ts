@@ -570,6 +570,25 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // Inline search ("@bot <query>" in any chat, see server/bot/inline-search.ts).
+    // Same rationale as group_chats: open to anyone, not just the allowlist, so
+    // most senders have no row in `users` — this is its own counters table
+    // rather than a users-table join.
+    version: 22,
+    run(db) {
+      db.run(`
+        CREATE TABLE IF NOT EXISTS inline_usage (
+          user_id INTEGER PRIMARY KEY,
+          username TEXT,
+          search_count INTEGER NOT NULL DEFAULT 0,
+          track_count INTEGER NOT NULL DEFAULT 0,
+          first_seen INTEGER NOT NULL DEFAULT (unixepoch()),
+          last_seen INTEGER NOT NULL DEFAULT (unixepoch())
+        );
+      `);
+    },
+  },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;

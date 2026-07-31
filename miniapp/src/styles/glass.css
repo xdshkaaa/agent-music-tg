@@ -72,6 +72,19 @@
 
   --dock-height: 52px;
 
+  /* Desktop shell (>= 840px) only — consumed by the appended desktop block
+     at the end of this file. @media can't read custom properties, so the
+     840px (and the composer split's own 1100px) breakpoints are literals
+     there, not one of these. */
+  --desktop-rail-w: 264px;           /* nav rail: top bar + vertical dock */
+  --desktop-gap: 28px;               /* rail <-> content gutter */
+  --desktop-gutter: 32px;            /* shell side padding */
+  --desktop-content-max: 720px;      /* readable cap, every screen */
+  --desktop-content-max-wide: 1040px; /* prompt screen only, >= 1100px (it sub-splits) */
+  --desktop-rail-header-h: 56px;     /* enforced height of .app-top-bar */
+  --desktop-sticky-top: 20px;
+  --desktop-offset: calc(var(--desktop-rail-w) + var(--desktop-gap));
+
   --liquid-morph-duration: 0.35s;
   --liquid-morph-easing: cubic-bezier(0.16, 1, 0.3, 1);
 
@@ -191,10 +204,19 @@ body,
 }
 
 /* clip (не hidden): hidden оставляет вьюпорт «панируемым» по X в iOS Safari
-   и Telegram web — любой элемент шире экрана даёт горизонтальное дёрганье */
+   и Telegram web — любой элемент шире экрана даёт горизонтальное дёрганье.
+   scrollbar-gutter: stable reserves the classic scrollbar's width up front on
+   desktop browsers, so navigating between a short screen and a scrolling one
+   doesn't add/remove it and slide the centred .app-shell sideways by ~15px.
+   overscroll-behavior-y: none kills the root rubber-band/pull-to-refresh
+   bounce — the same jitter disableVerticalSwipes() (App.tsx) already guards
+   against inside Telegram's own client, but that call has no effect in a
+   plain desktop/mobile browser tab. */
 html,
 body {
   overflow-x: clip;
+  overscroll-behavior-y: none;
+  scrollbar-gutter: stable;
 }
 
 /* На тач-устройствах поле ввода должно быть >= 16px, иначе iOS/Telegram WebView
@@ -226,9 +248,16 @@ body {
   color: var(--text-light);
 }
 
+/* Desktop (>= 840px) turns this into a grid and switches overflow-x to
+   clip — see the desktop block at the end of this file. svh, not dvh: dvh
+   re-measures every time a mobile browser's own chrome (URL bar) hides or
+   shows on scroll, resizing/jittering .app-shell and everything anchored to
+   it on each flip; svh is the small, stable viewport and never re-measures
+   mid-scroll. Telegram's own WebView viewport is fixed either way, so this
+   only changes behaviour in a plain mobile browser tab. */
 .app-shell {
   position: relative;
-  min-height: 100dvh;
+  min-height: 100svh;
   padding: 12px 14px calc(220px + env(safe-area-inset-bottom, 0px));
   overflow-x: hidden;
   overscroll-behavior-x: none;
@@ -1334,11 +1363,31 @@ h1 {
   color: var(--text-muted-light);
 }
 
+/* Desktop (>= 1100px) turns this into a 2-column grid (composer left, mode
+   body right) and switches overflow to clip — see the desktop block at the
+   end of this file. */
 .prompt-card {
   padding: 16px 14px 14px;
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+/* Wraps AiMode/SearchMode's output (both return fragments) so the desktop
+   grid has one spanning element to place in the right column instead of N
+   siblings interleaved with the composer's own rows. Mobile output is
+   unchanged: same flex-column, same 16px gap as .prompt-card itself. */
+.prompt-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+/* AiMode returns null while the user has a draft (AiMode.tsx) — without this
+   the empty wrapper leaves a stray 16px gap under the pill. */
+.prompt-body:empty {
+  display: none;
 }
 
 .prompt-card::before {
@@ -2669,6 +2718,11 @@ a.icon-btn {
   transform: none;
 }
 
+/* Saved/liked state — same convention as .player-bar-like-btn.active. */
+.icon-btn.active {
+  color: var(--accent);
+}
+
 .action-btn {
   min-width: 40px;
   min-height: 40px;
@@ -3066,6 +3120,9 @@ a.icon-btn {
   font-size: var(--fs-micro);
 }
 
+/* Desktop (>= 840px) turns this into a sticky vertical nav in the rail
+   instead of a floating bottom dock — see the desktop block at the end of
+   this file. */
 .dock {
   position: fixed;
   bottom: calc(16px + env(safe-area-inset-bottom, 0px));
@@ -3647,6 +3704,9 @@ a.icon-btn {
 }
 
 /* @deprecated — используй .glass-surface.glass-regular + кастомные стили позиционирования */
+/* Desktop (>= 840px) shifts left by the rail width so it stays centered
+   over the content column instead of the whole viewport — see the desktop
+   block at the end of this file. */
 .player-bar {
   position: fixed;
   bottom: calc(72px + env(safe-area-inset-bottom, 0px));
@@ -3927,7 +3987,11 @@ div.player-bar-thumbnail::after {
   position: relative;
   width: 100%;
   max-width: 480px;
-  height: 100dvh;
+  /* svh, not dvh — see .app-shell's own comment above: this stops the full
+     player/artist/lyrics card from resizing under the user mid-scroll as a
+     mobile browser's URL bar hides/shows. Desktop overrides height to auto
+     below (>= 840px), where the viewport is stable either way. */
+  height: 100svh;
   margin: 0 auto;
   border-radius: 0;
   background: #0a0a0b;
@@ -4159,6 +4223,16 @@ div.player-bar-thumbnail::after {
   align-items: center;
   justify-content: center;
   gap: 28px;
+}
+
+/* Dislike + lyrics: neither is a transport control, so they sit in their own
+   row below it instead of bookending the transport row (see PlayerScreen.tsx). */
+.player-screen-secondary-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 12px;
 }
 
 .player-screen-skip-btn {
@@ -5705,7 +5779,17 @@ div.player-bar-thumbnail::after {
 
 .player-screen-artist-link:hover,
 .player-screen-artist-link:focus-visible {
+  /* Own color instead of just revealing the underline — a button reading as
+     plain muted text has no Signal Rule aff (DESIGN.md); accent marks it
+     interactive on top of the underline. */
+  color: var(--accent);
   text-decoration-color: currentColor;
+}
+
+.player-screen-artist-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-hair);
 }
 
 .player-screen-artist-link:disabled {
@@ -5781,7 +5865,6 @@ div.player-bar-thumbnail::after {
   font-size: var(--fs-label);
   font-weight: 600;
   cursor: pointer;
-  margin-bottom: 12px;
   transition: background 0.18s ease;
 }
 
@@ -6145,4 +6228,450 @@ div.player-bar-thumbnail::after {
 .accent-swatch:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 0;
+}
+
+/* ============================================================================
+   Desktop shell (>= 840px)
+   ----------------------------------------------------------------------------
+   Telegram Desktop opens the Mini App fullscreen at ~1700px, but any ordinary
+   resizable browser window lands well below that too — without this, every
+   screen renders as a 480px mobile column marooned in a huge dark void, with
+   the dock/player bar floating disconnected at the viewport's bottom edge.
+   This turns .app-shell into a left nav rail + content pane. 840px is chosen
+   so the content pane (viewport minus the fixed rail + gutters) is never
+   narrower than the 480px mobile column it replaces.
+
+   PromptScreen's composer (left) / mode body (right) split needs more room
+   than that — its own fixed 400px left column only leaves a usable right
+   column once the content pane hits ~740px — so it stays gated behind a
+   separate, higher 1100px query below instead of this one; until then
+   .prompt-card just stays the single stacked column it already is on mobile.
+
+   Kept as one appended block for two reasons: every shell override below is a
+   two-class child selector (e.g. `.app-shell > .dock`), which is (0,2,0) and
+   beats both `.app-shell > *` (0,1,0) and the later `.dock`/`.player-bar`
+   rules (0,1,0) regardless of source order — no !important needed. And it's
+   one place to read, one place to revert.
+   ========================================================================= */
+@media (min-width: 840px) {
+  .app-shell {
+    display: grid;
+    grid-template-columns:
+      [rail-start] var(--desktop-rail-w)
+      [rail-end content-start] minmax(0, var(--desktop-content-max))
+      [content-end];
+    /* auto auto, not auto 1fr: an 1fr row would stretch the rail and content
+       to fill the viewport even when neither has enough to show — sticky
+       chrome floating in dead space. Two auto rows size to actual content. */
+    grid-template-rows: auto auto;
+    justify-content: center;
+    /* start, not center: the rail is permanent chrome, not a modal — pinning
+       it to the top reads as the app's frame regardless of how tall the
+       current screen's content is. (The composer's empty state used to be
+       the one screen with nothing to fill the pane; it now always has at
+       least the genre/example chips, so there is no longer a "dead void"
+       case to center against.) */
+    align-content: start;
+    column-gap: var(--desktop-gap);
+    row-gap: 16px;
+    padding: var(--desktop-sticky-top) var(--desktop-gutter) 120px;
+    /* NOT hidden: hidden makes this a scroll container (CSS Overflow 3 —
+       hidden on one axis computes the other's visible to auto), which makes
+       every position:sticky descendant below resolve against a scrollport
+       that never scrolls and silently never stick. clip does not create a
+       scroll container. Same reasoning as html,body above. */
+    overflow-x: clip;
+  }
+
+  /* Neutralize the mobile 480px cap; default every child to the content column. */
+  .app-shell > * {
+    max-width: none;
+    margin-inline: 0;
+    grid-column: content;
+  }
+
+  .app-shell > .screen-stack {
+    grid-row: 1 / -1;
+  }
+
+  /* Both rail members span the full height so sticky has room to travel —
+     in an auto row, a sticky item's area is its own height and it can't move. */
+  .app-shell > .app-top-bar,
+  .app-shell > .dock {
+    grid-column: rail;
+    grid-row: 1 / -1;
+    align-self: start;
+    position: sticky;
+    width: 100%;
+    /* Above the non-nested artist overlay (95, deliberately click-through —
+       see its own z-index comment and useDialog's inertScope) so the rail
+       stays visibly on top and clickable there instead of pasted under its
+       backdrop; below the full player (100) and the nested artist overlay
+       (105), which are meant to cover the rail like every other overlay. */
+    z-index: 96;
+  }
+
+  .app-shell > .app-top-bar {
+    top: var(--desktop-sticky-top);
+    height: var(--desktop-rail-header-h);
+    border-radius: var(--radius-panel);
+  }
+
+  /* shopConfig.headerTitle (App.tsx) is operator-configurable and can run long. */
+  .app-shell > .app-top-bar .app-top-brand {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .app-shell > .dock {
+    margin-top: calc(var(--desktop-rail-header-h) + 12px);
+    top: calc(var(--desktop-sticky-top) + var(--desktop-rail-header-h) + 12px);
+    display: block;
+    padding: 0;
+    pointer-events: auto;
+  }
+
+  .app-shell > .dock .dock-inner {
+    flex-direction: column;
+    width: 100%;
+    max-width: none;
+    gap: 2px;
+    padding: 6px;
+    border-radius: var(--radius-panel);
+  }
+
+  .app-shell > .dock .dock-tab {
+    flex: 0 0 auto;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 10px;
+    min-height: 44px;
+    padding: 10px 12px;
+    font-size: var(--fs-label);
+    border-radius: var(--radius-surface); /* 22 panel - 6 pad = 16, concentric */
+  }
+
+  .app-shell > .dock .dock-tab.active {
+    background: var(--accent-bg);
+  }
+
+  @media (hover: hover) {
+    .app-shell > .dock .dock-tab:not(.active):hover {
+      background: var(--lg-v2-chip);
+      color: var(--text-dark);
+    }
+  }
+
+  /* The un-fixed dock has nothing to slide out of the way for a soft
+     keyboard — this should never fire on Telegram Desktop, but will on a
+     touch laptop. The .player-bar half of the base rule stays: it's still
+     fixed and still needs to dodge the keyboard. */
+  :root[data-keyboard="open"] .app-shell > .dock,
+  :root[data-keyboard="open"] .app-shell > .dock > * {
+    transform: none;
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  :root[data-keyboard="open"] .app-shell {
+    padding-bottom: 120px;
+  }
+
+  /* Re-center on the content column, not the viewport: 100vw includes a
+     classic scrollbar while a fixed element's containing block (the ICB)
+     doesn't, so they'd desync by ~15px. Shifting the left edge by the rail
+     is exact and independent of the shell's own width. */
+  .app-shell > .player-bar {
+    left: var(--desktop-offset);
+    right: 0;
+    margin-inline: auto;
+    max-width: 560px;
+    width: min(100%, 560px);
+    bottom: 24px;
+  }
+
+  .error-toast {
+    left: calc(50% + var(--desktop-offset) / 2);
+  }
+
+  /* Sized to clear a bottom dock that no longer exists on desktop. */
+  .sbp-overlay {
+    align-items: center;
+  }
+
+  .sbp-sheet {
+    margin-bottom: 0;
+  }
+
+  /* --- Full player / artist / lyrics: a card over the still-visible app,
+     not a blackout ----------------------------------------------------
+     .player-screen-overlay is a *sibling* of .app-shell (mounted next to
+     it in App.tsx), so the `.app-shell > *` neutralization above can't
+     reach it — these need their own selectors. Below this breakpoint the
+     overlay stays the existing full-bleed opaque takeover, which matches a
+     phone's "this IS the screen" model; at rail width there's a whole app
+     sitting behind it, and the previous opaque #0a0a0b hid the one thing a
+     laptop can actually do that a phone can't: show two things at once. */
+  .player-screen-overlay {
+    background: rgba(5, 5, 8, 0.72);
+    backdrop-filter: blur(20px) saturate(130%);
+    -webkit-backdrop-filter: blur(20px) saturate(130%);
+  }
+
+  @media (prefers-reduced-transparency: reduce) {
+    .player-screen-overlay {
+      background: #0a0a0b;
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+  }
+
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .player-screen-overlay {
+      background: #0a0a0b;
+    }
+  }
+
+  /* Card, not a full-height strip: height keys off its own content instead
+     of 100dvh, and gets the panel radius + shadow back now that it floats
+     over visible content instead of filling the viewport edge-to-edge. The
+     mobile rule's justify-content: space-between was written for a
+     height:100dvh strip where it packs header/artwork/controls to the edges;
+     kept on a height:auto card it does nothing useful and reads as an
+     invitation for stray extra space, so pin to flex-start with an explicit
+     gap instead — content-driven top to bottom, same as every other card. */
+  .player-screen {
+    max-width: 560px;
+    height: auto;
+    /* 900, not 760: header + info + progress + transport + secondary row +
+       volume add up to ~493px of chrome around the 380px artwork below —
+       873px of natural content. A 760px ceiling clipped the last ~113px
+       (secondary row's bottom edge and the whole volume control) on every
+       normal-height window, not just short ones — this cap only exists to
+       bound the card on very tall/4K screens, so it needs to clear the
+       content's own height, not undercut it. */
+    max-height: min(900px, calc(100dvh - 80px));
+    justify-content: flex-start;
+    gap: 24px;
+    border-radius: var(--radius-panel);
+    box-shadow: var(--glass-shadow-lg);
+    /* The mobile value reserves a phone's bottom safe-area chin; irrelevant
+       once the card floats clear of every physical screen edge. */
+    padding: 24px 28px 28px;
+  }
+
+  /* More content per screen than the player (bio, tracklist, albums) earns
+     more width; lyrics sits between the two. */
+  .player-screen.artist-screen {
+    max-width: 720px;
+  }
+
+  .player-screen.lyrics-screen {
+    max-width: 640px;
+  }
+
+  /* Sized off the card (min(100%, 380px)) instead of the viewport's own
+     dimensions — the base rule's calc(100dvh - 470px) assumes the player
+     screen IS the viewport, which stops being true once it's a bounded
+     card. 380, not the old 320: at the card's own 560px width, 320 left
+     wide, empty margins on both sides that read as "too narrow" rather
+     than as intentional padding. The shrink term keeps a *scaled-down*
+     version of the same idea: on a short window the 900px card cap above
+     compresses to calc(100dvh - 80px), leaving ~493px for everything
+     around the artwork (header/info/progress/transport/secondary
+     row/volume/gaps/padding) — so the artwork still has to give up room
+     below that, or the last row clips again exactly like it did at 380px
+     fixed on a merely-normal-height window. */
+  .player-screen-artwork {
+    width: min(100%, 380px, calc(100dvh - 580px));
+  }
+
+  /* Same reasoning as the artwork above — 280px (the phone-column figure)
+     left the transport's secondary row and the volume slider cramped into a
+     strip well short of the 560px card; widen both to use more of it. The
+     transport row itself stays intrinsic width (centered by the column's
+     align-items: center), so only the volume slider and the row below the
+     transport actually gain room. */
+  .player-screen-controls,
+  .player-screen-volume {
+    max-width: min(100%, 360px);
+  }
+
+  /* No longer reserving room for a dock/player-bar stack below it — on
+     desktop the dock lives in the rail beside this card, not underneath
+     it, and the card's own height is now bounded rather than filling the
+     viewport. */
+  .artist-screen-overlay:not(.artist-screen-overlay--nested) .artist-screen-body {
+    padding-bottom: 0;
+  }
+
+  /* First-run onboarding renders before .app-shell even mounts (an early
+     return in App.tsx), so it never sees the shell's own width fix above —
+     same bug as the player overlay, just for the very first frame a new
+     user sees: a 480px phone column marooned in the same dark void this
+     whole block exists to remove everywhere else. */
+  .onboarding-screen {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .onboarding-shell {
+    width: min(100%, 640px);
+    min-height: 0;
+    max-height: min(760px, calc(100dvh - 80px));
+    overflow-y: auto;
+  }
+
+  /* Example/genre chips are a one-line carousel on mobile because there's no
+     room to spare; from here up there's room, so they wrap into a grid
+     instead of hiding rows behind a horizontal scroll no one expects once a
+     nav rail is on screen. The rail-with-scrollbar treatment below stays for
+     .resume-rail/.search-artist-rail, which are genuinely single-row. */
+  .prompt-suggestions {
+    flex-wrap: wrap;
+    overflow: visible;
+    scroll-snap-type: none;
+  }
+
+  /* --- Rails: restore a mouse-usable scrollbar (hidden for the touch scroller) --- */
+  @media (hover: hover) and (pointer: fine) {
+    .resume-rail,
+    .search-artist-rail {
+      scrollbar-width: thin;
+      scrollbar-color: var(--lg-v2-track) transparent;
+      padding-bottom: 10px; /* reserve the track's height */
+    }
+
+    .resume-rail::-webkit-scrollbar,
+    .search-artist-rail::-webkit-scrollbar {
+      display: block;
+      height: 6px;
+    }
+
+    /* The scrollbar above signals scrollability once hovered; the fade signals
+       it up front, at rest, the moment content actually overflows (see
+       useScrollFade — same [data-fade-left/right] contract as .segmented). At
+       960px-max content width these rails clip mid-chip more often than the
+       full-bleed mobile viewport ever does, so a hard-clipped edge here reads
+       as a rendering bug rather than "more to scroll." */
+    .resume-rail[data-fade-left],
+    .search-artist-rail[data-fade-left] {
+      mask-image: linear-gradient(to right, transparent, #000 24px);
+      -webkit-mask-image: linear-gradient(to right, transparent, #000 24px);
+    }
+
+    .resume-rail[data-fade-right],
+    .search-artist-rail[data-fade-right] {
+      mask-image: linear-gradient(to left, transparent, #000 24px);
+      -webkit-mask-image: linear-gradient(to left, transparent, #000 24px);
+    }
+
+    .resume-rail[data-fade-left][data-fade-right],
+    .search-artist-rail[data-fade-left][data-fade-right] {
+      mask-image: linear-gradient(to right, transparent, #000 24px, #000 calc(100% - 24px), transparent);
+      -webkit-mask-image: linear-gradient(to right, transparent, #000 24px, #000 calc(100% - 24px), transparent);
+    }
+
+    .resume-rail::-webkit-scrollbar-thumb,
+    .search-artist-rail::-webkit-scrollbar-thumb {
+      background: var(--lg-v2-track);
+      border-radius: var(--radius-hair);
+    }
+  }
+}
+
+/* ============================================================================
+   PromptScreen composer split (>= 1100px)
+   ----------------------------------------------------------------------------
+   Narrower than this, .prompt-card stays the single stacked column it already
+   is above (same shape as mobile, just inside the wider rail shell) — the
+   left column below is a fixed 400px, and there isn't reliably enough room
+   next to it for a usable right column (mode body / example chips) until
+   the rail's content pane is at least ~740px, which lands here.
+   ========================================================================= */
+@media (min-width: 1100px) {
+  .app-shell:has(.prompt-card),
+  .app-shell:has(.results-panel) {
+    --desktop-content-max: var(--desktop-content-max-wide);
+  }
+
+  /* Scoped, not :root — --fs-hero also sizes the admin header (see its own
+     rule further up), which stays at the mobile size. */
+  .prompt-card {
+    --fs-hero: 42px;
+    display: grid;
+    grid-template-columns: minmax(0, 400px) minmax(0, 1fr);
+    /* The trailing 1fr row plus the 1/-1 spans below are what keep the left
+       stack packed at its own height instead of stretched by the right
+       column's content. */
+    grid-template-rows: auto auto auto 1fr;
+    column-gap: 28px;
+    row-gap: 14px;
+    align-items: start;
+    padding: 24px 22px 22px;
+    /* Same clip-not-hidden reasoning as .app-shell — .glass-surface sets
+       overflow:hidden, which would silently kill the sticky pill below. */
+    overflow: clip;
+  }
+
+  .prompt-card > .prompt-hero {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .prompt-card > .prompt-modes {
+    grid-column: 1;
+    grid-row: 2;
+    /* Overrides the base rule's align-self: stretch — the toggle is a mode
+       switch, not the composer's headline control, so it sizes to its own
+       content instead of claiming the full column width. */
+    align-self: start;
+    justify-self: start;
+  }
+
+  /* .prompt-hero-action is white-space:nowrap at 42px and the longest phrase
+     ("Чего хочет душа?") runs ~360px — don't take this column below ~400px
+     or it clips against overflow:clip above. */
+  .prompt-card > .prompt-pill {
+    grid-column: 1;
+    grid-row: 3 / -1;
+    align-self: start;
+    position: sticky;
+    top: var(--desktop-sticky-top);
+  }
+
+  .prompt-card > .prompt-body {
+    grid-column: 2;
+    grid-row: 1 / -1;
+  }
+
+  /* --- ResultsScreen: tracklist (left) / composer+actions (right) --------
+     Without this the payoff screen would be the same single column as every
+     other screen, stretched to the *wide* 1040px cap above it — 1040px of a
+     stacked tracklist is a worse reading measure than 720px, not a better
+     one. Mirrors the .prompt-card two-column pattern so the shell's own
+     width stays constant between the prompt and its payoff; only the
+     panel's internal arrangement changes. */
+  .results-panel {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
+    column-gap: 28px;
+    align-items: start;
+  }
+
+  .results-panel > .results-main {
+    min-width: 0;
+    max-width: 640px;
+  }
+
+  /* Composer + share/save/download actions travel with the viewport instead
+     of scrolling off past a long tracklist — the same reason .prompt-pill
+     is sticky in .prompt-card above. */
+  .results-panel > .results-side {
+    position: sticky;
+    top: var(--desktop-sticky-top);
+  }
 }

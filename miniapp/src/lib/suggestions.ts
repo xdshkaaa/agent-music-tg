@@ -111,13 +111,21 @@ export interface PromptFeed {
   resume: HistoryEntry[];
   /** Example prompts, personalized where possible. */
   examples: string[];
+  /** The user's own top artists, for a shortcut into their library. */
+  artists: SuggestedArtist[];
+  /** Shown only when there is nothing personal yet — see buildSearchFeed. */
+  genres: string[];
 }
 
 /** Generations with no tracks cannot render a cover, so they are not offered. */
 export function buildPromptFeed(data: SuggestionsResponse, examples: string[], limit = 6): PromptFeed {
+  const resume = data.recentGenerations.filter((g) => g.tracks.length > 0).slice(0, limit);
+  const artists = data.topArtists.slice(0, 8);
   return {
-    resume: data.recentGenerations.filter((g) => g.tracks.length > 0).slice(0, limit),
+    resume,
     examples,
+    artists,
+    genres: resume.length === 0 && artists.length === 0 ? data.genres : [],
   };
 }
 

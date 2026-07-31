@@ -3,7 +3,6 @@ import {
   CheckCircle,
   CircleNotch,
   DownloadSimple,
-  HeartStraight,
   ListPlus,
   MagnifyingGlass,
   CaretRightIcon,
@@ -12,11 +11,13 @@ import {
 } from "@phosphor-icons/react";
 import { TrackRow } from "../components/TrackRow";
 import { TrackOverflowMenu } from "../components/TrackOverflowMenu";
+import { SaveTrackButton } from "../components/SaveTrackButton";
 import { requestAddToPlaylist } from "../components/AddToPlaylistButton";
 import { api, type Album, type ArtistCard, type SuggestionsResponse, type Track } from "../lib/api";
 import { humanizeError } from "../lib/errorText";
 import { usePlayer } from "../lib/player";
 import { buildSearchFeed, isSearchFeedEmpty, loadRecentSearches, pushRecentSearch } from "../lib/suggestions";
+import { useScrollFade } from "../lib/useScrollFade";
 
 type DownloadState = { kind: "idle" } | { kind: "sending" } | { kind: "sent" } | { kind: "error"; message: string };
 
@@ -85,39 +86,10 @@ export function SearchMode({
   const [searchError, setSearchError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Record<string, AlbumState>>({});
   const [trackDownloads, setTrackDownloads] = useState<Record<string, DownloadState>>({});
-  const [savedTracks, setSavedTracks] = useState<Record<string, boolean>>({});
-  const [savingTracks, setSavingTracks] = useState<Record<string, boolean>>({});
   const [recent, setRecent] = useState<string[]>(() => loadRecentSearches());
   const requestId = useRef(0);
-
-  useEffect(() => {
-    api
-      .myMusic()
-      .then(({ tracks }) => {
-        setSavedTracks(Object.fromEntries(tracks.map((t) => [t.uri, true])));
-      })
-      .catch(() => {
-        // leave saved-state empty; toggling still works, just without prior hydration
-      });
-  }, []);
-
-  async function toggleMyMusic(track: Track) {
-    const isSaved = !!savedTracks[track.uri];
-    setSavingTracks((prev) => ({ ...prev, [track.uri]: true }));
-    try {
-      if (isSaved) {
-        await api.removeMyMusic(track.uri);
-        setSavedTracks((prev) => ({ ...prev, [track.uri]: false }));
-      } else {
-        await api.addMyMusic({ uri: track.uri, title: track.title, artist: track.artist, artwork: track.artwork });
-        setSavedTracks((prev) => ({ ...prev, [track.uri]: true }));
-      }
-    } catch {
-      // leave state unchanged on failure; user can retry
-    } finally {
-      setSavingTracks((prev) => ({ ...prev, [track.uri]: false }));
-    }
-  }
+  const artistRailRef = useRef<HTMLDivElement>(null);
+  useScrollFade(artistRailRef);
 
   const artists: (ArtistHit & { id?: string })[] = useMemo(() => {
     if (!query.trim()) return [];
@@ -247,7 +219,7 @@ export function SearchMode({
         {feed.artists.length > 0 && (
           <section className="search-section">
             <h2 className="search-section-title">Ваши исполнители</h2>
-            <div className="search-artist-rail">
+            <div className="search-artist-rail" ref={artistRailRef}>
               {feed.artists.map((artist) => (
                 <button
                   key={artist.name}
@@ -279,6 +251,7 @@ export function SearchMode({
                   title={track.title}
                   meta={track.artist}
                   metaClassName="search-row-meta"
+                  trailing={<SaveTrackButton track={track} />}
                 />
               ))}
             </div>
@@ -449,23 +422,7 @@ export function SearchMode({
                             metaClassName="search-row-meta"
                             trailing={
                               <>
-                                <button
-                                  type="button"
-                                  className="icon-btn"
-                                  aria-label={savedTracks[track.uri] ? "Убрать из моей музыки" : "Добавить в мою музыку"}
-                                  title={savedTracks[track.uri] ? "Убрать из моей музыки" : "Добавить в мою музыку"}
-                                  disabled={!!savingTracks[track.uri]}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    void toggleMyMusic(track);
-                                  }}
-                                >
-                                  <HeartStraight
-                                    size={18}
-                                    weight={savedTracks[track.uri] ? "fill" : "bold"}
-                                    style={savedTracks[track.uri] ? { color: "var(--accent)" } : undefined}
-                                  />
-                                </button>
+                                <SaveTrackButton track={track} />
                                 <TrackOverflowMenu
                                   actions={[
                                     {
@@ -510,21 +467,15 @@ export function SearchMode({
                 metaClassName="search-row-meta"
                 trailing={
                   <>
-                    {(trackDownloads[track.uri]?.kind === "sent" || savedTracks[track.uri]) && (
+                    {trackDownloads[track.uri]?.kind === "sent" && (
                       <CheckCircle size={16} weight="fill" style={{ color: "var(--accent)" }} />
                     )}
                     {trackDownloads[track.uri]?.kind === "sending" && (
                       <CircleNotch size={16} className="spin" style={{ color: "var(--text-muted)" }} />
                     )}
+                    <SaveTrackButton track={track} />
                     <TrackOverflowMenu
                       actions={[
-                        {
-                          key: "save",
-                          label: savedTracks[track.uri] ? "Убрать из моей музыки" : "Добавить в мою музыку",
-                          icon: <HeartStraight size={18} weight={savedTracks[track.uri] ? "fill" : "bold"} />,
-                          disabled: !!savingTracks[track.uri],
-                          onClick: () => void toggleMyMusic(track),
-                        },
                         {
                           key: "download",
                           label: trackDownloads[track.uri]?.kind === "sent" ? "Отправлено в чат" : "Скачать",

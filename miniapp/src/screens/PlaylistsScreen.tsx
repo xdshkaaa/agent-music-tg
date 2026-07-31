@@ -12,6 +12,7 @@ import { TrackRow } from "../components/TrackRow";
 import { TrackOverflowMenu } from "../components/TrackOverflowMenu";
 import { requestAddToPlaylist } from "../components/AddToPlaylistButton";
 import { usePlayer } from "../lib/player";
+import { useMyMusic } from "../lib/my-music";
 import { openStarsInvoice } from "../lib/telegram";
 import { shareUrlToChat } from "../lib/share";
 import {
@@ -693,10 +694,16 @@ function PlaylistDetailView({ id, onBack }: { id: number; onBack: () => void }) 
 
 export default function PlaylistsScreen({ onOpenHistory }: { onOpenHistory: (entry: HistoryEntry) => void }) {
   const player = usePlayer();
+  // The full track list (title/artist/artwork) is content this screen owns —
+  // the shared my-music store only tracks a uri->saved boolean, not enough to
+  // render this section. Removal below still routes through the store's
+  // toggleSaved so every other screen's heart updates immediately instead of
+  // only on this screen's next mount.
   const [tracks, setTracks] = useState<SavedTrack[] | null>(null);
   const [removing, setRemoving] = useState<Record<string, boolean>>({});
   const [openPlaylistId, setOpenPlaylistId] = useState<number | null>(null);
   const [trackDownloads, setTrackDownloads] = useState<Record<string, "sending" | "sent">>({});
+  const { toggleSaved } = useMyMusic();
 
   useEffect(() => {
     api.myMusic().then((r) => setTracks(r.tracks)).catch(() => setTracks([]));
@@ -707,13 +714,13 @@ export default function PlaylistsScreen({ onOpenHistory }: { onOpenHistory: (ent
     [tracks],
   );
 
-  async function handleRemove(uri: string) {
-    setRemoving((prev) => ({ ...prev, [uri]: true }));
-    try {
-      await api.removeMyMusic(uri);
-      setTracks((prev) => (prev ?? []).filter((t) => t.uri !== uri));
-    } catch {
-      setRemoving((prev) => ({ ...prev, [uri]: false }));
+  async function handleRemove(track: SavedTrack) {
+    setRemoving((prev) => ({ ...prev, [track.uri]: true }));
+    const succeeded = await toggleSaved(track);
+    if (succeeded) {
+      setTracks((prev) => (prev ?? []).filter((t) => t.uri !== track.uri));
+    } else {
+      setRemoving((prev) => ({ ...prev, [track.uri]: false }));
     }
   }
 
@@ -809,7 +816,7 @@ export default function PlaylistsScreen({ onOpenHistory }: { onOpenHistory: (ent
                           icon: <Trash size={18} />,
                           disabled: removing[track.uri],
                           destructive: true,
-                          onClick: () => void handleRemove(track.uri),
+                          onClick: () => void handleRemove(track),
                         },
                       ]}
                     />

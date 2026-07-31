@@ -32,6 +32,7 @@ cp .env.example .env
 - Admin panel via `/admin` bot command or «Админ» tab in Mini App
 - Default music backend is `youtube-music`; `soundcloud` also available — neither needs credentials
 - Group-chat keyword search («найти ...») needs bot **privacy mode disabled** in @BotFather (`/setprivacy` → Disable) to see plain text; groups already added must be removed and re-added after the change
+- Inline search (`@bot <query>` in any chat) needs `/setinline` in @BotFather to appear at all; pre-warming the audio cache in the background also needs `AUDIO_STORAGE_CHAT_ID` (a private channel, bot as admin) — without it, inline only answers from whatever's already cached
 
 ## Conventions
 

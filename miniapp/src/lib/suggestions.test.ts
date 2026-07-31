@@ -131,6 +131,31 @@ describe("buildPromptFeed", () => {
     expect(feed.resume).toEqual([]);
     expect(feed.examples).toHaveLength(1);
   });
+
+  test("offers genre chips only when there is neither a resume rail nor top artists", () => {
+    const data: SuggestionsResponse = { ...EMPTY_SUGGESTIONS, genres: ["Поп", "Рок"] };
+    expect(buildPromptFeed(data, []).genres).toEqual(["Поп", "Рок"]);
+  });
+
+  test("hides genre chips once there is a resume rail", () => {
+    const data: SuggestionsResponse = {
+      ...EMPTY_SUGGESTIONS,
+      recentGenerations: [generation(1, 3)],
+      genres: ["Поп", "Рок"],
+    };
+    expect(buildPromptFeed(data, []).genres).toEqual([]);
+  });
+
+  test("hides genre chips once there are top artists, and caps the artist list", () => {
+    const data: SuggestionsResponse = {
+      ...EMPTY_SUGGESTIONS,
+      topArtists: Array.from({ length: 12 }, (_, i) => ({ name: `A${i}`, artwork: null })),
+      genres: ["Поп", "Рок"],
+    };
+    const feed = buildPromptFeed(data, []);
+    expect(feed.artists).toHaveLength(8);
+    expect(feed.genres).toEqual([]);
+  });
 });
 
 describe("buildSearchFeed", () => {

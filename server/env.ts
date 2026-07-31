@@ -75,4 +75,12 @@ export const env = {
   // Audio downloads: yt-dlp scratch dir (files deleted after upload).
   // In-app playback proxies signed upstream URLs and does not write audio here.
   audioScratchDir: process.env.AUDIO_SCRATCH_DIR ?? "./data/audio-scratch",
+  // Private channel the bot posts to while pre-warming audio_cache for inline
+  // search (see server/audio/warm-cache.ts) — a Telegram file_id needs a chat
+  // to live in, and the querying user hasn't received anything yet to hold
+  // one. Optional: without it, inline search still answers from whatever is
+  // already cached, it just never grows the cache itself.
+  audioStorageChatId: process.env.AUDIO_STORAGE_CHAT_ID?.trim()
+    ? Number(process.env.AUDIO_STORAGE_CHAT_ID.trim())
+    : null,
 };

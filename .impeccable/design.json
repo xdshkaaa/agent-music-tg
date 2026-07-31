@@ -22,7 +22,9 @@
       { "name": "glass-transition", "value": "0.18s ease", "purpose": "Default state transitions." },
       { "name": "glass-transition-morph", "value": "0.35s cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "Layout/position morphs (dock indicator, panel resize)." }
     ],
-    "breakpoints": []
+    "breakpoints": [
+      { "name": "desktop", "min": 1100, "purpose": "Left nav rail + content pane; PromptScreen splits composer/mode body." }
+    ]
   },
   "components": [
     {

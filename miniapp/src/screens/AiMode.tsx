@@ -1,8 +1,10 @@
-import { ArrowsClockwise } from "@phosphor-icons/react";
+import { useRef } from "react";
+import { ArrowsClockwise, User } from "@phosphor-icons/react";
 import { ReasoningTranscript } from "../components/ReasoningTranscript";
 import type { HistoryEntry, SuggestionsResponse } from "../lib/api";
 import type { AgentEvent } from "../lib/reasoning";
 import { buildPromptFeed } from "../lib/suggestions";
+import { useScrollFade } from "../lib/useScrollFade";
 
 /**
  * Up to four distinct covers from the playlist, as a small mosaic. Falls back
@@ -37,6 +39,7 @@ export function AiMode({
   onRefreshExamples,
   onPickPrompt,
   onOpenGeneration,
+  onOpenArtist,
 }: {
   busy: boolean;
   events: AgentEvent[];
@@ -48,7 +51,15 @@ export function AiMode({
   onRefreshExamples: () => void;
   onPickPrompt: (prompt: string) => void;
   onOpenGeneration: (entry: HistoryEntry) => void;
+  onOpenArtist: (target: { id?: string; name?: string }) => void;
 }) {
+  const resumeRailRef = useRef<HTMLDivElement>(null);
+  const suggestionsRailRef = useRef<HTMLDivElement>(null);
+  const artistRailRef = useRef<HTMLDivElement>(null);
+  useScrollFade(resumeRailRef);
+  useScrollFade(suggestionsRailRef);
+  useScrollFade(artistRailRef);
+
   if (busy || events.length > 0) {
     return <ReasoningTranscript events={events} active={busy} friendly={!isAdmin} />;
   }
@@ -61,7 +72,7 @@ export function AiMode({
       {feed.resume.length > 0 && (
         <section className="search-section">
           <h2 className="search-section-title">Продолжить</h2>
-          <div className="resume-rail">
+          <div className="resume-rail" ref={resumeRailRef}>
             {feed.resume.map((entry) => {
               const covers = coversOf(entry);
               return (
@@ -101,7 +112,7 @@ export function AiMode({
             Ещё
           </button>
         </div>
-        <div className="prompt-suggestions" aria-live="polite">
+        <div className="prompt-suggestions" aria-live="polite" ref={suggestionsRailRef}>
           {feed.examples.map((example) => (
             <button key={example} type="button" className="prompt-suggestion" onClick={() => onPickPrompt(example)}>
               {example}
@@ -109,6 +120,43 @@ export function AiMode({
           ))}
         </div>
       </div>
+
+      {feed.artists.length > 0 && (
+        <section className="search-section">
+          <h2 className="search-section-title">Ваши исполнители</h2>
+          <div className="search-artist-rail" ref={artistRailRef}>
+            {feed.artists.map((artist) => (
+              <button
+                key={artist.name}
+                type="button"
+                className="search-artist-tile"
+                aria-label={`Открыть исполнителя ${artist.name}`}
+                onClick={() => onOpenArtist({ name: artist.name })}
+              >
+                <span className="search-artist-tile-avatar" aria-hidden>
+                  {artist.artwork ? <img src={artist.artwork} alt="" /> : <User size={22} weight="bold" />}
+                </span>
+                <span className="search-artist-tile-name">{artist.name}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {feed.genres.length > 0 && (
+        <div className="prompt-examples" aria-label="Жанры">
+          <div className="prompt-examples-head">
+            <p className="prompt-examples-label">Или по жанру</p>
+          </div>
+          <div className="prompt-suggestions">
+            {feed.genres.map((genre) => (
+              <button key={genre} type="button" className="prompt-suggestion" onClick={() => onPickPrompt(genre)}>
+                {genre}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </>
   );
 }

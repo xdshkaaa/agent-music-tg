@@ -28,6 +28,7 @@ export function createTelegramAudioSender(api: Api): AudioSender {
     performer: meta.performer,
     duration: meta.durationSeconds,
     thumbnail: await fetchThumbnail(meta.artworkUrl),
+    ...(meta.caption != null ? { caption: meta.caption, parse_mode: "HTML" as const } : {}),
     ...(meta.replyToMessageId != null
       ? { reply_parameters: { message_id: meta.replyToMessageId, allow_sending_without_reply: true } }
       : {}),
