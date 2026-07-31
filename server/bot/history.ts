@@ -3,9 +3,7 @@ import type { AppDb } from "../db";
 import { ackCallback, type BotContext } from "./context";
 import { listDownloads, getDownload, insertDownload, hasActiveDownload, type DownloadRecord } from "../audio/downloads-store";
 import { processDownload } from "../audio/deliver";
-import { createTelegramAudioSender } from "../audio/telegram-sender";
-import { YtDlpExtractor } from "../audio/extractor";
-import { env } from "../env";
+import { createRuntimeAudioDeps } from "../audio/runtime";
 import { btnText } from "./emoji";
 import { messageHint, messageTitle, statusMessage } from "./message-format";
 
@@ -111,11 +109,7 @@ async function resendDownload(ctx: BotContext, db: AppDb, chatId: number, id: nu
     record.tracks.map(({ uri, title, artist, durationMs, artwork }) => ({ uri, title, artist, durationMs, artwork })),
   );
 
-  void processDownload(db, fresh, {
-    sender: createTelegramAudioSender(ctx.api),
-    extractor: new YtDlpExtractor(),
-    scratchDir: env.audioScratchDir,
-  }).catch((e) => {
+  void processDownload(db, fresh, createRuntimeAudioDeps(ctx.api)).catch((e) => {
     console.error(`history resend job ${fresh.id} crashed:`, e);
   });
 }

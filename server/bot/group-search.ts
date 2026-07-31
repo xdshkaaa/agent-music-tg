@@ -7,9 +7,7 @@ import { searchRateLimiter, groupExtractRateLimiter } from "../lib/rate-limit";
 import { getCachedAudio } from "../audio/cache";
 import { deliverTrack, type DeliverDeps } from "../audio/deliver";
 import type { DownloadTrack } from "../audio/downloads-store";
-import { createTelegramAudioSender } from "../audio/telegram-sender";
-import { YtDlpExtractor } from "../audio/extractor";
-import { env } from "../env";
+import { createRuntimeAudioDeps } from "../audio/runtime";
 import { upsertGroupChat, markGroupLeft, bumpGroupSearch, bumpGroupTrack } from "../access/group-chats-store";
 import { escapeHtml, messageTitle, statusMessage } from "./message-format";
 import { accent } from "./emoji";
@@ -182,11 +180,7 @@ async function performGroupSearch(ctx: BotContext, db: AppDb, chatId: number, qu
       if (!cached && groupExtractRateLimiter.check(chatId)) return; // extraction pool is shared with paying users elsewhere
 
       try {
-        const deps: DeliverDeps = deliverDepsOverride ?? {
-          sender: createTelegramAudioSender(ctx.api),
-          extractor: new YtDlpExtractor(),
-          scratchDir: env.audioScratchDir,
-        };
+        const deps: DeliverDeps = deliverDepsOverride ?? createRuntimeAudioDeps(ctx.api);
         await deliverTrack(db, chatId, track, deps, { replyToMessageId, caption: trackCaption(ctx.me.username) });
         bumpGroupTrack(db, chatId);
         console.info(
