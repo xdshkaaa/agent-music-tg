@@ -6474,6 +6474,53 @@ div.player-bar-thumbnail::after {
     max-width: 720px;
   }
 
+  /* Artist pages opened from the main app belong to the content pane. The
+     full-screen overlay used to centre the 720px card against the viewport,
+     while the rail-aware mini-player centred against the content column —
+     visibly shifting the two surfaces by half the rail width. Keep nested
+     artist pages full-screen because they are opened from the full player. */
+  .artist-screen-overlay:not(.artist-screen-overlay--nested) {
+    left: var(--desktop-offset);
+    padding-inline: var(--desktop-gutter);
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .artist-screen-overlay:not(.artist-screen-overlay--nested) .artist-screen {
+    max-width: 720px;
+    background: var(--lg-v2-panel);
+    border: 1px solid var(--lg-v2-panel-border);
+    backdrop-filter: blur(var(--lg-v2-blur-panel)) saturate(var(--lg-v2-saturation));
+    -webkit-backdrop-filter: blur(var(--lg-v2-blur-panel)) saturate(var(--lg-v2-saturation));
+  }
+
+  .artist-screen-overlay:not(.artist-screen-overlay--nested) .artist-screen-head {
+    flex-direction: row;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 16px;
+    margin: 4px 8px 24px;
+  }
+
+  .artist-screen-overlay:not(.artist-screen-overlay--nested) .artist-screen-avatar {
+    width: 104px;
+    height: 104px;
+    outline: 1px solid oklch(1 0 0 / 0.1);
+  }
+
+  :root[data-scheme="light"] .artist-screen-overlay:not(.artist-screen-overlay--nested) .artist-screen-avatar {
+    outline-color: oklch(0 0 0 / 0.1);
+  }
+
+  .artist-screen-overlay:not(.artist-screen-overlay--nested) .artist-screen-identity {
+    align-items: flex-start;
+  }
+
+  .artist-screen-overlay:not(.artist-screen-overlay--nested) .artist-screen-name {
+    text-align: start;
+  }
+
   .player-screen.lyrics-screen {
     max-width: 640px;
   }
@@ -6505,12 +6552,11 @@ div.player-bar-thumbnail::after {
     max-width: min(100%, 360px);
   }
 
-  /* No longer reserving room for a dock/player-bar stack below it — on
-     desktop the dock lives in the rail beside this card, not underneath
-     it, and the card's own height is now bounded rather than filling the
-     viewport. */
+  /* The dock moved into the rail, but the fixed mini-player still overlaps
+     the content pane. Reserve its 56px height, 24px bottom inset and a small
+     breathing gap so the final track remains fully reachable. */
   .artist-screen-overlay:not(.artist-screen-overlay--nested) .artist-screen-body {
-    padding-bottom: 0;
+    padding-bottom: 96px;
   }
 
   /* First-run onboarding renders before .app-shell even mounts (an early
