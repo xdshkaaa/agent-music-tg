@@ -150,9 +150,19 @@ describe("/search", () => {
 });
 
 describe("plain text routing", () => {
-  test("is treated as an AI prompt by default", async () => {
+  test("is ignored until an action is armed via a menu button", async () => {
     await harness.bot.handleUpdate(textUpdate("грустный инди для дождя") as never);
-    expect(generateCalls).toEqual(["грустный инди для дождя"]);
+    expect(generateCalls).toHaveLength(0);
+    expect(searchCalls).toHaveLength(0);
+    expect(harness.sent()).toHaveLength(0);
+  });
+
+  test("goes to generation once armed via nav:generate", async () => {
+    await harness.bot.handleUpdate(callbackUpdate("nav:generate") as never);
+    expect(getPendingInput(harness.db, CHAT)?.kind).toBe("awaiting_prompt");
+
+    await harness.bot.handleUpdate(textUpdate("что-нибудь бодрое", 2) as never);
+    expect(generateCalls).toEqual(["что-нибудь бодрое"]);
     expect(searchCalls).toHaveLength(0);
   });
 
@@ -165,11 +175,12 @@ describe("plain text routing", () => {
     expect(generateCalls).toHaveLength(0);
   });
 
-  test("the armed state is consumed, so the next message is a prompt again", async () => {
+  test("the armed state is consumed, so a further message needs its own explicit action", async () => {
     await harness.bot.handleUpdate(callbackUpdate("nav:search") as never);
     await harness.bot.handleUpdate(textUpdate("motorama", 2) as never);
     await harness.bot.handleUpdate(textUpdate("что-нибудь бодрое", 3) as never);
-    expect(generateCalls).toEqual(["что-нибудь бодрое"]);
+    expect(generateCalls).toHaveLength(0);
+    expect(searchCalls).toEqual([{ query: "motorama", limit: 30 }]);
   });
 
   test("still ignores unknown slash commands", async () => {
