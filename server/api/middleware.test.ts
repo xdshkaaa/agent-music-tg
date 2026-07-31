@@ -12,6 +12,7 @@ const { openDb } = await import("../db");
 const { upsertUser } = await import("../access/users-store");
 const { addRequiredChannel, setSubscriptionGateEnabled } = await import("../access/channel-gate-store");
 const { requireAuth, requireSubscription } = await import("./middleware");
+const { createInlineAuthToken } = await import("../lib/inline-auth");
 
 type AppDb = ReturnType<typeof openDb>;
 
@@ -99,5 +100,21 @@ describe("requireSubscription", () => {
     setSubscriptionGateEnabled(db, true);
     const app = buildApp(db, {});
     expect((await ping(app)).status).toBe(200);
+  });
+});
+
+describe("inline Web App authentication", () => {
+  test("accepts a valid signed inline launch token when Telegram initData is absent", async () => {
+    const app = buildApp(freshDb(), {});
+    const token = createInlineAuthToken(CHAT_ID, env.telegramBotToken);
+    const res = await app.request("/ping", { headers: { "X-Inline-Auth": token } });
+    expect(res.status).toBe(200);
+  });
+
+  test("rejects a tampered inline launch token", async () => {
+    const app = buildApp(freshDb(), {});
+    const token = createInlineAuthToken(CHAT_ID, env.telegramBotToken);
+    const res = await app.request("/ping", { headers: { "X-Inline-Auth": `${token}x` } });
+    expect(res.status).toBe(401);
   });
 });

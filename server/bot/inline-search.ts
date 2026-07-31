@@ -14,6 +14,7 @@ import type { DownloadTrack } from "../audio/downloads-store";
 import { createRuntimeAudioDeps } from "../audio/runtime";
 import { env } from "../env";
 import { bumpInlineSearch, bumpInlineTrack } from "../access/inline-usage-store";
+import { createInlineAuthToken } from "../lib/inline-auth";
 
 /**
  * Inline search: "@bot <query>" typed in any chat — a DM, a group the bot was
@@ -42,10 +43,12 @@ const SEARCH_BUDGET_MS = 6_000;
 /** Keep the whole handler below Telegram's ~10s inline-answer deadline. */
 const TOTAL_ANSWER_BUDGET_MS = 9_000;
 
-function warmingButton() {
+function warmingButton(userId: number) {
+  const url = new URL(env.publicOrigin);
+  url.searchParams.set("inlineAuth", createInlineAuthToken(userId, env.telegramBotToken));
   return {
     text: "Готовлю треки — откройте приложение",
-    web_app: { url: env.publicOrigin },
+    web_app: { url: url.toString() },
   };
 }
 
@@ -150,7 +153,7 @@ export function registerInlineSearch(bot: Bot<BotContext>, db: AppDb): void {
       .answerInlineQuery(results, {
         cache_time: 0, // the answer changes as the warm-up fills audio_cache
         is_personal: false, // the cache is shared across every user, same as audio_cache itself
-        ...(unresolved.length > 0 ? { button: warmingButton() } : {}),
+        ...(unresolved.length > 0 ? { button: warmingButton(userId) } : {}),
       })
       .catch(() => {
         // query_id can expire between the search and the answer — nothing to do

@@ -60,6 +60,22 @@ export function getInitData(): string {
   return getTelegramWebApp()?.initData ?? "";
 }
 
+let inlineAuthToken: string | null | undefined;
+
+/** Signed fallback supplied only when Telegram opens the app from inline results. */
+export function getInlineAuthToken(): string {
+  if (inlineAuthToken !== undefined) return inlineAuthToken ?? "";
+  const href = window.location?.href;
+  if (!href) return (inlineAuthToken = "");
+  const url = new URL(href);
+  inlineAuthToken = url.searchParams.get("inlineAuth");
+  if (inlineAuthToken) {
+    url.searchParams.delete("inlineAuth");
+    window.history?.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+  }
+  return inlineAuthToken ?? "";
+}
+
 /** First name from signed initData's `user` payload; null outside Telegram or on parse failure. */
 export function getTelegramUserFirstName(): string | null {
   try {

@@ -1,4 +1,4 @@
-import { getInitData } from "./telegram";
+import { getInitData, getInlineAuthToken } from "./telegram";
 import type { AgentEvent } from "./reasoning";
 
 /**
@@ -21,6 +21,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers: {
       ...(isFormData ? {} : { "content-type": "application/json" }),
       "X-Telegram-Init-Data": getInitData(),
+      "X-Inline-Auth": getInlineAuthToken(),
       ...init?.headers,
     },
   });
@@ -441,6 +442,8 @@ export function streamUrl(uri: string, meta?: { title?: string; artist?: string;
   // Built by hand rather than with URLSearchParams: initData is itself a signed
   // query string, and form-encoding it (spaces as "+") would break the hash.
   let url = `/api/stream/${encodeURIComponent(uri)}?initData=${encodeURIComponent(getInitData())}`;
+  const inlineAuth = getInlineAuthToken();
+  if (inlineAuth) url += `&inlineAuth=${encodeURIComponent(inlineAuth)}`;
   if (meta?.title) url += `&title=${encodeURIComponent(meta.title)}`;
   if (meta?.artist) url += `&artist=${encodeURIComponent(meta.artist)}`;
   if (meta?.durationMs) url += `&duration=${Math.round(meta.durationMs)}`;
@@ -457,7 +460,11 @@ export type TrackVerificationStatus = "pending" | "checking" | "verified" | "una
 async function requestSSE<T>(path: string, body: unknown, onEvent: (e: AgentEvent) => void): Promise<T> {
   const res = await fetch(path, {
     method: "POST",
-    headers: { "content-type": "application/json", "X-Telegram-Init-Data": getInitData() },
+    headers: {
+      "content-type": "application/json",
+      "X-Telegram-Init-Data": getInitData(),
+      "X-Inline-Auth": getInlineAuthToken(),
+    },
     body: JSON.stringify(body),
   });
   if (!res.ok || !res.body) throw await responseError(res);

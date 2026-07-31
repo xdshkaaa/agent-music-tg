@@ -10,6 +10,7 @@ import {
 } from "../access/channel-gate-store";
 import { checkAllMemberships } from "../access/subscription-check";
 import type { AppEnv } from "./context";
+import { verifyInlineAuthToken } from "../lib/inline-auth";
 
 /**
  * Verifies initData and populates the auth context. `allowUnlisted` skips only
@@ -22,7 +23,21 @@ function authenticate(db: AppDb, allowUnlisted: boolean): MiddlewareHandler<AppE
     // initData is the same signed credential either way; verifyInitData
     // rejects tampering identically.
     const initData = c.req.header("X-Telegram-Init-Data") ?? c.req.query("initData") ?? "";
-    const verified = verifyInitData(initData, env.telegramBotToken);
+    let verified = verifyInitData(initData, env.telegramBotToken);
+    if (!verified) {
+      const inlineAuth = verifyInlineAuthToken(
+        c.req.header("X-Inline-Auth") ?? c.req.query("inlineAuth") ?? "",
+        env.telegramBotToken,
+      );
+      if (inlineAuth) {
+        verified = {
+          chatId: inlineAuth.userId,
+          user: { id: inlineAuth.userId },
+          authDate: inlineAuth.authDate,
+          startParam: null,
+        };
+      }
+    }
     if (!verified) {
       return c.json({ error: "unauthenticated" }, 401);
     }
