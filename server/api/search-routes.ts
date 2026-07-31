@@ -9,6 +9,21 @@ import { searchRateLimiter } from "../lib/rate-limit";
 import type { AudioDeps } from "./audio-routes";
 import { enqueueWarmTracks } from "../audio/warm-queue";
 import { env } from "../env";
+import type { Track } from "../music/types";
+import type { StreamResolver } from "../audio/stream-resolver";
+
+/**
+ * Plain search does not pass through the generation verifier, so without this
+ * the first tap has to wait for a fresh yt-dlp process before the CDN request
+ * can even begin. Start the most likely taps while the JSON response is being
+ * delivered; the resolver coalesces this with a simultaneous /stream request.
+ */
+export function prewarmPlayback(tracks: Track[], resolver?: StreamResolver, count = 2): void {
+  if (!resolver) return;
+  for (const track of tracks.slice(0, count)) {
+    void resolver.resolve(track.uri).catch(() => {});
+  }
+}
 
 /**
  * Shared guard for every plain-search endpoint: rate-limits the caller, then
@@ -50,7 +65,10 @@ export function createSearchRoutes(db: AppDb, audio?: AudioDeps): Hono<AppEnv> {
           }),
         ]);
         const response = c.json({ tracks, artists });
-        if (audio) enqueueWarmTracks(db, tracks, audio, env.audioStorageChatId, 1);
+        if (audio) {
+          prewarmPlayback(tracks, audio.streamResolver);
+          enqueueWarmTracks(db, tracks, audio, env.audioStorageChatId, 1);
+        }
         return response;
       } catch (e) {
         console.error("[search]", e);
@@ -93,7 +111,7 @@ export function createSearchRoutes(db: AppDb, audio?: AudioDeps): Hono<AppEnv> {
         ]);
         // Prefer the real artist avatar; fall back to borrowing a track/album cover.
         const artwork = details?.artwork ?? topTracks[0]?.artwork ?? albums[0]?.artwork;
-        return c.json({
+        const response = c.json({
           id: artistId,
           name: artistName || details?.name || topTracks[0]?.artist || "",
           artwork,
@@ -102,6 +120,8 @@ export function createSearchRoutes(db: AppDb, audio?: AudioDeps): Hono<AppEnv> {
           topTracks,
           albums,
         });
+        prewarmPlayback(topTracks, audio?.streamResolver);
+        return response;
       } catch (e) {
         console.error("[artist]", e);
         return c.json({ error: "artist lookup failed" }, 502);
@@ -139,7 +159,9 @@ export function createSearchRoutes(db: AppDb, audio?: AudioDeps): Hono<AppEnv> {
       if (id.startsWith("album:")) id = id.slice("album:".length);
       try {
         const tracks = await music.getAlbumTracks(id, limit);
-        return c.json({ tracks });
+        const response = c.json({ tracks });
+        prewarmPlayback(tracks, audio?.streamResolver);
+        return response;
       } catch (e) {
         console.error("[search/album-tracks]", e);
         return c.json({ error: "album tracks failed" }, 502);
