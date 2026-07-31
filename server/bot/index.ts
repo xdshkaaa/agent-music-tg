@@ -400,17 +400,19 @@ export function createBot(db: AppDb): Bot<BotContext> {
     // Admin multi-step flows (add offer / broadcast / settings) consume text first.
     if (await handleAdminText(ctx, db, send)) return;
 
-    // A menu button may have armed the next message as a search query or a
-    // prompt; otherwise plain text is treated as a generation request, which is
-    // what a user typing into a music bot almost always means.
+    // Plain text only does something once a menu button armed the next message
+    // as a search query or an AI prompt — unarmed text is ignored rather than
+    // guessed at, so a stray message never kicks off an unwanted generation.
     const pending = getPendingInput(db, chatId);
     if (pending?.kind === "awaiting_search") {
       clearSession(db, chatId);
       await performSearch(ctx, db, text);
       return;
     }
-    clearSession(db, chatId);
-    await performGeneration(ctx, db, text);
+    if (pending?.kind === "awaiting_prompt") {
+      clearSession(db, chatId);
+      await performGeneration(ctx, db, text);
+    }
   });
 
   return bot;

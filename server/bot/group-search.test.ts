@@ -57,7 +57,7 @@ const {
 const { getCachedAudio, setCachedAudio } = await import("../audio/cache");
 const { getGroupStats, getGroupChat } = await import("../access/group-chats-store");
 const { countUsers } = await import("../access/users-store");
-const { getPendingInput } = await import("./session");
+const { getPendingInput, setPendingInput } = await import("./session");
 import type { Extractor } from "../audio/extractor";
 import type { AudioMeta, AudioSender } from "../audio/deliver";
 
@@ -359,8 +359,9 @@ describe("isolation from private-chat state", () => {
     expect(getPendingInput(harness.db, GROUP_CHAT)).toBeNull();
   });
 
-  test("a private message is unaffected and still reaches generation", async () => {
+  test("a private message is unaffected and still reaches generation once armed", async () => {
     harness.db.run("INSERT INTO allowlist (chat_id, is_admin) VALUES (?, 0)", [PRIVATE_CHAT]);
+    setPendingInput(harness.db, PRIVATE_CHAT, "awaiting_prompt");
     await harness.bot.handleUpdate(privateTextUpdate("собери плейлист про дождь", 1) as never);
     expect(generateCalls).toEqual(["собери плейлист про дождь"]);
     expect(countUsers(harness.db)).toBe(1);
