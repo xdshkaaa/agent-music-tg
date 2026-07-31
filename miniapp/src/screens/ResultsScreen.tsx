@@ -272,33 +272,33 @@ export function ResultsScreen({
             style={{ ["--i" as string]: i }}
             onClick={() => handleTrackClick(track)}
             artwork={track.artwork}
+            artworkBadge={verificationIcon(track.uri)}
             title={track.title}
             meta={track.artist}
             trailing={
               <>
-                {verificationIcon(track.uri)}
                 <SaveTrackButton track={track} />
-                <button
-                  type="button"
-                  className="icon-btn track-download-btn"
-                  aria-label={trackDownloads[track.uri]?.kind === "sent" ? "Отправлено в чат" : "Скачать в чат"}
-                  title={trackDownloads[track.uri]?.kind === "sent" ? "Отправлено в чат" : "Скачать в чат"}
-                  disabled={trackDownloads[track.uri]?.kind === "sending"}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void handleTrackDownload(track);
-                  }}
-                >
-                  {trackDownloads[track.uri]?.kind === "sending" ? (
-                    <CircleNotch size={18} className="spin" />
-                  ) : trackDownloads[track.uri]?.kind === "sent" ? (
-                    <CheckCircle size={18} weight="fill" />
-                  ) : (
-                    <DownloadSimple size={18} />
-                  )}
-                </button>
                 <TrackOverflowMenu
                   actions={[
+                    {
+                      key: "download",
+                      label:
+                        trackDownloads[track.uri]?.kind === "sending"
+                          ? "Отправляем в чат…"
+                          : trackDownloads[track.uri]?.kind === "sent"
+                            ? "Отправить повторно"
+                            : "Скачать в чат",
+                      icon:
+                        trackDownloads[track.uri]?.kind === "sending" ? (
+                          <CircleNotch size={18} className="spin" />
+                        ) : trackDownloads[track.uri]?.kind === "sent" ? (
+                          <CheckCircle size={18} weight="fill" />
+                        ) : (
+                          <DownloadSimple size={18} />
+                        ),
+                      disabled: trackDownloads[track.uri]?.kind === "sending",
+                      onClick: () => void handleTrackDownload(track),
+                    },
                     {
                       key: "add-to-playlist",
                       label: "Добавить в плейлист",
