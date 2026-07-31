@@ -87,7 +87,7 @@ describe("extractor uri handling", () => {
   });
 
   test("maps uris to source urls and rejects invalid ones", () => {
-    expect(sourceUrlForUri("ytm:abc-123")).toBe("https://music.youtube.com/watch?v=abc-123");
+    expect(sourceUrlForUri("ytm:abc-123")).toBe("https://www.youtube.com/watch?v=abc-123");
     expect(sourceUrlForUri("sc:42")).toBe("https://api.soundcloud.com/tracks/42");
     expect(() => sourceUrlForUri("ftp:nope")).toThrow();
   });

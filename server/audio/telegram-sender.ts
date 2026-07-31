@@ -1,24 +1,18 @@
 import { InputFile, type Api } from "grammy";
 import type { AudioMeta, AudioSender } from "./deliver";
-
-const THUMBNAIL_FETCH_TIMEOUT_MS = 5_000;
+import { fetchThumbnailBytes } from "./thumbnail";
 
 /**
  * Telegram doesn't derive the audio thumbnail from embedded ID3 art — it
- * needs an explicit `thumbnail` upload. Fetches the track's artwork so it can
- * be attached; returns undefined (never throws) if that fails, so a slow or
- * dead artwork URL never blocks the audio itself from sending.
+ * needs an explicit `thumbnail` upload. `meta.artworkBytes`, when present, is
+ * a fetch deliver.ts already started alongside extraction (so by the time
+ * sendAudio needs it, it has usually already resolved); otherwise falls back
+ * to fetching `artworkUrl` fresh here, e.g. on the cache-hit path, which has
+ * no extraction step to overlap the fetch with.
  */
-async function fetchThumbnail(url: string | undefined): Promise<InputFile | undefined> {
-  if (!url) return undefined;
-  try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(THUMBNAIL_FETCH_TIMEOUT_MS) });
-    if (!res.ok) return undefined;
-    const bytes = new Uint8Array(await res.arrayBuffer());
-    return new InputFile(bytes);
-  } catch {
-    return undefined;
-  }
+async function resolveThumbnail(meta: AudioMeta): Promise<InputFile | undefined> {
+  const bytes = meta.artworkBytes ? await meta.artworkBytes : await fetchThumbnailBytes(meta.artworkUrl);
+  return bytes ? new InputFile(bytes) : undefined;
 }
 
 /** grammY-backed AudioSender used in production (see deliver.ts for the seam). */
@@ -27,7 +21,7 @@ export function createTelegramAudioSender(api: Api): AudioSender {
     title: meta.title,
     performer: meta.performer,
     duration: meta.durationSeconds,
-    thumbnail: await fetchThumbnail(meta.artworkUrl),
+    thumbnail: await resolveThumbnail(meta),
     ...(meta.caption != null ? { caption: meta.caption, parse_mode: "HTML" as const } : {}),
     ...(meta.replyToMessageId != null
       ? { reply_parameters: { message_id: meta.replyToMessageId, allow_sending_without_reply: true } }

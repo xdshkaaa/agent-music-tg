@@ -7,6 +7,7 @@ import { getAlternate, setAlternate } from "./alternates-store";
 import { detailBlock, escapeHtml, messageTitle } from "../bot/message-format";
 import { mapWithConcurrency } from "../core/concurrency";
 import { extractionSemaphore } from "./ytdlp-limits";
+import { fetchThumbnailBytes } from "./thumbnail";
 import {
   finalStatusFor,
   setDownloadStatus,
@@ -23,6 +24,13 @@ export interface AudioMeta {
   performer: string;
   durationSeconds?: number;
   artworkUrl?: string;
+  /**
+   * Artwork fetch kicked off alongside extraction (see extractUploadCache
+   * below), instead of telegram-sender.ts fetching it serially right before
+   * sendAudio — by upload time it has usually already resolved. Falls back
+   * to fetching `artworkUrl` fresh when absent.
+   */
+  artworkBytes?: Promise<Uint8Array | undefined>;
   /** Replies to a specific message instead of posting standalone (group keyword search). */
   replyToMessageId?: number;
   /** HTML caption shown under the audio (group keyword search only). */
@@ -69,20 +77,33 @@ function metaFor(track: DownloadTrack, measuredSeconds?: number, extra?: Partial
  * platform when its own source has none — a pulled video or dead SoundCloud
  * id should cost the user a slightly different master, not a missing track.
  * A working substitution is remembered for playback too.
+ *
+ * `semWaitMs` is measured separately from the extraction itself: it's the
+ * time spent queued for a free extractionSemaphore slot (shared with every
+ * other download in flight), which is a different cost than yt-dlp's own
+ * runtime and only visible at this call site.
  */
 async function extractWithFallback(
   db: AppDb,
   track: DownloadTrack,
   deps: DeliverDeps,
-): Promise<ExtractedAudio> {
+): Promise<ExtractedAudio & { semWaitMs: number }> {
   const source = getAlternate(db, track.uri) ?? track.uri;
+  const run = (uri: string) => {
+    const waitStart = performance.now();
+    return extractionSemaphore.run(async () => {
+      const semWaitMs = performance.now() - waitStart;
+      const extracted = await deps.extractor.extract(uri, deps.scratchDir);
+      return { ...extracted, semWaitMs };
+    });
+  };
   try {
-    return await extractionSemaphore.run(() => deps.extractor.extract(source, deps.scratchDir));
+    return await run(source);
   } catch (e) {
     const meta = { title: track.title, artist: track.artist, durationMs: track.durationMs };
     const altUri = await (deps.alternateFinder ?? alternateFinder).find(track.uri, meta, { exclude: [source] });
     if (!altUri) throw e;
-    const extracted = await extractionSemaphore.run(() => deps.extractor.extract(altUri, deps.scratchDir));
+    const extracted = await run(altUri);
     setAlternate(db, track.uri, altUri, meta);
     console.info(`[download] ${track.uri} unextractable, used ${altUri} instead`);
     return extracted;
@@ -96,12 +117,29 @@ async function extractUploadCache(
   deps: DeliverDeps,
   extraMeta?: Partial<AudioMeta>,
 ): Promise<void> {
-  const { filePath, sizeBytes, durationSeconds } = await extractWithFallback(db, track, deps);
+  // Started alongside extraction, not after it, so its latency overlaps
+  // extraction instead of adding to it (see telegram-sender.ts).
+  const artworkBytes = track.artwork ? fetchThumbnailBytes(track.artwork) : undefined;
+
+  const extractStart = performance.now();
+  const { filePath, sizeBytes, durationSeconds, semWaitMs, ytdlpMs, probeMs } = await extractWithFallback(db, track, deps);
+  const extractMs = performance.now() - extractStart;
   try {
     if (sizeBytes > MAX_UPLOAD_BYTES) {
       throw new Error(`file too large for Telegram (${Math.round(sizeBytes / 1024 / 1024)} MB > 50 MB)`);
     }
-    const fileId = await deps.sender.sendAudioFile(chatId, filePath, metaFor(track, durationSeconds, extraMeta));
+    const uploadStart = performance.now();
+    const fileId = await deps.sender.sendAudioFile(
+      chatId,
+      filePath,
+      metaFor(track, durationSeconds, { artworkBytes, ...extraMeta }),
+    );
+    const uploadMs = performance.now() - uploadStart;
+    console.info(
+      `[deliver] ${track.uri} extract=${Math.round(extractMs)}ms ` +
+        `(semwait=${Math.round(semWaitMs)}ms ytdlp=${Math.round(ytdlpMs ?? 0)}ms probe=${Math.round(probeMs ?? 0)}ms) ` +
+        `upload=${Math.round(uploadMs)}ms size=${(sizeBytes / 1024 / 1024).toFixed(1)}MB`,
+    );
     // The measured length is cached alongside the file_id so every later
     // re-send — which never touches the file again — is labelled with it too.
     setCachedAudio(db, {
