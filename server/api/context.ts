@@ -20,4 +20,6 @@ export interface ApiDeps {
   createStarsInvoiceLink?: (args: { title: string; description: string; payload: string; starsAmount: number }) => Promise<string>;
   /** Audio download-to-chat + streaming; absent in tests that don't exercise it. */
   audio?: AudioDeps;
+  /** Checks channel membership; enables the Mini App subscription gate. Absent in tests that don't exercise it. */
+  getChatMember?: (channelId: number, chatId: number) => Promise<{ status: string }>;
 }

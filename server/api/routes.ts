@@ -1,7 +1,7 @@
 import { Hono, type MiddlewareHandler } from "hono";
 import type { AppDb } from "../db";
 import type { AppEnv, ApiDeps } from "./context";
-import { requireAuth, requireAuthAllowUnlisted } from "./middleware";
+import { requireAuth, requireAuthAllowUnlisted, requireSubscription } from "./middleware";
 import { upsertUser } from "../access/users-store";
 import { alertNewUser } from "../payments/alerts";
 import { createAudioRoutes } from "./audio-routes";
@@ -13,6 +13,7 @@ import { createAdminRoutes } from "./admin-routes";
 import { createGenerationRoutes } from "./generation-routes";
 import { createFeedbackRoutes } from "./feedback-routes";
 import { createShareRoutes, createPublicShareRoutes } from "./share-routes";
+import { createSubscriptionRoutes } from "./subscription-routes";
 import { parseShareToken } from "../access/share-link";
 import { getShare } from "../access/shares-store";
 import { applyReferral } from "../access/referral-store";
@@ -62,6 +63,11 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
 
   app.use("*", requireAuth(db));
   app.use("*", recordCaller);
+
+  // Subscription recheck must be reachable while the user is gated — register
+  // it before the subscription gate middleware.
+  app.route("/", createSubscriptionRoutes(db, deps));
+  app.use("*", requireSubscription(db, deps));
 
   app.route("/", createShareRoutes(db));
   app.route("/", createMeRoutes(db));
