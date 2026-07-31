@@ -74,7 +74,7 @@
 
   /* Desktop shell (>= 840px) only — consumed by the appended desktop block
      at the end of this file. @media can't read custom properties, so the
-     840px (and the composer split's own 1100px) breakpoints are literals
+     840px (and the composer split's own 1000px) breakpoints are literals
      there, not one of these. */
   --desktop-rail-w: 264px;           /* nav rail: top bar + vertical dock */
   --desktop-gap: 28px;               /* rail <-> content gutter */
@@ -1363,7 +1363,7 @@ h1 {
   color: var(--text-muted-light);
 }
 
-/* Desktop (>= 1100px) turns this into a 2-column grid (composer left, mode
+/* Desktop (>= 1000px) turns this into a 2-column grid (composer left, mode
    body right) and switches overflow to clip — see the desktop block at the
    end of this file. */
 .prompt-card {
@@ -6242,9 +6242,9 @@ div.player-bar-thumbnail::after {
    narrower than the 480px mobile column it replaces.
 
    PromptScreen's composer (left) / mode body (right) split needs more room
-   than that — its own fixed 400px left column only leaves a usable right
-   column once the content pane hits ~740px — so it stays gated behind a
-   separate, higher 1100px query below instead of this one; until then
+   than that — its fluid left column and 280px right-column floor fit once the
+   content pane reaches ~640px — so it stays gated behind a separate, higher
+   1000px query below instead of this one; until then
    .prompt-card just stays the single stacked column it already is on mobile.
 
    Kept as one appended block for two reasons: every shell override below is a
@@ -6388,7 +6388,13 @@ div.player-bar-thumbnail::after {
     right: 0;
     margin-inline: auto;
     max-width: 560px;
-    width: min(100%, 560px);
+    /* Fixed-position percentages resolve against the viewport, not the grid
+       column. Account for the rail and both shell gutters so the bar cannot
+       overflow the content pane at the 840px desktop breakpoint. */
+    width: min(
+      560px,
+      calc(100% - var(--desktop-offset) - var(--desktop-gutter) - var(--desktop-gutter))
+    );
     bottom: 24px;
   }
 
@@ -6584,15 +6590,14 @@ div.player-bar-thumbnail::after {
 }
 
 /* ============================================================================
-   PromptScreen composer split (>= 1100px)
+   PromptScreen composer split (>= 1000px)
    ----------------------------------------------------------------------------
    Narrower than this, .prompt-card stays the single stacked column it already
-   is above (same shape as mobile, just inside the wider rail shell) — the
-   left column below is a fixed 400px, and there isn't reliably enough room
-   next to it for a usable right column (mode body / example chips) until
-   the rail's content pane is at least ~740px, which lands here.
+   is above (same shape as mobile, just inside the wider rail shell). At this
+   breakpoint the content pane is ~644px wide, enough for a fluid 300–400px
+   composer column and a usable 280px mode-body column beside it.
    ========================================================================= */
-@media (min-width: 1100px) {
+@media (min-width: 1000px) {
   .app-shell:has(.prompt-card),
   .app-shell:has(.results-panel) {
     --desktop-content-max: var(--desktop-content-max-wide);
@@ -6601,14 +6606,14 @@ div.player-bar-thumbnail::after {
   /* Scoped, not :root — --fs-hero also sizes the admin header (see its own
      rule further up), which stays at the mobile size. */
   .prompt-card {
-    --fs-hero: 42px;
+    --fs-hero: clamp(34px, 3.5vw, 42px);
     display: grid;
-    grid-template-columns: minmax(0, 400px) minmax(0, 1fr);
+    grid-template-columns: minmax(300px, 400px) minmax(280px, 1fr);
     /* The trailing 1fr row plus the 1/-1 spans below are what keep the left
        stack packed at its own height instead of stretched by the right
        column's content. */
     grid-template-rows: auto auto auto 1fr;
-    column-gap: 28px;
+    column-gap: 24px;
     row-gap: 14px;
     align-items: start;
     padding: 24px 22px 22px;
@@ -6632,9 +6637,8 @@ div.player-bar-thumbnail::after {
     justify-self: start;
   }
 
-  /* .prompt-hero-action is white-space:nowrap at 42px and the longest phrase
-     ("Чего хочет душа?") runs ~360px — don't take this column below ~400px
-     or it clips against overflow:clip above. */
+  /* The fluid hero size keeps the longest non-wrapping phrase inside the
+     first column while that column grows from ~340px to its 400px cap. */
   .prompt-card > .prompt-pill {
     grid-column: 1;
     grid-row: 3 / -1;
