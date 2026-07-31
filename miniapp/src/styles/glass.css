@@ -6724,6 +6724,65 @@ div.player-bar-thumbnail::after {
   .prompt-card > .prompt-body {
     grid-column: 2;
     grid-row: 1 / -1;
+    min-height: 320px;
+  }
+
+  /* On a phone, prompt ideas are compact chips because vertical space is the
+     scarce dimension. A desktop has the opposite shape: leaving those same
+     chips in one short row makes the whole workspace look unfinished. Turn
+     the always-available starter prompts into a small idea board instead.
+     The first card is the leading suggestion; the remaining four form a
+     balanced two-column grid and stay useful even for a brand-new account
+     with no listening history yet. */
+  .prompt-starters {
+    gap: 10px;
+  }
+
+  .prompt-starters .prompt-examples-label {
+    font-size: var(--fs-label);
+    color: var(--text-dark);
+  }
+
+  :root[data-scheme="light"] .prompt-starters .prompt-examples-label {
+    color: var(--text-light);
+  }
+
+  .prompt-starters .prompt-suggestions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    padding: 0;
+  }
+
+  .prompt-starters .prompt-suggestion {
+    position: relative;
+    display: flex;
+    align-items: flex-end;
+    width: 100%;
+    min-height: 82px;
+    padding: 16px;
+    overflow: hidden;
+    border-radius: var(--radius-surface);
+    text-align: start;
+    white-space: normal;
+    line-height: 1.35;
+    text-wrap: balance;
+  }
+
+  .prompt-starters .prompt-suggestion:first-child {
+    grid-column: 1 / -1;
+    min-height: 104px;
+    padding-inline-end: 28%;
+    border-color: color-mix(in srgb, var(--accent) 28%, var(--lg-v2-chip-border));
+    background:
+      radial-gradient(circle at 88% 18%, color-mix(in srgb, var(--accent) 28%, transparent), transparent 34%),
+      color-mix(in srgb, var(--accent) 8%, var(--lg-v2-chip));
+  }
+
+  @media (hover: hover) {
+    .prompt-starters .prompt-suggestion:hover {
+      transform: translateY(-2px);
+    }
   }
 
   /* --- ResultsScreen: tracklist (left) / composer+actions (right) --------

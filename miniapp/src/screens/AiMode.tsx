@@ -99,7 +99,7 @@ export function AiMode({
         </section>
       )}
 
-      <div className="prompt-examples" aria-label="Примеры запросов">
+      <div className="prompt-examples prompt-starters" aria-label="Примеры запросов">
         <div className="prompt-examples-head">
           <p className="prompt-examples-label">Можно начать так</p>
           <button
