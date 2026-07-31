@@ -21,6 +21,7 @@ export function TrackRow({
   title,
   meta,
   metaClassName = "fs-label",
+  artworkBadge,
   trailing,
   ariaExpanded,
 }: {
@@ -32,23 +33,27 @@ export function TrackRow({
   title: ReactNode;
   meta: ReactNode;
   metaClassName?: string;
+  artworkBadge?: ReactNode;
   trailing?: ReactNode;
   ariaExpanded?: boolean;
 }) {
   const body = (
     <>
-      {artwork ? (
-        <img
-          className="track-artwork"
-          src={artworkUrl(artwork, ARTWORK_ROW)}
-          alt=""
-          loading="lazy"
-          decoding="async"
-        />
-      ) : (
-        <div className={fallbackIcon ? "track-artwork track-artwork--icon" : "track-artwork"}>{fallbackIcon}</div>
-      )}
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div className="track-artwork-wrap">
+        {artwork ? (
+          <img
+            className="track-artwork"
+            src={artworkUrl(artwork, ARTWORK_ROW)}
+            alt=""
+            loading="lazy"
+            decoding="async"
+          />
+        ) : (
+          <div className={fallbackIcon ? "track-artwork track-artwork--icon" : "track-artwork"}>{fallbackIcon}</div>
+        )}
+        {artworkBadge && <span className="track-artwork-badge">{artworkBadge}</span>}
+      </div>
+      <div className="track-row-copy">
         <p className="search-row-title">{title}</p>
         <p className={`text-muted ${metaClassName}`}>{meta}</p>
       </div>
