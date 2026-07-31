@@ -147,6 +147,12 @@ async function probeFileDuration(filePath: string): Promise<number | undefined> 
 /**
  * Extracts a track's audio as mp3 into targetDir via a yt-dlp subprocess.
  * 192k keeps typical songs a few MB — far under the Bot API 50 MB limit.
+ *
+ * No `--embed-thumbnail`/`--embed-metadata`: telegram-sender.ts already sends
+ * title/performer/duration/thumbnail as explicit sendAudio params, and the
+ * extracted file is deleted right after upload (deliver.ts) — nothing ever
+ * reads its ID3 tags. Embedding cost a thumbnail download plus an extra
+ * ffmpeg mux pass on every cache-miss track for no one.
  */
 export class YtDlpExtractor implements Extractor {
   async extract(uri: string, targetDir: string): Promise<ExtractedAudio> {
@@ -164,9 +170,6 @@ export class YtDlpExtractor implements Extractor {
         "-x",
         "--audio-format", "mp3",
         "--audio-quality", "192K",
-        "--embed-thumbnail",
-        "--embed-metadata",
-        "--convert-thumbnails", "jpg",
         "-o", filePath.replace(/\.mp3$/, ".%(ext)s"),
         url,
       ],
