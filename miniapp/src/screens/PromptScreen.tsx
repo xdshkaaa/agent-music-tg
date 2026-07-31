@@ -163,11 +163,6 @@ export function PromptScreen({
           </span>
           {heroDisplay.slice(heroPhrase.before.length + heroPhrase.accent.length)}
         </button>
-        <p className="prompt-hero-copy">
-          {mode === "ai"
-            ? "Опишите настроение или занятие. Получите готовую подборку реальных треков, которую можно сразу слушать и сохранять."
-            : "Введите трек, исполнителя или альбом и сразу включайте."}
-        </p>
       </div>
 
       <div className="prompt-modes" role="group" aria-label="Режим">

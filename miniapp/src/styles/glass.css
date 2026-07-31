@@ -1349,20 +1349,6 @@ h1 {
   color: var(--accent);
 }
 
-.prompt-hero-copy {
-  max-width: 38ch;
-  margin: 10px 0 0;
-  color: var(--text-muted-dark);
-  font-size: var(--fs-label);
-  font-weight: 500;
-  line-height: 1.48;
-  text-wrap: pretty;
-}
-
-:root[data-scheme="light"] .prompt-hero-copy {
-  color: var(--text-muted-light);
-}
-
 /* Desktop (>= 1000px) turns this into a 2-column grid (composer left, mode
    body right) and switches overflow to clip — see the desktop block at the
    end of this file. */
