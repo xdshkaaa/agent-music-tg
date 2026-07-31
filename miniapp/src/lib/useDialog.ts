@@ -5,20 +5,37 @@ const FOCUSABLE_SELECTOR =
 
 // Overlays (bottom sheets, the full-screen player/artist/lyrics screens) mount
 // as siblings of `.app-shell` in App.tsx, not children of it, so there is no
-// prop path to hand it a ref. A depth counter lets nested overlays (artist
-// opened from the player, lyrics opened from the player) layer correctly:
-// the inner one unmounting must not lift `inert` while the outer is still open.
-let inertDepth = 0;
+// prop path to hand it a ref. A depth counter (per inert target, not global —
+// see below) lets nested overlays (artist opened from the player, lyrics
+// opened from the player) layer correctly: the inner one unmounting must not
+// lift `inert` while the outer is still open.
+//
+// `inertScope` picks *what* goes inert:
+// - "shell" (default): the whole `.app-shell` — top bar, dock and player bar
+//   all go dead. Right for anything that should read as fully modal.
+// - "content": only `.screen-stack` (the screen content, not the chrome
+//   around it) — used by the non-nested artist screen so the dock/top-bar/
+//   player-bar stay reachable while it's open, per its own z-index comment.
+// Keyed by resolved element (not a single counter) so a "content"-scoped and
+// a "shell"-scoped overlay open at once don't stomp each other's depth.
+const inertDepths = new Map<HTMLElement, number>();
 
-function setBackgroundInert(inert: boolean) {
-  const root = document.querySelector<HTMLElement>(".app-shell");
+function resolveInertTarget(scope: "shell" | "content"): HTMLElement | null {
+  const selector = scope === "content" ? ".screen-stack" : ".app-shell";
+  return document.querySelector<HTMLElement>(selector);
+}
+
+function setBackgroundInert(inert: boolean, scope: "shell" | "content") {
+  const root = resolveInertTarget(scope);
   if (!root) return;
+  const depth = inertDepths.get(root) ?? 0;
   if (inert) {
-    inertDepth += 1;
+    inertDepths.set(root, depth + 1);
     root.setAttribute("inert", "");
   } else {
-    inertDepth = Math.max(0, inertDepth - 1);
-    if (inertDepth === 0) root.removeAttribute("inert");
+    const next = Math.max(0, depth - 1);
+    inertDepths.set(root, next);
+    if (next === 0) root.removeAttribute("inert");
   }
 }
 
@@ -38,21 +55,33 @@ function setBackgroundInert(inert: boolean) {
  * container itself, as a fallback, so overlays with no focusable content are
  * still reachable and dismissible). Tab wraps within the container; Escape
  * and going inactive both restore focus to the trigger.
+ *
+ * `inertScope` (default "shell") controls how much of the background goes
+ * inert — see the comment above `inertDepths`. Pass "content" for an overlay
+ * that should leave the dock/top-bar/player-bar reachable.
  */
-export function useDialog<T extends HTMLElement>(active: boolean, onClose: () => void): RefObject<T> {
+export function useDialog<T extends HTMLElement>(
+  active: boolean,
+  onClose: () => void,
+  options?: { inertScope?: "shell" | "content" },
+): RefObject<T> {
   const ref = useRef<T>(null);
+  const inertScope = options?.inertScope ?? "shell";
   // Kept in a ref so the effect (which must not re-run except on active's
   // edges, to avoid re-trapping focus on every render) always calls the
-  // latest onClose.
+  // latest onClose / inertScope.
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const inertScopeRef = useRef(inertScope);
+  inertScopeRef.current = inertScope;
 
   useEffect(() => {
     if (!active) return;
     const container = ref.current;
     const previouslyFocused = document.activeElement as HTMLElement | null;
+    const scope = inertScopeRef.current;
 
-    setBackgroundInert(true);
+    setBackgroundInert(true, scope);
 
     if (container && !container.hasAttribute("tabindex")) {
       container.tabIndex = -1;
@@ -92,7 +121,7 @@ export function useDialog<T extends HTMLElement>(active: boolean, onClose: () =>
 
     return () => {
       document.removeEventListener("keydown", onKeyDown);
-      setBackgroundInert(false);
+      setBackgroundInert(false, scope);
       previouslyFocused?.focus?.({ preventScroll: true });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

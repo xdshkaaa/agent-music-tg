@@ -12,6 +12,10 @@ interface TelegramWebApp {
   themeParams: Record<string, string>;
   ready(): void;
   expand(): void;
+  requestFullscreen?(): void;
+  exitFullscreen?(): void;
+  disableVerticalSwipes?(): void;
+  enableVerticalSwipes?(): void;
   onEvent(event: string, handler: () => void): void;
   offEvent?(event: string, handler: () => void): void;
   openLink(url: string): void;
@@ -32,6 +36,24 @@ declare global {
 
 export function getTelegramWebApp(): TelegramWebApp | null {
   return window.Telegram?.WebApp ?? null;
+}
+
+/**
+ * Runs a Bot-API-version-gated WebApp call (requestFullscreen,
+ * disableVerticalSwipes, ...) without risking the whole app. The `?.()`
+ * pattern only guards against the method being *absent*; on the real
+ * WebView SDK these methods exist on every client but *throw*
+ * `WebAppMethodUnsupported` synchronously when the client's Bot API version
+ * doesn't support them yet — uncaught, that unmounts the whole React tree.
+ * Takes a thunk (not the bare method) so the call stays bound to `webApp`
+ * — the real SDK's version check reads `this` internally.
+ */
+export function callIfSupported(call: () => void): void {
+  try {
+    call();
+  } catch {
+    // Unsupported on this client's Bot API version — ignore.
+  }
 }
 
 export function getInitData(): string {

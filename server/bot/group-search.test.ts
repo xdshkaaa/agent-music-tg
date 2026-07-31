@@ -59,7 +59,7 @@ const { getGroupStats, getGroupChat } = await import("../access/group-chats-stor
 const { countUsers } = await import("../access/users-store");
 const { getPendingInput } = await import("./session");
 import type { Extractor } from "../audio/extractor";
-import type { AudioSender } from "../audio/deliver";
+import type { AudioMeta, AudioSender } from "../audio/deliver";
 
 const GROUP_CHAT = -100123456;
 const PRIVATE_CHAT = 555;
@@ -96,17 +96,20 @@ function fakeExtractor(opts: { failUris?: string[]; gate?: Promise<void> } = {})
   };
 }
 
-function fakeSender(): { sender: AudioSender; sent: { kind: "file_id" | "upload" | "text"; value: string }[] } {
-  const sent: { kind: "file_id" | "upload" | "text"; value: string }[] = [];
+function fakeSender(): {
+  sender: AudioSender;
+  sent: { kind: "file_id" | "upload" | "text"; value: string; meta?: AudioMeta }[];
+} {
+  const sent: { kind: "file_id" | "upload" | "text"; value: string; meta?: AudioMeta }[] = [];
   let uploads = 0;
   return {
     sent,
     sender: {
-      async sendAudioByFileId(_chatId, fileId) {
-        sent.push({ kind: "file_id", value: fileId });
+      async sendAudioByFileId(_chatId, fileId, meta) {
+        sent.push({ kind: "file_id", value: fileId, meta });
       },
-      async sendAudioFile(_chatId, filePath) {
-        sent.push({ kind: "upload", value: filePath });
+      async sendAudioFile(_chatId, filePath, meta) {
+        sent.push({ kind: "upload", value: filePath, meta });
         return `file-id-${++uploads}`;
       },
       async sendText(_chatId, text) {
@@ -213,33 +216,29 @@ afterEach(() => {
 
 describe("parseGroupQuery", () => {
   test("keyword at the start triggers, case-insensitively", () => {
-    expect(parseGroupQuery("найти последняя любовь", BOT_USERNAME, false)).toBe("последняя любовь");
-    expect(parseGroupQuery("НАЙТИ Motorama", BOT_USERNAME, false)).toBe("Motorama");
+    expect(parseGroupQuery("найти последняя любовь", BOT_USERNAME)).toBe("последняя любовь");
+    expect(parseGroupQuery("НАЙТИ Motorama", BOT_USERNAME)).toBe("Motorama");
   });
 
   test("keyword only counts at the start of the message", () => {
-    expect(parseGroupQuery("я найти не могу", BOT_USERNAME, false)).toBeNull();
+    expect(parseGroupQuery("я найти не могу", BOT_USERNAME)).toBeNull();
   });
 
   test("a mention without the keyword still triggers", () => {
-    expect(parseGroupQuery(`@${BOT_USERNAME} Motorama`, BOT_USERNAME, false)).toBe("Motorama");
+    expect(parseGroupQuery(`@${BOT_USERNAME} Motorama`, BOT_USERNAME)).toBe("Motorama");
   });
 
   test("mention plus keyword strips both", () => {
-    expect(parseGroupQuery(`@${BOT_USERNAME} найти Motorama`, BOT_USERNAME, false)).toBe("Motorama");
+    expect(parseGroupQuery(`@${BOT_USERNAME} найти Motorama`, BOT_USERNAME)).toBe("Motorama");
   });
 
-  test("a reply to the bot without the keyword still triggers", () => {
-    expect(parseGroupQuery("Motorama", BOT_USERNAME, true)).toBe("Motorama");
-  });
-
-  test("plain text with no mention, reply, or keyword does not trigger", () => {
-    expect(parseGroupQuery("просто болтаем", BOT_USERNAME, false)).toBeNull();
+  test("plain text with no mention or keyword does not trigger", () => {
+    expect(parseGroupQuery("просто болтаем", BOT_USERNAME)).toBeNull();
   });
 
   test("an empty query after the keyword does not trigger", () => {
-    expect(parseGroupQuery("найти", BOT_USERNAME, false)).toBeNull();
-    expect(parseGroupQuery("найти   ", BOT_USERNAME, false)).toBeNull();
+    expect(parseGroupQuery("найти", BOT_USERNAME)).toBeNull();
+    expect(parseGroupQuery("найти   ", BOT_USERNAME)).toBeNull();
   });
 });
 
@@ -262,7 +261,13 @@ describe("cache hit", () => {
     await __drainGroupSearchForTests();
 
     expect(extractor.calls.length).toBe(0);
-    expect(sent).toEqual([{ kind: "file_id", value: "cached-file-id" }]);
+    expect(sent).toEqual([
+      { kind: "file_id", value: "cached-file-id", meta: expect.objectContaining({ replyToMessageId: 101 }) },
+    ]);
+    // The caption links back to the bot with attribution, so it's findable outside the group.
+    expect(sent[0]?.meta?.caption).toBe(
+      `<a href="https://t.me/${BOT_USERNAME}?start=src_group-search">поиск музыки</a>`,
+    );
     // No "Ищу…" status line, since a cache hit never needs one.
     expect(harness.sentMessages().length).toBe(0);
   });
@@ -279,7 +284,9 @@ describe("cache miss", () => {
     await __drainGroupSearchForTests();
 
     expect(extractor.calls).toEqual(["ytm:fresh"]);
-    expect(sent).toEqual([{ kind: "upload", value: expect.stringContaining("ytm_fresh") }]);
+    expect(sent).toEqual([
+      { kind: "upload", value: expect.stringContaining("ytm_fresh"), meta: expect.anything() },
+    ]);
     expect(getCachedAudio(harness.db, "ytm:fresh")?.tgFileId).toBe("file-id-1");
     // A status message was posted, then cleaned up.
     expect(harness.sentMessages().length).toBe(1);
@@ -291,8 +298,8 @@ describe("cache miss", () => {
 
     expect(extractor.calls).toEqual(["ytm:fresh"]);
     expect(sent).toEqual([
-      { kind: "upload", value: expect.stringContaining("ytm_fresh") },
-      { kind: "file_id", value: "file-id-1" },
+      { kind: "upload", value: expect.stringContaining("ytm_fresh"), meta: expect.anything() },
+      { kind: "file_id", value: "file-id-1", meta: expect.anything() },
     ]);
     expect(harness.sentMessages().length).toBe(1); // no second status message
 
@@ -328,6 +335,16 @@ describe("concurrent requests for the same track", () => {
 
     expect(extractor.calls.length).toBe(1);
     expect(sent.filter((s) => s.kind === "upload").length).toBe(1);
+  });
+});
+
+describe("reply to bot", () => {
+  test("a reply with no keyword or mention does not trigger a search", async () => {
+    await harness.bot.handleUpdate(groupTextUpdate("где?", USER_A, 1, true) as never);
+    await __drainGroupSearchForTests();
+
+    expect(searchCalls).toEqual([]);
+    expect(harness.sentMessages().length).toBe(0);
   });
 });
 

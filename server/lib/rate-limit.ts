@@ -83,3 +83,20 @@ export const streamRateLimiter = createRateLimiter({ limit: 60, windowMs: 60_000
  * able to keep both slots busy.
  */
 export const groupExtractRateLimiter = createRateLimiter({ limit: 5, windowMs: 60_000 });
+
+/**
+ * Inline search (`@bot <query>` in any chat), keyed by the querying user's id.
+ * Telegram fires an inline_query on nearly every keystroke, and runSearch
+ * itself is cheap (6h result cache + in-flight dedupe in
+ * server/music/search-cache.ts), so this needs a much wider window than
+ * searchRateLimiter's 20/min — it isn't gating the same cost.
+ */
+export const inlineSearchRateLimiter = createRateLimiter({ limit: 60, windowMs: 60_000 });
+
+/**
+ * Inline search's pre-warm extraction, checked only on an `audio_cache` miss —
+ * mirrors groupExtractRateLimiter exactly, and for the same reason: inline is
+ * open to anyone, not just the allowlist, so this is the only guard on the
+ * shared yt-dlp pool (extractionSemaphore, cap 2).
+ */
+export const inlineExtractRateLimiter = createRateLimiter({ limit: 5, windowMs: 60_000 });

@@ -12,13 +12,19 @@ import { YtDlpExtractor } from "../audio/extractor";
 import { env } from "../env";
 import { upsertGroupChat, markGroupLeft, bumpGroupSearch, bumpGroupTrack } from "../access/group-chats-store";
 import { escapeHtml, messageTitle, statusMessage } from "./message-format";
+import { accent } from "./emoji";
 
 /**
- * Group-chat keyword search: "найти <query>" (also @mention or reply-to-bot,
- * for when the bot's privacy mode is still enabled and it never sees plain
- * text). Unlike the private /search flow, this sends the first result
- * directly — a group is a shared space, not a personal session, so there is
- * no per-user results list to page through.
+ * Group-chat keyword search: "найти <query>" (also a bare @mention, for when
+ * the bot's privacy mode is still enabled and it never sees plain text).
+ * Unlike the private /search flow, this sends the first result directly — a
+ * group is a shared space, not a personal session, so there is no per-user
+ * results list to page through.
+ *
+ * Deliberately does NOT trigger on a reply to the bot's own message: replies
+ * are as often conversational ("где?", "спасибо") as they are a new search,
+ * and a false-positive search on an unrelated word is worse than making
+ * users type "найти" or @mention the bot explicitly.
  *
  * Mounted *before* allowlistGate so a group never needs to be allowlisted and
  * never touches the private-chat machinery (users table, sessions, paywall).
@@ -41,7 +47,7 @@ function stripLeadingMention(text: string, botUsername: string | undefined): { r
  * isn't a trigger. The keyword takes priority over a bare mention/reply so
  * "@bot найти X" and "найти X" behave the same once the mention is stripped.
  */
-export function parseGroupQuery(text: string, botUsername: string | undefined, isReplyToBot: boolean): string | null {
+export function parseGroupQuery(text: string, botUsername: string | undefined): string | null {
   const { rest, mentioned } = stripLeadingMention(text.trim(), botUsername);
 
   // `\b` is ASCII-only in a non-unicode JS regex, so it never fires around
@@ -52,11 +58,19 @@ export function parseGroupQuery(text: string, botUsername: string | undefined, i
     return query.length > 0 ? query.slice(0, MAX_QUERY_LENGTH) : null;
   }
 
-  if (mentioned || isReplyToBot) {
+  if (mentioned) {
     return rest.length > 0 ? rest.slice(0, MAX_QUERY_LENGTH) : null;
   }
 
   return null;
+}
+
+/** Caption under every track sent into a group, linking back to the bot with attribution so an interested member can find it themselves. */
+function trackCaption(botUsername: string | undefined): string | undefined {
+  if (!botUsername) return undefined;
+  const url = `https://t.me/${botUsername}?start=src_group-search`;
+  const icon = accent("search");
+  return `${icon ? icon + " " : ""}<a href="${escapeHtml(url)}">поиск музыки</a>`;
 }
 
 function groupHelpText(): string {
@@ -167,7 +181,7 @@ async function performGroupSearch(ctx: BotContext, db: AppDb, chatId: number, qu
         extractor: new YtDlpExtractor(),
         scratchDir: env.audioScratchDir,
       };
-      await deliverTrack(db, chatId, track, deps, { replyToMessageId });
+      await deliverTrack(db, chatId, track, deps, { replyToMessageId, caption: trackCaption(ctx.me.username) });
       bumpGroupTrack(db, chatId);
     } catch (e) {
       console.error(`group search delivery failed for ${track.uri} in chat ${chatId}:`, e);
@@ -220,11 +234,10 @@ async function handleGroupText(ctx: BotContext, db: AppDb): Promise<void> {
     return;
   }
 
-  const isReplyToBot = ctx.message?.reply_to_message?.from?.id === ctx.me.id;
-  const query = parseGroupQuery(trimmed, ctx.me.username, isReplyToBot);
+  const query = parseGroupQuery(trimmed, ctx.me.username);
   if (query === null) {
-    // A bare mention/reply with no query still deserves the hint.
-    if (isReplyToBot || stripLeadingMention(trimmed, ctx.me.username).mentioned) {
+    // A bare mention with no query still deserves the hint.
+    if (stripLeadingMention(trimmed, ctx.me.username).mentioned) {
       await ctx.reply(groupHelpText(), { parse_mode: "HTML" }).catch(() => {});
     }
     return;

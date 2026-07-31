@@ -78,11 +78,19 @@ Endpoints: `POST /api/shares`, `GET /api/shares`, `GET /api/shares/:token`, `DEL
 
 ## Group-chat keyword search
 
-Added to any group chat (no allowlist entry needed — a group is not a user), the bot answers `найти <название трека>` — or `@bot <название трека>` / a reply to one of its own messages, for when [privacy mode](https://core.telegram.org/bots/features#privacy-mode) is still enabled and it never sees plain text — by sending the first matching result straight into the chat. **Turn privacy mode off** (`@BotFather` → `/setprivacy` → **Disable**) for the keyword to work without a mention; existing group memberships need the bot removed and re-added for the change to take effect.
+Added to any group chat (no allowlist entry needed — a group is not a user), the bot answers `найти <название трека>` — or `@bot <название трека>`, for when [privacy mode](https://core.telegram.org/bots/features#privacy-mode) is still enabled and it never sees plain text — by sending the first matching result straight into the chat. A reply to the bot's own message is deliberately *not* a trigger: it's as often conversational ("где?", "спасибо") as a new search, and a wrong-track false positive is worse than requiring the keyword or mention. **Turn privacy mode off** (`@BotFather` → `/setprivacy` → **Disable**) for the keyword to work without a mention; existing group memberships need the bot removed and re-added for the change to take effect.
 
 The first request for a track pays the same extract-and-upload cost as any other download (a few seconds); every later request for that track, in any chat, is a `file_id` re-send from `audio_cache` and lands almost instantly — the same cache the Mini App and `/search` already share. Concurrent requests for the same not-yet-cached track are coalesced so only one extraction runs. A separate `groupExtractRateLimiter` (5/min per group) caps cache-miss extractions so one busy group can't starve the shared yt-dlp pool used by paying users elsewhere.
 
 Groups never touch the `users` table — no signup credits, no "new user" admin alert, no seat in per-user analytics or broadcast — they get their own counters in `group_chats` instead, surfaced in admin statistics as active groups / searches / tracks sent.
+
+## Inline search in any chat
+
+Typing `@<bot> <название трека>` in *any* chat — a DM with someone else, a group the bot was never added to, anywhere Telegram allows invoking an inline bot — pops up a list of tracks; tapping one sends it as playable audio from your own name. Open to everyone, same as group keyword search, guarded only by rate limits (no allowlist gate).
+
+Requires two one-time steps in `@BotFather`: **`/setinline`** (turns on the feature at all; set a placeholder like «название трека») and, optionally, **`/setinlinefeedback`** → `Enabled` (lets the bot count tracks actually sent via `chosen_inline_result`, for admin stats only — search still works without it).
+
+Telegram requires answering an inline query within a few seconds, and only accepts already-uploaded audio (`audio_file_id`) as a result — there's no way to turn a placeholder into playable audio after the fact once yt-dlp finishes. So a query answers instantly from whatever `audio_cache` already has (the same cache shared with groups, the Mini App, and `/search`), while a few cache misses are extracted and uploaded in the background to a private **storage channel**, purely to mint a `file_id` for `audio_cache` — set `AUDIO_STORAGE_CHAT_ID` to a channel the bot is an admin of (post-message rights) to enable this; without it, inline search still works, it just never grows the cache. While warming is in progress the result list carries a button hinting to try again in a few seconds; the same query then answers with playable results, and — because the cache is global — it's instant for every other user from then on too.
 
 ## Payments (CryptoBot)
 

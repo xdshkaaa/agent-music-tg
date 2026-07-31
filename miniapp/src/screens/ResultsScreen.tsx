@@ -3,9 +3,11 @@ import { BookmarkSimple, CheckCircle, CircleNotch, DownloadSimple, ListPlus, Pen
 import { GlassPanel } from "../components/GlassPanel";
 import { TrackRow } from "../components/TrackRow";
 import { TrackOverflowMenu } from "../components/TrackOverflowMenu";
+import { SaveTrackButton } from "../components/SaveTrackButton";
 import { requestAddToPlaylist } from "../components/AddToPlaylistButton";
 import { usePlayer } from "../lib/player";
 import { api, type FinalizedPlaylist, type Track, type TrackVerificationStatus } from "../lib/api";
+import { useMyMusic } from "../lib/my-music";
 import { shareUrlToChat } from "../lib/share";
 
 type DownloadState = { kind: "idle" } | { kind: "sending" } | { kind: "sent" } | { kind: "error"; message: string };
@@ -36,13 +38,9 @@ export function ResultsScreen({
   const [nameDraft, setNameDraft] = useState(playlist.name);
   const [renameBusy, setRenameBusy] = useState(false);
   const [verification, setVerification] = useState<Record<string, TrackVerificationStatus>>({});
-  const [savedTracks, setSavedTracks] = useState<Record<string, boolean>>({});
+  const { isSaved, toggleSaved } = useMyMusic();
   const polling = useRef(false);
   const done = useRef(false);
-
-  useEffect(() => {
-    api.myMusic().then(({ tracks }) => setSavedTracks(Object.fromEntries(tracks.map((t) => [t.uri, true])))).catch(() => {});
-  }, []);
 
   const uris = current.tracks.map((t) => t.uri);
   const visibleTracks = current.tracks.filter((t) => verification[t.uri] !== "unavailable");
@@ -132,19 +130,18 @@ export function ResultsScreen({
     }
   }
 
-  /** Merged action (screen-refinement D7): downloads the track to chat AND saves it to Favorites in one tap. */
+  /** Merged action (screen-refinement D7): downloads the track to chat AND saves it to Favorites in one tap.
+   *  The two effects surface separately though — this button's own icon/label
+   *  track only the chat delivery; the heart next to it is what shows "saved". */
   async function handleTrackDownload(track: Track) {
     if (trackDownloads[track.uri]?.kind === "sending") return;
     setTrackDownloads((m) => ({ ...m, [track.uri]: { kind: "sending" } }));
     try {
       await Promise.all([
         api.download(`${track.title} — ${track.artist}`, [track]),
-        savedTracks[track.uri]
-          ? Promise.resolve()
-          : api.addMyMusic({ uri: track.uri, title: track.title, artist: track.artist, artwork: track.artwork }),
+        isSaved(track.uri) ? Promise.resolve() : toggleSaved(track),
       ]);
       downloadedUris.current.add(track.uri);
-      setSavedTracks((m) => ({ ...m, [track.uri]: true }));
       setTrackDownloads((m) => ({ ...m, [track.uri]: { kind: "sent" } }));
       window.dispatchEvent(new CustomEvent("download-created"));
     } catch (err) {
@@ -230,7 +227,8 @@ export function ResultsScreen({
   }
 
   return (
-    <GlassPanel className="reveal">
+    <GlassPanel className="reveal results-panel">
+      <div className="results-main">
       {editingName ? (
         <input
           className="playlist-name-input"
@@ -279,19 +277,12 @@ export function ResultsScreen({
             trailing={
               <>
                 {verificationIcon(track.uri)}
+                <SaveTrackButton track={track} />
                 <button
                   type="button"
                   className="icon-btn track-download-btn"
-                  aria-label={
-                    trackDownloads[track.uri]?.kind === "sent" || savedTracks[track.uri]
-                      ? "Отправлено в чат и в избранном"
-                      : "Скачать и добавить в избранное"
-                  }
-                  title={
-                    trackDownloads[track.uri]?.kind === "sent" || savedTracks[track.uri]
-                      ? "Отправлено в чат и в избранном"
-                      : "Скачать и добавить в избранное"
-                  }
+                  aria-label={trackDownloads[track.uri]?.kind === "sent" ? "Отправлено в чат" : "Скачать в чат"}
+                  title={trackDownloads[track.uri]?.kind === "sent" ? "Отправлено в чат" : "Скачать в чат"}
                   disabled={trackDownloads[track.uri]?.kind === "sending"}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -300,7 +291,7 @@ export function ResultsScreen({
                 >
                   {trackDownloads[track.uri]?.kind === "sending" ? (
                     <CircleNotch size={18} className="spin" />
-                  ) : trackDownloads[track.uri]?.kind === "sent" || savedTracks[track.uri] ? (
+                  ) : trackDownloads[track.uri]?.kind === "sent" ? (
                     <CheckCircle size={18} weight="fill" />
                   ) : (
                     <DownloadSimple size={18} />
@@ -323,6 +314,8 @@ export function ResultsScreen({
         ))}
         </div>
       )}
+      </div>
+      <div className="results-side">
       {download.kind === "error" && (
         <div className="error-row mt-12">
           <span className="error-row-icon">
@@ -435,6 +428,7 @@ export function ResultsScreen({
             <DownloadSimple size={18} />
           )}
         </button>
+      </div>
       </div>
     </GlassPanel>
   );

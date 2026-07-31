@@ -1,44 +1,24 @@
-import { useEffect, useState } from "react";
-import { CircleNotch, Heart, Pause, Play, SkipForward, WarningCircle } from "@phosphor-icons/react";
+import { CircleNotch, HeartStraight, Pause, Play, SkipForward, WarningCircle } from "@phosphor-icons/react";
 import { usePlayer } from "../lib/player";
-import { api } from "../lib/api";
+import { useMyMusic } from "../lib/my-music";
 import { ARTWORK_ROW, artworkUrl } from "../lib/artwork";
 
 /** Global mini-player above the dock; rendered only while a track is loaded. */
 export function PlayerBar({ onOpen }: { onOpen?: () => void }) {
   const player = usePlayer();
   const track = player.track;
-  const [liked, setLiked] = useState(false);
-  const [liking, setLiking] = useState(false);
-
-  useEffect(() => {
-    setLiked(false);
-    if (!track) return;
-    api
-      .reactionStatus(track.uri)
-      .then(({ liked }) => setLiked(liked))
-      .catch(() => {});
-  }, [track?.uri]);
+  const { isSaved, isPending, toggleSaved } = useMyMusic();
 
   if (!track) return null;
   const { status } = player;
   const hasNext = player.queueIndex >= 0 && player.queueIndex < player.queue.length - 1;
+  const liked = isSaved(track.uri);
+  const liking = isPending(track.uri);
 
-  async function toggleLike(e: React.MouseEvent) {
+  function toggleLike(e: React.MouseEvent) {
     e.stopPropagation();
-    if (!track || liking) return;
-    setLiking(true);
-    try {
-      if (liked) {
-        await api.removeMyMusic(track.uri);
-        setLiked(false);
-      } else {
-        await api.addMyMusic({ uri: track.uri, title: track.title, artist: track.artist, artwork: track.artwork });
-        setLiked(true);
-      }
-    } finally {
-      setLiking(false);
-    }
+    if (!track) return;
+    void toggleSaved(track);
   }
 
   const playIcon =
@@ -75,11 +55,12 @@ export function PlayerBar({ onOpen }: { onOpen?: () => void }) {
       <button
         type="button"
         className={`player-bar-btn player-bar-like-btn${liked ? " active" : ""}`}
-        aria-label={liked ? "Убрать из избранного" : "Нравится"}
+        aria-label={liked ? "Убрать из моей музыки" : "Добавить в мою музыку"}
+        aria-pressed={liked}
         disabled={liking}
         onClick={toggleLike}
       >
-        <Heart size={18} weight={liked ? "fill" : "bold"} />
+        <HeartStraight size={18} weight={liked ? "fill" : "bold"} />
       </button>
       <button
         type="button"

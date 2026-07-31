@@ -27,6 +27,11 @@ export function BottomNav({
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
   tabRefs.current.length = tabs.length;
 
+  // Measures horizontally (offsetLeft/offsetWidth) for the floating bottom
+  // dock. .dock-indicator is currently display:none (glass.css) so this is
+  // dead output either way, but on the desktop (>= 840px) vertical rail
+  // layout the tabs stack top-to-bottom — reviving the indicator there would
+  // need top/height instead.
   const updateIndicator = useCallback(() => {
     const idx = tabs.findIndex((t) => t.key === tab);
     const btn = tabRefs.current[idx];

@@ -123,6 +123,7 @@ function statsText(s: ReturnType<typeof getAdminStats>): string {
     `Бесплатные, без покупок: ${seg.freeNoActivity}\n\n` +
     `<b>Топ по активности</b> (генераций)\n${topUsers}\n\n` +
     `<b>Группы</b>\n${s.groups.active} активных · ${s.groups.searches} поисков · ${s.groups.tracks} треков\n\n` +
+    `<b>Inline-поиск</b>\n${s.inline.users} пользователей · ${s.inline.searches} поисков · ${s.inline.tracks} отправок\n\n` +
     `<b>Воронка привлечения</b>\n${funnel}\n\n` +
     `<b>Источники трафика</b>\n${sources}\n\n` +
     `<b>UTM-кампании</b>\n${campaigns}`

@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, ArrowsClockwise, CaretRightIcon, CircleNotch, HeartStraight, ListPlus, User, WarningCircle } from "@phosphor-icons/react";
+import { ArrowLeft, ArrowsClockwise, CaretRightIcon, CircleNotch, ListPlus, User, WarningCircle } from "@phosphor-icons/react";
 import { TrackRow } from "../components/TrackRow";
 import { TrackOverflowMenu } from "../components/TrackOverflowMenu";
+import { SaveTrackButton } from "../components/SaveTrackButton";
 import { requestAddToPlaylist } from "../components/AddToPlaylistButton";
 import { api, type Album, type ArtistDetail, type Track } from "../lib/api";
 import { usePlayer } from "../lib/player";
@@ -48,30 +49,13 @@ export function ArtistScreen({
   const player = usePlayer();
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [expanded, setExpanded] = useState<Record<string, AlbumState>>({});
-  const [savedTracks, setSavedTracks] = useState<Record<string, boolean>>({});
-  const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [bioOpen, setBioOpen] = useState(false);
-  const dialogRef = useDialog<HTMLDivElement>(true, onClose);
-
-  useEffect(() => {
-    api.myMusic().then(({ tracks }) => setSavedTracks(Object.fromEntries(tracks.map((t) => [t.uri, true])))).catch(() => {});
-  }, []);
-
-  async function toggleSaved(track: Track) {
-    const isSaved = !!savedTracks[track.uri];
-    setSaving((m) => ({ ...m, [track.uri]: true }));
-    try {
-      if (isSaved) {
-        await api.removeMyMusic(track.uri);
-        setSavedTracks((m) => ({ ...m, [track.uri]: false }));
-      } else {
-        await api.addMyMusic({ uri: track.uri, title: track.title, artist: track.artist, artwork: track.artwork });
-        setSavedTracks((m) => ({ ...m, [track.uri]: true }));
-      }
-    } finally {
-      setSaving((m) => ({ ...m, [track.uri]: false }));
-    }
-  }
+  // Non-nested (opened from a main screen): only the screen content goes
+  // inert, so the dock/top-bar/player-bar stay reachable behind this card —
+  // matching its own z-index comment (below the dock, above plain content).
+  // Nested (opened from within the full player, which is itself modal) stays
+  // fully modal like every other overlay.
+  const dialogRef = useDialog<HTMLDivElement>(true, onClose, { inertScope: nested ? "shell" : "content" });
 
   async function toggleAlbum(album: Album) {
     if (expanded[album.uri]) {
@@ -192,16 +176,9 @@ export function ArtistScreen({
                       metaClassName="search-row-meta"
                       trailing={
                         <>
-                          {savedTracks[track.uri] && <HeartStraight size={16} weight="fill" style={{ color: "var(--accent)" }} />}
+                          <SaveTrackButton track={track} />
                           <TrackOverflowMenu
                             actions={[
-                              {
-                                key: "save",
-                                label: savedTracks[track.uri] ? "Убрать из моей музыки" : "Добавить в мою музыку",
-                                icon: <HeartStraight size={18} weight={savedTracks[track.uri] ? "fill" : "bold"} />,
-                                disabled: !!saving[track.uri],
-                                onClick: () => void toggleSaved(track),
-                              },
                               {
                                 key: "add-to-playlist",
                                 label: "Добавить в плейлист",
@@ -269,16 +246,9 @@ export function ArtistScreen({
                                 metaClassName="search-row-meta"
                                 trailing={
                                   <>
-                                    {savedTracks[track.uri] && <HeartStraight size={16} weight="fill" style={{ color: "var(--accent)" }} />}
+                                    <SaveTrackButton track={track} />
                                     <TrackOverflowMenu
                                       actions={[
-                                        {
-                                          key: "save",
-                                          label: savedTracks[track.uri] ? "Убрать из моей музыки" : "Добавить в мою музыку",
-                                          icon: <HeartStraight size={18} weight={savedTracks[track.uri] ? "fill" : "bold"} />,
-                                          disabled: !!saving[track.uri],
-                                          onClick: () => void toggleSaved(track),
-                                        },
                                         {
                                           key: "add-to-playlist",
                                           label: "Добавить в плейлист",
