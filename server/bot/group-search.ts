@@ -118,6 +118,11 @@ export function __setGroupSearchDepsForTests(deps: DeliverDeps | null): void {
 async function performGroupSearch(ctx: BotContext, db: AppDb, chatId: number, query: string): Promise<void> {
   if (searchRateLimiter.check(chatId)) return; // silent — a warning in a group is worse than a miss
 
+  // A cold query can take a couple of seconds against the upstream catalog
+  // API, and until now the chat stayed silent for all of it. Firing this
+  // instead of awaiting it costs nothing on the request path.
+  ctx.api.sendChatAction(chatId, "typing").catch(() => {});
+
   let tracks: Track[];
   try {
     tracks = await runSearch(db, query);
