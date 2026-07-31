@@ -127,6 +127,13 @@ export function channelSubscriptionGate(db: AppDb) {
   return async (ctx: BotContext, next: NextFunction) => {
     if (ctx.isAdmin) return next();
 
+    // This gate is a personal restriction on a human using the bot in a
+    // private chat. Channel posts (e.g. the bot posting/relaying in a
+    // required channel it admins) have no `from` and are not a person to
+    // gate — without this check the bot ends up sending its own "Access
+    // restricted" message into the broadcast channel itself.
+    if (ctx.chat && ctx.chat.type !== "private") return next();
+
     const chatId = ctx.chat?.id ?? ctx.from?.id;
     if (chatId === undefined) return;
 
