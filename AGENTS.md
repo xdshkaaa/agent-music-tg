@@ -17,6 +17,8 @@ Telegram bot + Mini App that turns a mood/request into a playlist via an AI agen
 
 **Agent commit rule**: after each successful iteration (a change that's complete and verified — e.g. typecheck/tests pass), create a git commit right away without waiting to be asked. Pre-authorized for this repo; still skip files that look like secrets and follow the git safety protocol otherwise.
 
+**Agent deploy-test rule**: after each successful iteration's commit, also run `./deploy/deploy-test.sh` right away without waiting to be asked. Pre-authorized for this repo.
+
 **Agent release notes rule**: after each successful iteration's commit, also write release notes in **Russian**, formatted for a Telegram post (short bolded heading via `*...*`, a tight bullet list of what changed, no walls of text, emoji used sparingly if at all). Save each as its own file under `release-notes/`, named `YYYY-MM-DD-<short-sha>.md` (date and short SHA of the commit it describes).
 
 ## Setup
