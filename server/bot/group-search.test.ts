@@ -288,9 +288,10 @@ describe("cache miss", () => {
       { kind: "upload", value: expect.stringContaining("ytm_fresh"), meta: expect.anything() },
     ]);
     expect(getCachedAudio(harness.db, "ytm:fresh")?.tgFileId).toBe("file-id-1");
-    // A status message was posted, then cleaned up.
-    expect(harness.sentMessages().length).toBe(1);
-    expect(harness.deletedMessageIds().length).toBe(1);
+    // No "Ищу…" status message is posted or deleted anymore — the typing
+    // indicator is the only in-progress signal.
+    expect(harness.sentMessages().length).toBe(0);
+    expect(harness.deletedMessageIds().length).toBe(0);
 
     // Second request, different user, same track: cache hit — no second extract.
     await harness.bot.handleUpdate(groupTextUpdate("найти fresh track", USER_B, 2) as never);
@@ -301,7 +302,7 @@ describe("cache miss", () => {
       { kind: "upload", value: expect.stringContaining("ytm_fresh"), meta: expect.anything() },
       { kind: "file_id", value: "file-id-1", meta: expect.anything() },
     ]);
-    expect(harness.sentMessages().length).toBe(1); // no second status message
+    expect(harness.sentMessages().length).toBe(0); // still no status message
 
     const stats = getGroupStats(harness.db);
     expect(stats.searches).toBe(2);
