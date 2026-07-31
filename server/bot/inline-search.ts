@@ -9,6 +9,7 @@ import { withTimeout } from "../core/concurrency";
 import { getCachedAudio } from "../audio/cache";
 import type { DeliverDeps } from "../audio/deliver";
 import { __drainWarmQueueForTests, __resetWarmQueueForTests, enqueueWarmTracks } from "../audio/warm-queue";
+import { warmTrack } from "../audio/warm-cache";
 import type { DownloadTrack } from "../audio/downloads-store";
 import { createRuntimeAudioDeps } from "../audio/runtime";
 import { env } from "../env";
@@ -38,6 +39,8 @@ const MAX_RESULTS = 20;
 const WARM_COUNT = 3;
 /** ytmusic-api's own search timeout is 15s (server/music/youtube-backend.ts), well past Telegram's answer window — bail out and answer with nothing rather than let the query expire silently. */
 const SEARCH_BUDGET_MS = 6_000;
+/** Keep the whole handler below Telegram's ~10s inline-answer deadline. */
+const TOTAL_ANSWER_BUDGET_MS = 9_000;
 
 function warmingButton() {
   return {
@@ -78,6 +81,7 @@ function toDownloadTrack(track: Track): DownloadTrack {
 
 export function registerInlineSearch(bot: Bot<BotContext>, db: AppDb): void {
   bot.on("inline_query", async (ctx) => {
+    const requestStart = performance.now();
     const userId = ctx.from.id;
     const query = ctx.inlineQuery.query.trim().slice(0, 200);
 
@@ -102,7 +106,7 @@ export function registerInlineSearch(bot: Bot<BotContext>, db: AppDb): void {
 
     bumpInlineSearch(db, userId, ctx.from.username ?? null);
 
-    const results: InlineQueryResult[] = [];
+    let results: InlineQueryResult[] = [];
     const misses: DownloadTrack[] = [];
     for (const track of tracks.slice(0, MAX_RESULTS)) {
       const cached = getCachedAudio(db, track.uri);
@@ -113,23 +117,51 @@ export function registerInlineSearch(bot: Bot<BotContext>, db: AppDb): void {
       }
     }
 
+    const storageChatId = env.audioStorageChatId;
+    let mayWarm = false;
+    let deps: DeliverDeps | undefined;
+
+    // A completely cold query used to return only “Готовлю треки”, forcing
+    // the user to erase/retype the query. Instead, spend the remaining inline
+    // answer window preparing the first few Telegram file_ids and include
+    // whichever ones finish in this very answer. Existing cache hits still
+    // answer immediately, so popular queries never pay this latency.
+    if (results.length === 0 && misses.length > 0 && storageChatId !== null) {
+      mayWarm = !inlineExtractRateLimiter.check(userId);
+      if (mayWarm) {
+        deps = deliverDepsOverride ?? createRuntimeAudioDeps(ctx.api);
+        const remainingMs = Math.max(0, TOTAL_ANSWER_BUDGET_MS - (performance.now() - requestStart));
+        if (remainingMs > 0) {
+          await withTimeout(
+            Promise.all(misses.map((track) => warmTrack(db, track, deps!, storageChatId))),
+            remainingMs,
+            [],
+          );
+        }
+        results = tracks.slice(0, MAX_RESULTS).flatMap<InlineQueryResult>((track) => {
+          const cached = getCachedAudio(db, track.uri);
+          return cached ? [{ type: "audio", id: track.uri, audio_file_id: cached.tgFileId }] : [];
+        });
+      }
+    }
+
+    const unresolved = misses.filter((track) => !getCachedAudio(db, track.uri));
     await ctx
       .answerInlineQuery(results, {
         cache_time: 0, // the answer changes as the warm-up fills audio_cache
         is_personal: false, // the cache is shared across every user, same as audio_cache itself
-        ...(misses.length > 0 ? { button: warmingButton() } : {}),
+        ...(unresolved.length > 0 ? { button: warmingButton() } : {}),
       })
       .catch(() => {
         // query_id can expire between the search and the answer — nothing to do
       });
 
-    if (misses.length === 0) return;
-    const storageChatId = env.audioStorageChatId;
+    if (unresolved.length === 0) return;
     if (storageChatId === null) return;
-    if (inlineExtractRateLimiter.check(userId)) return; // shared extraction pool guard, same as groupExtractRateLimiter
+    if (!mayWarm && inlineExtractRateLimiter.check(userId)) return; // shared extraction pool guard, same as groupExtractRateLimiter
 
-    const deps: DeliverDeps = deliverDepsOverride ?? createRuntimeAudioDeps(ctx.api);
-    enqueueWarmTracks(db, misses, deps, storageChatId, WARM_COUNT);
+    deps ??= deliverDepsOverride ?? createRuntimeAudioDeps(ctx.api);
+    enqueueWarmTracks(db, unresolved, deps, storageChatId, WARM_COUNT);
   });
 
   bot.on("chosen_inline_result", (ctx) => {
