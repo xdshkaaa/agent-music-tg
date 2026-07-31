@@ -11,7 +11,7 @@ import { GlassPanel } from "./components/GlassPanel";
 import { ScreenTransition } from "./components/ScreenTransition";
 import { ErrorBanner } from "./components/ErrorBanner";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { api, type MeResponse, type FinalizedPlaylist, type ShopConfig, type HistoryEntry } from "./lib/api";
+import { api, type MeResponse, type FinalizedPlaylist, type ShopConfig, type HistoryEntry, SubscriptionRequiredError, type SubscriptionChannel } from "./lib/api";
 import { reduceEvents, type AgentEvent } from "./lib/reasoning";
 import { getTelegramWebApp, getColorScheme, getInitData, callIfSupported } from "./lib/telegram";
 import { parseShareToken } from "./lib/share";
@@ -24,6 +24,7 @@ import { PlayerScreen } from "./screens/PlayerScreen";
 import { SharedPlaylistScreen } from "./screens/SharedPlaylistScreen";
 import { ArtistScreen } from "./screens/ArtistScreen";
 import { AddToPlaylistSheet } from "./components/AddToPlaylistSheet";
+import { SubscriptionGate } from "./components/SubscriptionGate";
 import { applyAccent, initialAccent } from "./lib/accent";
 import { Onboarding } from "./components/Onboarding";
 import { completeOnboarding, shouldShowOnboarding } from "./lib/onboarding";
@@ -103,6 +104,7 @@ function AppInner() {
   const [scheme, setScheme] = useState<"light" | "dark">(() => initialScheme());
   const [accent, setAccent] = useState<string>(() => initialAccent());
   const [showOnboarding, setShowOnboarding] = useState(() => shouldShowOnboarding());
+  const [subscriptionGate, setSubscriptionGate] = useState<SubscriptionChannel[] | null>(null);
 
   function changeAccent(value: string) {
     setAccent(value);
@@ -147,7 +149,11 @@ function AppInner() {
     callIfSupported(() => webApp?.requestFullscreen?.());
     callIfSupported(() => webApp?.disableVerticalSwipes?.());
     applyAccent(accent);
-    api.me().then(setMe).catch(() => {});
+    api.me().then(setMe).catch((err) => {
+      if (err instanceof SubscriptionRequiredError) {
+        setSubscriptionGate(err.channels);
+      }
+    });
     api.shopConfig().then(setShopConfig).catch(() => {});
 
     // Bot inline buttons ("Поиск" / "Мои плейлисты" / "Моя музыка") deep-link
@@ -428,6 +434,19 @@ function AppInner() {
 
   if (showOnboarding) {
     return <Onboarding onSkip={dismissOnboarding} onStart={startFromOnboarding} />;
+  }
+
+  if (subscriptionGate) {
+    return (
+      <SubscriptionGate
+        channels={subscriptionGate}
+        onPassed={() => {
+          setSubscriptionGate(null);
+          api.me().then(setMe).catch(() => {});
+          api.shopConfig().then(setShopConfig).catch(() => {});
+        }}
+      />
+    );
   }
 
   return (

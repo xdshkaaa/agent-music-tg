@@ -7,7 +7,10 @@ import type { AgentEvent } from "./reasoning";
  * must fall through to the status code rather than becoming the message.
  */
 async function responseError(res: Response): Promise<Error> {
-  const body = (await res.json().catch(() => ({}))) as { error?: string };
+  const body = (await res.json().catch(() => ({}))) as { error?: string; channels?: SubscriptionChannel[] };
+  if (body.error === "subscription_required" && body.channels) {
+    return new SubscriptionRequiredError(body.channels);
+  }
   return new Error(body.error || res.statusText || `request failed: ${res.status}`);
 }
 
@@ -371,6 +374,29 @@ export class PlaylistLimitReachedError extends Error {
   }
 }
 
+export interface SubscriptionChannel {
+  title: string;
+  username: string | null;
+  inviteLink: string | null;
+}
+
+export class SubscriptionRequiredError extends Error {
+  constructor(public readonly channels: SubscriptionChannel[]) {
+    super("subscription_required");
+  }
+}
+
+export interface SubscriptionRecheckResult {
+  ok: boolean;
+  channels: Array<{
+    channelId: number;
+    title: string;
+    username: string | null;
+    inviteLink: string | null;
+    isMember: boolean;
+  }>;
+}
+
 export interface HistoryEntry {
   id: number;
   prompt: string;
@@ -670,4 +696,8 @@ export const api = {
   adminPaymentsConfig: () => request<PaymentsConfig>("/api/admin/payments-config"),
   adminSetPaymentsConfig: (paymentsEnabled: boolean | null) =>
     request<{ ok: boolean }>("/api/admin/payments-config", { method: "POST", body: JSON.stringify({ paymentsEnabled }) }),
+
+  // --- Subscription gate ---
+  recheckSubscription: () =>
+    request<SubscriptionRecheckResult>("/api/subscription/recheck", { method: "POST" }),
 };

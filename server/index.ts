@@ -160,7 +160,7 @@ const audio: AudioDeps = {
 // Resolve upstream URLs after generation so first playback skips yt-dlp startup too.
 setPrewarmStreamResolver(streamResolver);
 
-app.route("/api", createApiRoutes(db, { send, createStarsInvoiceLink, audio }));
+app.route("/api", createApiRoutes(db, { send, createStarsInvoiceLink, audio, getChatMember: (channelId, chatId) => bot.api.getChatMember(channelId, chatId) }));
 
 // grammY's built-in polling awaits each update's full middleware chain before
 // touching the next one, so a single 30-120s generation froze every other
