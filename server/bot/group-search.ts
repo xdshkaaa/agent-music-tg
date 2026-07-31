@@ -115,99 +115,96 @@ export function __setGroupSearchDepsForTests(deps: DeliverDeps | null): void {
   deliverDepsOverride = deps;
 }
 
+/**
+ * Keeps "typing..." visible in the chat for the duration of a search +
+ * extraction, since Telegram only displays it for ~5s per call and there is
+ * no status message to fall back on. Call the returned function to stop.
+ */
+function startTypingLoop(ctx: BotContext, chatId: number): () => void {
+  ctx.api.sendChatAction(chatId, "typing").catch(() => {});
+  const interval = setInterval(() => {
+    ctx.api.sendChatAction(chatId, "typing").catch(() => {});
+  }, 4000);
+  return () => clearInterval(interval);
+}
+
 async function performGroupSearch(ctx: BotContext, db: AppDb, chatId: number, query: string): Promise<void> {
   if (searchRateLimiter.check(chatId)) return; // silent — a warning in a group is worse than a miss
 
-  // A cold query can take a couple of seconds against the upstream catalog
-  // API, and until now the chat stayed silent for all of it. Firing this
-  // instead of awaiting it costs nothing on the request path.
-  ctx.api.sendChatAction(chatId, "typing").catch(() => {});
-
-  let tracks: Track[];
+  const stopTyping = startTypingLoop(ctx, chatId);
   try {
-    tracks = await runSearch(db, query);
-  } catch (e) {
-    console.error("[group search]", e);
-    return;
-  }
-
-  if (tracks.length === 0) {
-    await ctx
-      .reply(statusMessage("search", "Ничего не нашлось", `По запросу «${query}» ничего нет.`), {
-        parse_mode: "HTML",
-        reply_parameters: { message_id: ctx.message!.message_id, allow_sending_without_reply: true },
-      })
-      .catch(() => {});
-    return;
-  }
-
-  bumpGroupSearch(db, chatId);
-  const top = tracks[0]!;
-  const track: DownloadTrack = {
-    uri: top.uri,
-    title: top.title,
-    artist: top.artist,
-    durationMs: top.durationMs,
-    artwork: top.artwork,
-    status: "pending",
-  };
-
-  const dedupeKey = `${chatId}:${track.uri}`;
-  const existing = inFlight.get(dedupeKey);
-  if (existing) {
-    // Someone already asked for this exact track and it's still being
-    // fetched — the send in flight will reach the whole chat, no need for a
-    // second extraction.
-    await existing;
-    return;
-  }
-
-  const cached = getCachedAudio(db, track.uri);
-  const replyToMessageId = ctx.message!.message_id;
-
-  const run = (async () => {
-    let statusMessageId: number | undefined;
-    if (!cached) {
-      if (groupExtractRateLimiter.check(chatId)) return; // extraction pool is shared with paying users elsewhere
-      try {
-        const sent = await ctx.reply(
-          `${messageTitle("search", "Ищу")}\n${escapeHtml(`${track.artist} — ${track.title}`)}`,
-          { parse_mode: "HTML", reply_parameters: { message_id: replyToMessageId, allow_sending_without_reply: true } },
-        );
-        statusMessageId = sent.message_id;
-      } catch {
-        // couldn't post the status line — still worth trying the send
-      }
+    let tracks: Track[];
+    try {
+      tracks = await runSearch(db, query);
+    } catch (e) {
+      console.error("[group search]", e);
+      return;
     }
 
-    try {
-      const deps: DeliverDeps = deliverDepsOverride ?? {
-        sender: createTelegramAudioSender(ctx.api),
-        extractor: new YtDlpExtractor(),
-        scratchDir: env.audioScratchDir,
-      };
-      await deliverTrack(db, chatId, track, deps, { replyToMessageId, caption: trackCaption(ctx.me.username) });
-      bumpGroupTrack(db, chatId);
-    } catch (e) {
-      console.error(`group search delivery failed for ${track.uri} in chat ${chatId}:`, e);
+    if (tracks.length === 0) {
       await ctx
-        .reply(statusMessage("cross", "Не получилось скачать этот трек"), {
+        .reply(statusMessage("search", "Ничего не нашлось", `По запросу «${query}» ничего нет.`), {
           parse_mode: "HTML",
-          reply_parameters: { message_id: replyToMessageId, allow_sending_without_reply: true },
+          reply_parameters: { message_id: ctx.message!.message_id, allow_sending_without_reply: true },
         })
         .catch(() => {});
-    } finally {
-      if (statusMessageId !== undefined) {
-        await ctx.api.deleteMessage(chatId, statusMessageId).catch(() => {});
-      }
+      return;
     }
-  })();
 
-  inFlight.set(dedupeKey, run);
-  try {
-    await run;
+    bumpGroupSearch(db, chatId);
+    const top = tracks[0]!;
+    const track: DownloadTrack = {
+      uri: top.uri,
+      title: top.title,
+      artist: top.artist,
+      durationMs: top.durationMs,
+      artwork: top.artwork,
+      status: "pending",
+    };
+
+    const dedupeKey = `${chatId}:${track.uri}`;
+    const existing = inFlight.get(dedupeKey);
+    if (existing) {
+      // Someone already asked for this exact track and it's still being
+      // fetched — the send in flight will reach the whole chat, no need for a
+      // second extraction.
+      await existing;
+      return;
+    }
+
+    const cached = getCachedAudio(db, track.uri);
+    const replyToMessageId = ctx.message!.message_id;
+
+    const run = (async () => {
+      if (!cached && groupExtractRateLimiter.check(chatId)) return; // extraction pool is shared with paying users elsewhere
+
+      try {
+        const deps: DeliverDeps = deliverDepsOverride ?? {
+          sender: createTelegramAudioSender(ctx.api),
+          extractor: new YtDlpExtractor(),
+          scratchDir: env.audioScratchDir,
+        };
+        await deliverTrack(db, chatId, track, deps, { replyToMessageId, caption: trackCaption(ctx.me.username) });
+        bumpGroupTrack(db, chatId);
+      } catch (e) {
+        console.error(`group search delivery failed for ${track.uri} in chat ${chatId}:`, e);
+        await ctx
+          .reply(statusMessage("cross", "Не получилось скачать этот трек"), {
+            parse_mode: "HTML",
+            reply_parameters: { message_id: replyToMessageId, allow_sending_without_reply: true },
+          })
+          .catch(() => {});
+      }
+    })();
+
+    inFlight.set(dedupeKey, run);
+    try {
+      await run;
+    } finally {
+      inFlight.delete(dedupeKey);
+    }
   } finally {
-    inFlight.delete(dedupeKey);
+    stopTyping();
   }
 }
 
