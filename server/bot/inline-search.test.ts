@@ -241,7 +241,7 @@ describe("cache hit", () => {
 });
 
 describe("cache miss", () => {
-  test("answers empty with a warming button, then warms in the background so a repeat query finds it cached", async () => {
+  test("warms a cold result inside the answer window and shows it immediately", async () => {
     searchImpl = () => [{ uri: "ytm:fresh", title: "Fresh Track", artist: "Band", durationMs: 200_000 }];
     const extractor = fakeExtractor();
     const { sender, sent } = fakeSender();
@@ -251,8 +251,8 @@ describe("cache miss", () => {
     await __drainInlineSearchForTests();
 
     const firstAnswer = harness.answers()[0]!;
-    expect(firstAnswer.payload.results).toEqual([]);
-    expect(firstAnswer.payload.button).toBeDefined();
+    expect(firstAnswer.payload.results).toEqual([{ type: "audio", id: "ytm:fresh", audio_file_id: "file-id-1" }]);
+    expect(firstAnswer.payload.button).toBeUndefined();
     expect(extractor.calls).toEqual(["ytm:fresh"]);
     expect(sent.filter((s) => s.kind === "upload").length).toBe(1);
     expect(getCachedAudio(harness.db, "ytm:fresh")?.tgFileId).toBe("file-id-1");
