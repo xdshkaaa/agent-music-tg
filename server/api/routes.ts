@@ -72,7 +72,7 @@ export function createApiRoutes(db: AppDb, deps: ApiDeps = {}): Hono<AppEnv> {
   app.route("/", createShareRoutes(db));
   app.route("/", createMeRoutes(db));
   app.route("/", createPlaylistRoutes(db, deps));
-  app.route("/", createSearchRoutes(db));
+  app.route("/", createSearchRoutes(db, deps.audio));
   app.route("/", createOfferRoutes(db, deps));
   app.route("/", createAdminRoutes(db, deps));
   app.route("/", createGenerationRoutes(db));

@@ -15,9 +15,7 @@ import { verifyPlategaCallback, type PlategaWebhookBody } from "./payments/plate
 import { getInvoice } from "./payments/invoices-store";
 import { cancelInvoiceAndRefund } from "./payments/cancel";
 import { alertPaymentFulfilled } from "./payments/alerts";
-import { YtDlpExtractor } from "./audio/extractor";
-import { YtDlpStreamResolver } from "./audio/stream-resolver";
-import { createTelegramAudioSender } from "./audio/telegram-sender";
+import { createRuntimeAudioDeps, runtimeExtractor, runtimeStreamResolver } from "./audio/runtime";
 import type { AudioDeps } from "./api/audio-routes";
 import { reconcileStaleDownloads } from "./audio/downloads-store";
 import { createTelegramBroadcastSender } from "./admin/telegram-broadcast";
@@ -148,17 +146,16 @@ const createStarsInvoiceLink = async (args: { title: string; description: string
   return link.replace(/^https:\/\/telegram\.me\//, "https://t.me/");
 };
 
-const extractor = new YtDlpExtractor();
-const streamResolver = new YtDlpStreamResolver();
-setVerificationExtractor(extractor);
+setVerificationExtractor(runtimeExtractor);
 const audio: AudioDeps = {
-  sender: createTelegramAudioSender(bot.api),
-  extractor,
-  scratchDir: env.audioScratchDir,
-  streamResolver,
+  ...createRuntimeAudioDeps(bot.api),
+  streamResolver: runtimeStreamResolver,
 };
+if (env.audioStorageChatId === null) {
+  console.warn("[audio warm] AUDIO_STORAGE_CHAT_ID is not configured; background cache warming is disabled");
+}
 // Resolve upstream URLs after generation so first playback skips yt-dlp startup too.
-setPrewarmStreamResolver(streamResolver);
+setPrewarmStreamResolver(runtimeStreamResolver);
 
 app.route("/api", createApiRoutes(db, { send, createStarsInvoiceLink, audio, getChatMember: (channelId, chatId) => bot.api.getChatMember(channelId, chatId) }));
 

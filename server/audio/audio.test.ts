@@ -20,7 +20,7 @@ const {
   reconcileStaleDownloads,
   DOWNLOAD_STALE_MS,
 } = await import("./downloads-store");
-const { processDownload } = await import("./deliver");
+const { deliverTrack, processDownload } = await import("./deliver");
 const { verificationStore } = await import("./track-verification");
 
 import type { Extractor } from "./extractor";
@@ -170,6 +170,93 @@ describe("downloads store", () => {
 });
 
 describe("processDownload", () => {
+  test("coalesces a cold URI globally and re-sends the minted file_id to the waiting chat", async () => {
+    const db = openDb(":memory:");
+    const extractor = fakeExtractor();
+    const { sender, sent } = fakeSender();
+    const deps = { sender, extractor, scratchDir: scratch() };
+    const item = { ...track("ytm:shared"), status: "pending" as const };
+
+    await Promise.all([
+      deliverTrack(db, CHAT, item, deps),
+      deliverTrack(db, CHAT + 1, item, deps),
+    ]);
+
+    expect(extractor.calls).toEqual(["ytm:shared"]);
+    expect(sent.filter((entry) => entry.kind === "upload")).toHaveLength(1);
+    expect(sent.filter((entry) => entry.kind === "file_id")).toHaveLength(1);
+  });
+
+  test("streams an uncached upstream directly to Telegram and caches its file_id", async () => {
+    const db = openDb(":memory:");
+    const extractor = fakeExtractor();
+    const base = fakeSender();
+    let streamed = "";
+    const sender: AudioSender = {
+      ...base.sender,
+      async sendAudioStream(_chatId, stream, filename) {
+        expect(filename).toBe("ytm_a.m4a");
+        const chunks: Uint8Array[] = [];
+        for await (const chunk of stream) chunks.push(chunk);
+        streamed = Buffer.concat(chunks).toString();
+        return "stream-file-id";
+      },
+    };
+    const resolver = {
+      async resolve() { return { url: "https://media.example/a", headers: { "user-agent": "test" } }; },
+      invalidate() {},
+    };
+    const record = insertDownload(db, CHAT, "P", [{ ...track("ytm:a"), durationMs: 123_000 }]);
+
+    await processDownload(db, record, {
+      sender,
+      extractor,
+      scratchDir: scratch(),
+      streamResolver: resolver,
+      streamFetch: async (_input, init) => {
+        expect(new Headers(init?.headers).get("user-agent")).toBe("test");
+        return new Response("audio-bytes", {
+          headers: { "content-type": "audio/mp4", "content-length": "11" },
+        });
+      },
+    });
+
+    expect(streamed).toBe("audio-bytes");
+    expect(extractor.calls).toHaveLength(0);
+    expect(getCachedAudio(db, "ytm:a")).toMatchObject({
+      tgFileId: "stream-file-id",
+      durationMs: 123_000,
+      sizeBytes: 11,
+    });
+  });
+
+  test("falls back to file extraction when a streamed upload fails", async () => {
+    const db = openDb(":memory:");
+    const extractor = fakeExtractor();
+    const base = fakeSender();
+    let invalidations = 0;
+    const sender: AudioSender = {
+      ...base.sender,
+      async sendAudioStream() { throw new Error("Telegram rejected stream"); },
+    };
+    const record = insertDownload(db, CHAT, "P", [track("ytm:a")]);
+
+    await processDownload(db, record, {
+      sender,
+      extractor,
+      scratchDir: scratch(),
+      streamResolver: {
+        async resolve() { return { url: "https://media.example/a", headers: {} }; },
+        invalidate() { invalidations++; },
+      },
+      streamFetch: async () => new Response("audio", { headers: { "content-type": "audio/mpeg" } }),
+    });
+
+    expect(invalidations).toBe(1);
+    expect(extractor.calls).toEqual(["ytm:a"]);
+    expect(getCachedAudio(db, "ytm:a")?.tgFileId).toBe("file-id-1");
+  });
+
   test("uploads uncached tracks, caches file_id, deletes local file, sends summary", async () => {
     const db = openDb(":memory:");
     const extractor = fakeExtractor();
@@ -222,7 +309,12 @@ describe("processDownload", () => {
     const { sender, sent } = fakeSender();
     const record = insertDownload(db, CHAT, "P", [track("ytm:ok"), track("ytm:bad")]);
 
-    await processDownload(db, record, { sender, extractor, scratchDir: scratch() });
+    await processDownload(db, record, {
+      sender,
+      extractor,
+      scratchDir: scratch(),
+      alternateFinder: { async find() { return null; } },
+    });
 
     const done = getDownload(db, CHAT, record.id)!;
     expect(done.status).toBe("partial");
@@ -241,7 +333,12 @@ describe("processDownload", () => {
       { uri: "ytm:bad", title: "A < B", artist: "C & D" },
     ]);
 
-    await processDownload(db, record, { sender, extractor, scratchDir: scratch() });
+    await processDownload(db, record, {
+      sender,
+      extractor,
+      scratchDir: scratch(),
+      alternateFinder: { async find() { return null; } },
+    });
 
     const summary = String(sent.at(-1)?.value);
     expect(summary).toContain("Focus &lt;Flow&gt; &amp; Friends");

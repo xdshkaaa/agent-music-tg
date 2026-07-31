@@ -8,6 +8,7 @@ import { detailBlock, escapeHtml, messageTitle } from "../bot/message-format";
 import { mapWithConcurrency } from "../core/concurrency";
 import { extractionSemaphore } from "./ytdlp-limits";
 import { fetchThumbnailBytes } from "./thumbnail";
+import type { StreamResolver } from "./stream-resolver";
 import {
   finalStatusFor,
   setDownloadStatus,
@@ -42,6 +43,13 @@ export interface AudioSender {
   sendAudioByFileId(chatId: number, fileId: string, meta: AudioMeta): Promise<void>;
   /** Uploads a local file; resolves with the Telegram file_id for caching. */
   sendAudioFile(chatId: number, filePath: string, meta: AudioMeta): Promise<string>;
+  /** Uploads bytes while they are still arriving from the upstream CDN. */
+  sendAudioStream?(
+    chatId: number,
+    stream: AsyncIterable<Uint8Array>,
+    filename: string,
+    meta: AudioMeta,
+  ): Promise<string>;
   sendText(chatId: number, text: string): Promise<void>;
 }
 
@@ -51,6 +59,89 @@ export interface DeliverDeps {
   scratchDir: string;
   /** Cross-platform repair for unextractable tracks; defaults to the real search. */
   alternateFinder?: AlternateFinder;
+  /** Enables the no-temp-file cold path; absence keeps the proven disk path. */
+  streamResolver?: StreamResolver;
+  streamFetch?: (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => ReturnType<typeof fetch>;
+}
+
+const STREAM_UPLOAD_TIMEOUT_MS = 45_000;
+const AUDIO_MIME_PATTERN = /^audio\/(?:mpeg|mp3|mp4|m4a|x-m4a|aac)(?:\s*;|$)/i;
+
+function extensionForContentType(contentType: string, uri: string): string {
+  if (/mpeg|mp3/i.test(contentType)) return "mp3";
+  if (/mp4|m4a|aac/i.test(contentType)) return "m4a";
+  return uri.startsWith("sc:") ? "mp3" : "m4a";
+}
+
+/**
+ * Resolves the source once, then pipes its response body into Telegram's
+ * multipart upload. Download and upload now overlap instead of taking turns.
+ * Any uncertainty falls back to the existing file-based extractor below.
+ */
+async function tryStreamUpload(
+  db: AppDb,
+  chatId: number,
+  track: DownloadTrack,
+  deps: DeliverDeps,
+  extraMeta?: Partial<AudioMeta>,
+): Promise<boolean> {
+  if (!deps.streamResolver || !deps.sender.sendAudioStream) return false;
+
+  const artworkBytes = track.artwork ? fetchThumbnailBytes(track.artwork) : undefined;
+  const resolveStart = performance.now();
+  try {
+    const resolved = await deps.streamResolver.resolve(track.uri);
+    const resolveMs = performance.now() - resolveStart;
+    const fetchStart = performance.now();
+    const response = await (deps.streamFetch ?? fetch)(resolved.url, {
+      headers: resolved.headers,
+      signal: AbortSignal.timeout(STREAM_UPLOAD_TIMEOUT_MS),
+    });
+    const firstByteMs = performance.now() - fetchStart;
+    if (!response.ok || !response.body) throw new Error(`upstream returned ${response.status}`);
+
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType && !AUDIO_MIME_PATTERN.test(contentType)) {
+      await response.body.cancel().catch(() => {});
+      throw new Error(`upstream returned non-audio content-type: ${contentType}`);
+    }
+    const contentLengthHeader = response.headers.get("content-length");
+    const contentLength = contentLengthHeader ? Number(contentLengthHeader) : undefined;
+    if (contentLength !== undefined && Number.isFinite(contentLength) && contentLength > MAX_UPLOAD_BYTES) {
+      await response.body.cancel().catch(() => {});
+      throw new Error(`upstream file too large for Telegram (${Math.round(contentLength / 1024 / 1024)} MB > 50 MB)`);
+    }
+
+    const uploadStart = performance.now();
+    const fileId = await deps.sender.sendAudioStream(
+      chatId,
+      response.body as unknown as AsyncIterable<Uint8Array>,
+      `${track.uri.replace(":", "_")}.${extensionForContentType(contentType, track.uri)}`,
+      metaFor(track, undefined, { artworkBytes, ...extraMeta }),
+    );
+    const uploadMs = performance.now() - uploadStart;
+    setCachedAudio(db, {
+      uri: track.uri,
+      tgFileId: fileId,
+      title: track.title,
+      artist: track.artist,
+      durationMs: track.durationMs ?? null,
+      sizeBytes: contentLength !== undefined && Number.isFinite(contentLength) ? contentLength : null,
+    });
+    console.info(
+      `[deliver] ${track.uri} path=stream resolve=${Math.round(resolveMs)}ms ` +
+        `firstbyte=${Math.round(firstByteMs)}ms upload=${Math.round(uploadMs)}ms ` +
+        `size=${contentLength !== undefined && Number.isFinite(contentLength) ? (contentLength / 1024 / 1024).toFixed(1) + "MB" : "unknown"}`,
+    );
+    return true;
+  } catch (e) {
+    deps.streamResolver.invalidate(track.uri);
+    console.info(
+      `[deliver] ${track.uri} path=stream-fallback after=${Math.round(performance.now() - resolveStart)}ms ` +
+        `reason=${e instanceof Error ? e.message.slice(0, 160) : String(e).slice(0, 160)}`,
+    );
+    return false;
+  }
 }
 
 /**
@@ -180,8 +271,39 @@ export async function deliverTrack(
       // which refreshes the cache row.
     }
   }
-  await extractUploadCache(db, chatId, track, deps, extraMeta);
+
+  // audio_cache is global, so cold preparation must be global too. If another
+  // chat (or the background warmer) is already minting this URI's file_id,
+  // wait for it and then send that id to this chat instead of downloading the
+  // same bytes twice. The first delivery still reaches its own destination.
+  const existing = coldDeliveries.get(track.uri);
+  if (existing) {
+    try {
+      await existing;
+      const prepared = getCachedAudio(db, track.uri);
+      if (prepared) {
+        const seconds = prepared.durationMs != null ? prepared.durationMs / 1000 : undefined;
+        await deps.sender.sendAudioByFileId(chatId, prepared.tgFileId, metaFor(track, seconds, extraMeta));
+        return;
+      }
+    } catch {
+      // The owner failed; this caller gets one independent attempt below.
+    }
+  }
+
+  const run = (async () => {
+    if (await tryStreamUpload(db, chatId, track, deps, extraMeta)) return;
+    await extractUploadCache(db, chatId, track, deps, extraMeta);
+  })();
+  coldDeliveries.set(track.uri, run);
+  try {
+    await run;
+  } finally {
+    if (coldDeliveries.get(track.uri) === run) coldDeliveries.delete(track.uri);
+  }
 }
+
+const coldDeliveries = new Map<string, Promise<void>>();
 
 function summaryText(playlistName: string, tracks: DownloadTrack[]): string {
   const sent = tracks.filter((t) => t.status === "sent").length;

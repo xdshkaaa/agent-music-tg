@@ -37,6 +37,12 @@ export function createTelegramAudioSender(api: Api): AudioSender {
       if (!fileId) throw new Error("sendAudio returned no audio file_id");
       return fileId;
     },
+    async sendAudioStream(chatId, stream, filename, meta) {
+      const message = await api.sendAudio(chatId, new InputFile(stream, filename), await options(meta));
+      const fileId = message.audio?.file_id;
+      if (!fileId) throw new Error("sendAudio returned no audio file_id");
+      return fileId;
+    },
     async sendText(chatId, text) {
       await api.sendMessage(chatId, text, { parse_mode: "HTML" });
     },

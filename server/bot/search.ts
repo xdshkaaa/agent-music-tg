@@ -7,8 +7,8 @@ import { getActiveBackendId } from "../lib/settings";
 import { searchRateLimiter } from "../lib/rate-limit";
 import { insertDownload, hasActiveDownload } from "../audio/downloads-store";
 import { processDownload } from "../audio/deliver";
-import { createTelegramAudioSender } from "../audio/telegram-sender";
-import { YtDlpExtractor } from "../audio/extractor";
+import { createRuntimeAudioDeps } from "../audio/runtime";
+import { enqueueWarmTracks } from "../audio/warm-queue";
 import { env } from "../env";
 import { btnText } from "./emoji";
 import { detailBlock, escapeHtml, messageHint, messageTitle, statusMessage } from "./message-format";
@@ -189,6 +189,7 @@ export async function performSearch(ctx: BotContext, db: AppDb, rawQuery: string
   putSession(chatId, { query, tracks, at: Date.now() });
   const view = buildSearchView(query, tracks, 0);
   await ctx.reply(view.text, { parse_mode: "HTML", reply_markup: view.keyboard });
+  enqueueWarmTracks(db, tracks, createRuntimeAudioDeps(ctx.api), env.audioStorageChatId, 1);
 }
 
 async function sendTrack(ctx: BotContext, db: AppDb, chatId: number, track: Track): Promise<void> {
@@ -206,11 +207,7 @@ async function sendTrack(ctx: BotContext, db: AppDb, chatId: number, track: Trac
       artwork: track.artwork,
     },
   ]);
-  void processDownload(db, record, {
-    sender: createTelegramAudioSender(ctx.api),
-    extractor: new YtDlpExtractor(),
-    scratchDir: env.audioScratchDir,
-  }).catch((e) => {
+  void processDownload(db, record, createRuntimeAudioDeps(ctx.api)).catch((e) => {
     console.error(`bot search download job ${record.id} crashed:`, e);
   });
 }

@@ -6,8 +6,7 @@ import { startGeneration, resumeGeneration, type GenerationOutcome } from "../co
 import { getGeneration } from "../access/generations-store";
 import { insertDownload, hasActiveDownload } from "../audio/downloads-store";
 import { processDownload } from "../audio/deliver";
-import { createTelegramAudioSender } from "../audio/telegram-sender";
-import { YtDlpExtractor } from "../audio/extractor";
+import { createRuntimeAudioDeps } from "../audio/runtime";
 import { env } from "../env";
 import { btnText } from "./emoji";
 import { detailBlock, escapeHtml, messageHint, messageTitle, statusMessage } from "./message-format";
@@ -258,11 +257,7 @@ export function registerGenerate(bot: Bot<BotContext>, db: AppDb): void {
         artwork,
       })),
     );
-    void processDownload(db, record, {
-      sender: createTelegramAudioSender(ctx.api),
-      extractor: new YtDlpExtractor(),
-      scratchDir: env.audioScratchDir,
-    }).catch((e) => {
+    void processDownload(db, record, createRuntimeAudioDeps(ctx.api)).catch((e) => {
       console.error(`bot generate download job ${record.id} crashed:`, e);
     });
   });

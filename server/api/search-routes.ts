@@ -6,6 +6,9 @@ import { isMusicBackend, createMusicProvider } from "../music/registry";
 import type { MusicProvider } from "../music/types";
 import { DEFAULT_BACKEND } from "./shared";
 import { searchRateLimiter } from "../lib/rate-limit";
+import type { AudioDeps } from "./audio-routes";
+import { enqueueWarmTracks } from "../audio/warm-queue";
+import { env } from "../env";
 
 /**
  * Shared guard for every plain-search endpoint: rate-limits the caller, then
@@ -26,7 +29,7 @@ async function withSearchGuard(
 }
 
 /** Plain (non-AI) search: tracks, artists, albums. */
-export function createSearchRoutes(db: AppDb): Hono<AppEnv> {
+export function createSearchRoutes(db: AppDb, audio?: AudioDeps): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
 
   app.get("/search", async (c) => {
@@ -46,7 +49,9 @@ export function createSearchRoutes(db: AppDb): Hono<AppEnv> {
             return [] as Awaited<ReturnType<typeof music.searchArtists>>;
           }),
         ]);
-        return c.json({ tracks, artists });
+        const response = c.json({ tracks, artists });
+        if (audio) enqueueWarmTracks(db, tracks, audio, env.audioStorageChatId, 1);
+        return response;
       } catch (e) {
         console.error("[search]", e);
         return c.json({ error: "search failed" }, 502);

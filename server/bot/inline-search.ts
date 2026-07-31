@@ -8,10 +8,9 @@ import { inlineSearchRateLimiter, inlineExtractRateLimiter } from "../lib/rate-l
 import { withTimeout } from "../core/concurrency";
 import { getCachedAudio } from "../audio/cache";
 import type { DeliverDeps } from "../audio/deliver";
-import { warmTrack } from "../audio/warm-cache";
+import { __drainWarmQueueForTests, __resetWarmQueueForTests, enqueueWarmTracks } from "../audio/warm-queue";
 import type { DownloadTrack } from "../audio/downloads-store";
-import { createTelegramAudioSender } from "../audio/telegram-sender";
-import { YtDlpExtractor } from "../audio/extractor";
+import { createRuntimeAudioDeps } from "../audio/runtime";
 import { env } from "../env";
 import { bumpInlineSearch, bumpInlineTrack } from "../access/inline-usage-store";
 
@@ -47,16 +46,13 @@ function warmingButton() {
   };
 }
 
-/** In-flight warm jobs per query round, purely so tests can await them; production callers are fire-and-forget. */
-const pendingWarmups: Promise<void>[] = [];
+/** Lets tests observe the shared fire-and-forget warming queue. */
 export async function __drainInlineSearchForTests(): Promise<void> {
-  while (pendingWarmups.length > 0) {
-    await Promise.all(pendingWarmups.splice(0, pendingWarmups.length));
-  }
+  await __drainWarmQueueForTests();
 }
 
 export function __resetInlineSearchForTests(): void {
-  pendingWarmups.length = 0;
+  __resetWarmQueueForTests();
 }
 
 /**
@@ -132,13 +128,8 @@ export function registerInlineSearch(bot: Bot<BotContext>, db: AppDb): void {
     if (storageChatId === null) return;
     if (inlineExtractRateLimiter.check(userId)) return; // shared extraction pool guard, same as groupExtractRateLimiter
 
-    const deps: DeliverDeps = deliverDepsOverride ?? {
-      sender: createTelegramAudioSender(ctx.api),
-      extractor: new YtDlpExtractor(),
-      scratchDir: env.audioScratchDir,
-    };
-    const task = Promise.all(misses.map((track) => warmTrack(db, track, deps, storageChatId))).then(() => {});
-    pendingWarmups.push(task);
+    const deps: DeliverDeps = deliverDepsOverride ?? createRuntimeAudioDeps(ctx.api);
+    enqueueWarmTracks(db, misses, deps, storageChatId, WARM_COUNT);
   });
 
   bot.on("chosen_inline_result", (ctx) => {
