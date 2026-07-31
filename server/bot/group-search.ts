@@ -131,15 +131,18 @@ function startTypingLoop(ctx: BotContext, chatId: number): () => void {
 async function performGroupSearch(ctx: BotContext, db: AppDb, chatId: number, query: string): Promise<void> {
   if (searchRateLimiter.check(chatId)) return; // silent — a warning in a group is worse than a miss
 
+  const requestStart = performance.now();
   const stopTyping = startTypingLoop(ctx, chatId);
   try {
     let tracks: Track[];
+    const searchStart = performance.now();
     try {
       tracks = await runSearch(db, query);
     } catch (e) {
       console.error("[group search]", e);
       return;
     }
+    const searchMs = performance.now() - searchStart;
 
     if (tracks.length === 0) {
       await ctx
@@ -186,6 +189,10 @@ async function performGroupSearch(ctx: BotContext, db: AppDb, chatId: number, qu
         };
         await deliverTrack(db, chatId, track, deps, { replyToMessageId, caption: trackCaption(ctx.me.username) });
         bumpGroupTrack(db, chatId);
+        console.info(
+          `[group search] ${track.uri} in chat ${chatId}: search=${Math.round(searchMs)}ms ` +
+            `total=${Math.round(performance.now() - requestStart)}ms`,
+        );
       } catch (e) {
         console.error(`group search delivery failed for ${track.uri} in chat ${chatId}:`, e);
         await ctx

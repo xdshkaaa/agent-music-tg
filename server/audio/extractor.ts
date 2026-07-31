@@ -12,7 +12,9 @@ export function isValidTrackUri(uri: string): boolean {
 export function sourceUrlForUri(uri: string): string {
   if (!isValidTrackUri(uri)) throw new Error(`invalid track uri: ${uri}`);
   const [scheme, id] = uri.split(":") as [string, string];
-  if (scheme === "ytm") return `https://music.youtube.com/watch?v=${id}`;
+  // www.youtube.com, not music.youtube.com: same video, one fewer
+  // redirect/consent hop for yt-dlp to resolve on every single extraction.
+  if (scheme === "ytm") return `https://www.youtube.com/watch?v=${id}`;
   return `https://api.soundcloud.com/tracks/${id}`;
 }
 
@@ -26,6 +28,10 @@ export interface ExtractedAudio {
   sizeBytes: number;
   /** Measured from the produced file; undefined when ffprobe couldn't read it. */
   durationSeconds?: number;
+  /** Wall time of the yt-dlp subprocess (download, plus a transcode on the rare fallback attempt). Diagnostics only. */
+  ytdlpMs?: number;
+  /** Wall time of the ffprobe subprocess. Diagnostics only. */
+  probeMs?: number;
 }
 
 export interface ProbeResult {
@@ -41,6 +47,52 @@ export interface Extractor {
 const PROBE_TIMEOUT_MS = 15_000;
 const EXTRACT_TIMEOUT_MS = 45_000;
 const FFPROBE_TIMEOUT_MS = 10_000;
+
+/**
+ * Progressive (non-HLS) audio-only format: m4a preferred, mp3 fallback.
+ * Telegram plays both natively as music — no ffmpeg re-encode needed on this
+ * app's side. Shared with stream-resolver.ts, which resolves a playback URL
+ * rather than downloading a file, so it appends its own broader last-resort
+ * fallback on top instead of the filesize cap this module adds below.
+ */
+export const PROGRESSIVE_AUDIO_FORMAT =
+  "bestaudio[ext=m4a][protocol^=http][protocol!*=m3u8]/" +
+  "bestaudio[ext=mp3][protocol^=http][protocol!*=m3u8]";
+
+/**
+ * PROGRESSIVE_AUDIO_FORMAT with each alternative capped at the Bot API
+ * upload limit. Unlike stream-resolver.ts, this module downloads the whole
+ * file, so a format above the limit is worse than useless here — it would
+ * just be rejected after the fact by deliver.ts's MAX_UPLOAD_BYTES check.
+ * The `?` on `filesize<?50M` is required, or formats with an unknown size
+ * (the common case on YouTube) would be excluded outright instead of passed
+ * through.
+ */
+const DOWNLOAD_AUDIO_FORMAT = PROGRESSIVE_AUDIO_FORMAT.split("/")
+  .map((alt) => `${alt}[filesize<?50M]`)
+  .join("/");
+
+/** yt-dlp's exit message when a source has neither candidate in DOWNLOAD_AUDIO_FORMAT. */
+const FORMAT_UNAVAILABLE_MARKER = "Requested format is not available";
+
+/**
+ * Persists yt-dlp's own cache (nsig solutions, extractor/player-JS state)
+ * across invocations. The systemd units don't set `User=`, so `$HOME` isn't
+ * guaranteed present — without an explicit --cache-dir, yt-dlp can fall back
+ * to a guessed location and end up re-solving the YouTube player on every
+ * single call instead of reusing what it already worked out.
+ */
+const YTDLP_CACHE_DIR = join(process.cwd(), "data", ".yt-dlp-cache");
+
+/** Flags common to every yt-dlp invocation in this module. */
+const COMMON_ARGS = [
+  "--no-playlist",
+  "--quiet",
+  "--no-warnings",
+  "--js-runtimes", "node",
+  "--socket-timeout", "10",
+  "--cache-dir", YTDLP_CACHE_DIR,
+];
 
 interface SpawnedProc {
   stdout?: ReadableStream<Uint8Array> | number;
@@ -84,7 +136,7 @@ async function runWithTimeout(
 async function runProbe(uri: string): Promise<ProbeResult> {
   const url = sourceUrlForUri(uri);
   const proc = Bun.spawn(
-    ["yt-dlp", "--no-playlist", "--quiet", "--js-runtimes", "node", "-f", "bestaudio/best", "--dump-json", url],
+    ["yt-dlp", ...COMMON_ARGS, "-f", "bestaudio/best", "--dump-json", url],
     { stdout: "pipe", stderr: "pipe" },
   );
   const { stdout, stderr, code } = await runWithTimeout(proc, PROBE_TIMEOUT_MS);
@@ -144,9 +196,52 @@ async function probeFileDuration(filePath: string): Promise<number | undefined> 
   }
 }
 
+interface RunExtractResult {
+  code: number;
+  stderr: string;
+  filePath?: string;
+  timedOut: boolean;
+}
+
 /**
- * Extracts a track's audio as mp3 into targetDir via a yt-dlp subprocess.
- * 192k keeps typical songs a few MB — far under the Bot API 50 MB limit.
+ * Runs one yt-dlp download attempt against `format`, printing the final file
+ * path after any post-processing so the caller never has to guess which
+ * extension yt-dlp picked. `--print` implies `--simulate`, hence
+ * `--no-simulate` to still actually download. `transcode` re-encodes to mp3
+ * — only used by the fallback attempt below, for sources offering neither
+ * m4a nor mp3 progressively.
+ */
+async function runExtractOnce(url: string, outputTemplate: string, format: string, transcode: boolean): Promise<RunExtractResult> {
+  const proc = Bun.spawn(
+    [
+      "yt-dlp",
+      ...COMMON_ARGS,
+      "--concurrent-fragments", "4",
+      "-f", format,
+      ...(transcode ? ["-x", "--audio-format", "mp3", "--audio-quality", "192K"] : []),
+      "--no-simulate",
+      "--print", "after_move:%(filepath)s",
+      "-o", outputTemplate,
+      url,
+    ],
+    { stdout: "pipe", stderr: "pipe" },
+  );
+  const { stdout, stderr, code } = await runWithTimeout(proc, EXTRACT_TIMEOUT_MS);
+  return {
+    code,
+    stderr,
+    filePath: stdout.trim().split("\n").filter(Boolean).pop(),
+    timedOut: proc.killed,
+  };
+}
+
+/**
+ * Extracts a track's audio via a yt-dlp subprocess, preferring an
+ * already-compressed progressive stream (m4a/mp3) so Telegram receives it
+ * as-is: no ffmpeg re-encode pass, which used to run unconditionally on
+ * every extraction regardless of source, only ever making the upload bigger
+ * and slower for a "quality" the source never had. Falls back to the old
+ * download+transcode behavior only when a source truly offers neither.
  *
  * No `--embed-thumbnail`/`--embed-metadata`: telegram-sender.ts already sends
  * title/performer/duration/thumbnail as explicit sendAudio params, and the
@@ -158,33 +253,28 @@ export class YtDlpExtractor implements Extractor {
   async extract(uri: string, targetDir: string): Promise<ExtractedAudio> {
     const url = sourceUrlForUri(uri);
     mkdirSync(targetDir, { recursive: true });
-    const filePath = join(targetDir, fileNameForUri(uri));
+    const outputTemplate = join(targetDir, fileNameForUri(uri)).replace(/\.mp3$/, ".%(ext)s");
 
-    const proc = Bun.spawn(
-      [
-        "yt-dlp",
-        "--no-playlist",
-        "--quiet",
-        "--js-runtimes", "node",
-        "-f", "bestaudio/best",
-        "-x",
-        "--audio-format", "mp3",
-        "--audio-quality", "192K",
-        "-o", filePath.replace(/\.mp3$/, ".%(ext)s"),
-        url,
-      ],
-      { stdout: "ignore", stderr: "pipe" },
-    );
-    const { stderr, code } = await runWithTimeout(proc, EXTRACT_TIMEOUT_MS);
-    if (code !== 0) {
-      const timedOut = proc.killed;
-      const detail = timedOut ? "timed out" : stderr.trim().slice(0, 500);
-      throw new Error(`yt-dlp failed for ${uri} (exit ${code}): ${detail}`);
+    const ytdlpStart = performance.now();
+    let result = await runExtractOnce(url, outputTemplate, DOWNLOAD_AUDIO_FORMAT, false);
+    if (result.code !== 0 && !result.timedOut && result.stderr.includes(FORMAT_UNAVAILABLE_MARKER)) {
+      result = await runExtractOnce(url, outputTemplate, "bestaudio/best", true);
+    }
+    const ytdlpMs = performance.now() - ytdlpStart;
+
+    if (result.code !== 0 || !result.filePath) {
+      const detail = result.timedOut ? "timed out" : result.stderr.trim().slice(0, 500);
+      throw new Error(`yt-dlp failed for ${uri} (exit ${result.code}): ${detail}`);
     }
 
-    const file = Bun.file(filePath);
+    const file = Bun.file(result.filePath);
     if (!(await file.exists())) throw new Error(`yt-dlp produced no file for ${uri}`);
-    return { filePath, sizeBytes: file.size, durationSeconds: await probeFileDuration(filePath) };
+
+    const probeStart = performance.now();
+    const durationSeconds = await probeFileDuration(result.filePath);
+    const probeMs = performance.now() - probeStart;
+
+    return { filePath: result.filePath, sizeBytes: file.size, durationSeconds, ytdlpMs, probeMs };
   }
 
   async probe(uri: string): Promise<ProbeResult> {

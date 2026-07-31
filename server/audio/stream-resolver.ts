@@ -1,4 +1,4 @@
-import { sourceUrlForUri } from "./extractor";
+import { PROGRESSIVE_AUDIO_FORMAT, sourceUrlForUri } from "./extractor";
 import { streamResolveSemaphore } from "./ytdlp-limits";
 
 export interface ResolvedStream {
@@ -30,8 +30,13 @@ const EXPIRY_SAFETY_MS = 60_000;
 const MAX_TTL_MS = 6 * 60 * 60 * 1000;
 /** Cache is keyed by track uri and holds only a URL plus headers; this bounds it anyway. */
 const MAX_CACHE_ENTRIES = 2_000;
-const PROGRESSIVE_AUDIO_FORMAT =
-  "bestaudio[ext=m4a][protocol^=http][protocol!*=m3u8]/bestaudio[protocol^=http][protocol!*=m3u8]";
+/**
+ * extractor.ts's format restricted to m4a/mp3 covers the common case. Unlike
+ * that module, this one only ever proxies bytes rather than downloading a
+ * whole file, so it's safe here to widen with a last-resort "any progressive
+ * http format" fallback instead of failing resolution outright.
+ */
+const STREAM_AUDIO_FORMAT = `${PROGRESSIVE_AUDIO_FORMAT}/bestaudio[protocol^=http][protocol!*=m3u8]`;
 
 interface CachedStream {
   value: ResolvedStream;
@@ -91,7 +96,7 @@ export class YtDlpStreamResolver implements StreamResolver {
         "--no-playlist",
         "--quiet",
         "--js-runtimes", "node",
-        "-f", PROGRESSIVE_AUDIO_FORMAT,
+        "-f", STREAM_AUDIO_FORMAT,
         "--no-download",
         "--dump-single-json",
         sourceUrlForUri(uri),
